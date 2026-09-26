@@ -19,6 +19,8 @@ import { render as audiobookDetail } from './views/audiobook-detail.js';
 /** @typedef {(route: AudioRoute) => void} Navigate */
 /** @typedef {{ container: HTMLElement, id: number | null, player: ReturnType<typeof createAudioPlayer>, navigate: Navigate }} ViewParams */
 /** @typedef {(params: ViewParams) => Promise<{ title: string, dispose?: () => void }>} ViewRenderer */
+/* A ViewRenderer must not reject: renderRoute has no catch, so views own their
+ * own error state (e.g. render a message into `container`) and always resolve. */
 
 /** @type {Record<AudioRoute['section'], Record<string, ViewRenderer>>} */
 const VIEWS = {
@@ -49,11 +51,15 @@ let currentView = null;
 let navToken = 0;
 
 /**
- * Renders `route` into a detached target element, and only swaps it into the
- * live `container` if no later navigation started while the view's own
- * (possibly awaited) work was in flight. A superseded view never touches
- * `container`, `currentView` or `document.title` — its `dispose` runs
- * instead, so cleanup still happens even though it never became current.
+ * Swaps a fresh target into the live `container` synchronously — before the
+ * view's (possibly awaited) work even starts — so the view owns `container`
+ * from the first paint: a cold load shows the view's own loading state
+ * instead of an empty `main`, and in-section navigation drops the previous
+ * view immediately instead of leaving it visible and clickable until the
+ * fetch resolves. Only `currentView` and `document.title`, which depend on
+ * the resolved result, wait for the view's promise, guarded by `navToken` so
+ * a superseded render never overwrites a later one. A superseded view's
+ * `dispose` still runs even though it never became current.
  * @param {AudioRoute} route
  * @returns {Promise<void>}
  */
@@ -63,16 +69,16 @@ async function renderRoute(route) {
   currentView = null;
   const view = VIEWS[route.section][route.view];
   const target = el('div');
+  container.replaceChildren(target);
+  setActive(route.section);
+  window.scrollTo(0, 0);
   const result = await view({ container: target, id: route.id, player, navigate });
   if (token !== navToken) {
     result.dispose?.();
     return;
   }
   currentView = result;
-  container.replaceChildren(target);
   document.title = `${result.title} · Videothek`;
-  setActive(route.section);
-  window.scrollTo(0, 0);
 }
 
 /**

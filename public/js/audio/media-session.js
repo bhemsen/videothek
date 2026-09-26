@@ -5,6 +5,7 @@
  */
 
 /** @typedef {ReturnType<typeof import('./player.js').createAudioPlayer>} AudioPlayer */
+/** @typedef {NonNullable<ReturnType<AudioPlayer['state']>>} PlayerState */
 
 /**
  * @param {AudioPlayer} player
@@ -14,13 +15,24 @@
 export function bindMediaSession(player, audio) {
   if (!('mediaSession' in navigator)) return;
   attachHandlers(player, audio);
-  player.onChange(() => updateMetadata(player));
+  let lastItemId = /** @type {number | null} */ (null);
+  player.onChange(() => {
+    const state = player.state();
+    if (state !== null && state.item.id !== lastItemId) {
+      lastItemId = state.item.id;
+      updateMetadata(state);
+    }
+  });
   const updatePosition = () => setPositionState(audio);
   audio.addEventListener('durationchange', updatePosition);
   audio.addEventListener('seeked', updatePosition);
   audio.addEventListener('play', updatePosition);
   audio.addEventListener('pause', updatePosition);
-  updateMetadata(player);
+  const initialState = player.state();
+  if (initialState !== null) {
+    lastItemId = initialState.item.id;
+    updateMetadata(initialState);
+  }
   updatePosition();
 }
 
@@ -43,13 +55,13 @@ function attachHandlers(player, audio) {
 }
 
 /**
- * Sets metadata from the current item; a no-op while nothing is queued yet.
- * @param {AudioPlayer} player
+ * Sets metadata from `state`'s current item. Called only when the item
+ * changes (see `bindMediaSession`), not on every play/pause/error toggle, so
+ * the OS lock-screen artwork does not re-fetch or flicker on those.
+ * @param {PlayerState} state
  * @returns {void}
  */
-function updateMetadata(player) {
-  const state = player.state();
-  if (state === null) return;
+function updateMetadata(state) {
   const { item, mode } = state;
   const artist = mode === 'music' ? item.subtitle : (item.subtitle ?? item.groupTitle);
   navigator.mediaSession.metadata = new MediaMetadata({
