@@ -19,7 +19,7 @@ import { createQueue } from './queue.js';
 
 /** @typedef {{ audio: PlayerAudio, track: typeof trackPlayback, headMedia: (id: number) => Promise<number> }} PlayerDeps */
 
-/** @typedef {{ queue: ReturnType<typeof createQueue> | null, mode: PlayerMode | null, groupId: number | null, handle: { stop: () => Promise<void> } | null, playing: boolean, error: string | null, errorTimer: ReturnType<typeof setTimeout> | null, listeners: Set<() => void> }} PlayerInternalState */
+/** @typedef {{ queue: ReturnType<typeof createQueue> | null, mode: PlayerMode | null, groupId: number | null, handle: { stop: () => Promise<void> } | null, switchToken: number, playing: boolean, error: string | null, errorTimer: ReturnType<typeof setTimeout> | null, listeners: Set<() => void> }} PlayerInternalState */
 
 const SWITCH_TIMEOUT_MS = 1000;
 const ERROR_DISPLAY_MS = 5000;
@@ -59,7 +59,7 @@ function raceWithTimeout(promise, ms) {
 
 /** @returns {PlayerInternalState} */
 function createState() {
-  return { queue: null, mode: null, groupId: null, handle: null, playing: false, error: null, errorTimer: null, listeners: new Set() };
+  return { queue: null, mode: null, groupId: null, handle: null, switchToken: 0, playing: false, error: null, errorTimer: null, listeners: new Set() };
 }
 
 /** @param {PlayerInternalState} state @returns {void} */
@@ -84,16 +84,26 @@ function startItem(deps, state, item) {
  * Switches to `item`: immediately when no handle exists yet (the page's
  * first play), otherwise after the outgoing handle's `stop()` settles,
  * capped at `SWITCH_TIMEOUT_MS` so a slow report never delays auto-advance.
+ * A monotonic `switchToken` picks a winner among overlapping switches:
+ * `state.handle` keeps pointing at the outgoing handle for the whole wait
+ * (never cleared up front), so a switch that arrives mid-wait sees a
+ * real outgoing handle rather than `null` and is never mistaken for the
+ * page's first play; and the deferred `startItem` call only runs when its
+ * own token is still the latest one requested, so a switch superseded
+ * before its wait settles starts nothing (and creates no handle to stop).
  * @param {PlayerDeps} deps @param {PlayerInternalState} state @param {QueueItem} item @returns {void}
  */
 function goTo(deps, state, item) {
-  if (state.handle === null) {
+  const token = (state.switchToken += 1);
+  const outgoing = state.handle;
+  if (outgoing === null) {
     startItem(deps, state, item);
     return;
   }
-  const outgoing = state.handle;
-  state.handle = null;
-  raceWithTimeout(outgoing.stop(), SWITCH_TIMEOUT_MS).then(() => startItem(deps, state, item));
+  raceWithTimeout(outgoing.stop(), SWITCH_TIMEOUT_MS).then(() => {
+    if (token !== state.switchToken) return;
+    startItem(deps, state, item);
+  });
 }
 
 /**
@@ -121,14 +131,21 @@ function onEnded(deps, state) {
 /**
  * `code === 1` (`MEDIA_ERR_ABORTED`) is our own `src` swap and is ignored.
  * Otherwise a `HEAD` disambiguates an expired session (→ `toLogin`) from a
- * genuine playback failure (→ status message, then advance).
+ * genuine playback failure (→ status message, then advance). The queue and
+ * its current item are re-checked after the `await`: if the user has since
+ * switched (next/previous/a new `playQueue`) while the `HEAD` was in
+ * flight, this stale error is dropped instead of advancing from — or
+ * showing a message for — the wrong item.
  * @param {PlayerDeps} deps @param {PlayerInternalState} state @returns {Promise<void>}
  */
 async function onError(deps, state) {
   if (deps.audio.error !== null && deps.audio.error.code === MEDIA_ERR_ABORTED) return;
-  const item = state.queue ? state.queue.current() : null;
+  const queue = state.queue;
+  if (queue === null) return;
+  const item = queue.current();
   if (item === null) return;
   const status = await deps.headMedia(item.id);
+  if (state.queue !== queue || queue.current() !== item) return;
   if (status === 401) {
     toLogin();
     return;

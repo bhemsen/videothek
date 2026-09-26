@@ -24,3 +24,9 @@ test('formatPercent floors to a whole percentage and shows the placeholder for n
   assert.equal(formatPercent(1), '100 %');
   assert.equal(formatPercent(null), '–');
 });
+
+test('formatPercent is not thrown off by binary-float artefacts of an exact fraction', () => {
+  assert.equal(0.29 * 100, 28.999999999999996, 'documents the artefact this test guards against');
+  assert.equal(formatPercent(0.29), '29 %');
+  assert.equal(formatPercent(0.57), '57 %');
+});

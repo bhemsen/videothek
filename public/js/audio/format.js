@@ -35,11 +35,13 @@ export function formatTotal(seconds) {
 
 /**
  * Formats a 0–1 fraction as a floored percentage, e.g. `34 %`; the unknown
- * placeholder for `null`.
+ * placeholder for `null`. Rounds to 1e-4 of a percentage point before
+ * flooring so a binary-float artefact (e.g. `0.29 * 100 === 28.999…9996`)
+ * never shaves a whole point off an otherwise exact fraction.
  * @param {number | null} fraction
  * @returns {string}
  */
 export function formatPercent(fraction) {
   if (fraction === null) return '–';
-  return `${Math.floor(fraction * 100)} %`;
+  return `${Math.floor(Math.round(fraction * 1e6) / 1e4)} %`;
 }
