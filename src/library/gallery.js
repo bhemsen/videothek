@@ -178,6 +178,8 @@ function compareFolders(a, b) {
   const nameCmp = collator.compare(a.name, b.name);
   if (nameCmp !== 0) return nameCmp;
   if (a.key === b.key) return 0;
+  // JS `<` compares UTF-16 code units, not UTF-8 bytes; intentional — the two
+  // orders only differ for astral-plane vs. U+E000-U+FFFF characters.
   return a.key < b.key ? -1 : 1;
 }
 

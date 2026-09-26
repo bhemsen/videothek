@@ -1,28 +1,7 @@
 import { test } from 'node:test';
 import assert from 'node:assert/strict';
 import { childFolders, buildGalleryView } from '../../src/library/gallery.js';
-
-/**
- * @param {Partial<import('../../src/library/gallery.js').ItemRow>} overrides
- * @returns {import('../../src/library/gallery.js').ItemRow}
- */
-function makeItem(overrides = {}) {
-  return {
-    id: 1,
-    relPath: 'Bilder/foo.jpg',
-    kind: 'image',
-    playable: true,
-    size: 1000,
-    mtimeMs: 1700000000000,
-    takenAt: null,
-    orientation: null,
-    thumbOffset: null,
-    thumbLength: null,
-    sourceSize: null,
-    sourceMtimeMs: null,
-    ...overrides,
-  };
-}
+import { makeItem, freshThumbFields } from './gallery-test-helpers.js';
 
 test('childFolders', async (t) => {
   await t.test('aggregates a multi-level subtree into direct children with summed counts', () => {
@@ -165,105 +144,11 @@ test('buildGalleryView folder sort', async (t) => {
   });
 });
 
-test('buildGalleryView thumb marker and orientation', async (t) => {
-  await t.test('embedded: playable image with a fresh recorded thumbnail', () => {
-    const row = makeItem({
-      thumbOffset: 20,
-      thumbLength: 30,
-      sourceSize: 1000,
-      sourceMtimeMs: 1700000000000,
-      orientation: 6,
-    });
-    const view = buildGalleryView({ key: '', items: [row], folders: [] });
-    assert.equal(view.items[0].thumb, 'embedded');
-    assert.equal(view.items[0].thumbOrientation, 6);
-  });
-
-  await t.test('a stale source (size mismatch) falls back to original', () => {
-    const row = makeItem({
-      thumbOffset: 20,
-      thumbLength: 30,
-      sourceSize: 999,
-      sourceMtimeMs: 1700000000000,
-      orientation: 6,
-    });
-    const view = buildGalleryView({ key: '', items: [row], folders: [] });
-    assert.equal(view.items[0].thumb, 'original');
-    assert.equal(view.items[0].thumbOrientation, 1);
-  });
-
-  await t.test('a stale source (mtime mismatch) falls back to original', () => {
-    const row = makeItem({
-      thumbOffset: 20,
-      thumbLength: 30,
-      sourceSize: 1000,
-      sourceMtimeMs: 1,
-      orientation: 6,
-    });
-    const view = buildGalleryView({ key: '', items: [row], folders: [] });
-    assert.equal(view.items[0].thumb, 'original');
-  });
-
-  await t.test('no recorded thumbnail falls back to original', () => {
-    const row = makeItem({ thumbOffset: null, thumbLength: null });
-    const view = buildGalleryView({ key: '', items: [row], folders: [] });
-    assert.equal(view.items[0].thumb, 'original');
-  });
-
-  await t.test('a non-playable image never gets a thumb marker', () => {
-    const row = makeItem({
-      playable: false,
-      thumbOffset: 20,
-      thumbLength: 30,
-      sourceSize: 1000,
-      sourceMtimeMs: 1700000000000,
-    });
-    const view = buildGalleryView({ key: '', items: [row], folders: [] });
-    assert.equal(view.items[0].thumb, null);
-    assert.equal(view.items[0].thumbOrientation, 1);
-  });
-
-  await t.test('a video item never gets a thumb marker', () => {
-    const row = makeItem({
-      kind: 'video',
-      thumbOffset: 20,
-      thumbLength: 30,
-      sourceSize: 1000,
-      sourceMtimeMs: 1700000000000,
-    });
-    const view = buildGalleryView({ key: '', items: [row], folders: [] });
-    assert.equal(view.items[0].thumb, null);
-  });
-
-  await t.test('a missing orientation on an embedded thumbnail defaults to 1', () => {
-    const row = makeItem({
-      thumbOffset: 20,
-      thumbLength: 30,
-      sourceSize: 1000,
-      sourceMtimeMs: 1700000000000,
-      orientation: null,
-    });
-    const view = buildGalleryView({ key: '', items: [row], folders: [] });
-    assert.equal(view.items[0].thumb, 'embedded');
-    assert.equal(view.items[0].thumbOrientation, 1);
-  });
-
-  await t.test('a non-embedded item always reports orientation 1', () => {
-    const row = makeItem({ orientation: 5 });
-    const view = buildGalleryView({ key: '', items: [row], folders: [] });
-    assert.equal(view.items[0].thumb, 'original');
-    assert.equal(view.items[0].thumbOrientation, 1);
-  });
-});
-
 test('buildGalleryView folder cover', async (t) => {
   await t.test('a cover follows the same thumb-marker rules as an item', () => {
     const coverRow = makeItem({
       id: 42,
-      thumbOffset: 20,
-      thumbLength: 30,
-      sourceSize: 1000,
-      sourceMtimeMs: 1700000000000,
+      ...freshThumbFields(),
       orientation: 3,
       mtimeMs: 1700000000000,
     });
@@ -291,13 +176,7 @@ test('buildGalleryView folder cover', async (t) => {
 });
 
 test('buildGalleryView never contains a URL string', () => {
-  const row = makeItem({
-    id: 1,
-    thumbOffset: 20,
-    thumbLength: 30,
-    sourceSize: 1000,
-    sourceMtimeMs: 1700000000000,
-  });
+  const row = makeItem({ id: 1, ...freshThumbFields() });
   const view = buildGalleryView({
     key: 'a',
     items: [row],
