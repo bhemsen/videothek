@@ -111,6 +111,33 @@
   - AVOID: full tag coverage, multi-artist/role modelling, ReplayGain etc.
   - Source: https://deepwiki.com/navidrome/navidrome/6.3-metadata-extraction-and-tag-parsing
 
+## Audio artwork resolution (Phase 5)
+
+### navidrome/navidrome (artwork)
+
+- Path: docs `usage/library/artwork`; config option `CoverArtPriority`
+- License: GPL-3.0-only
+- Verdict: reference-only — adopt the lookup order, not the code
+- Date: 2026-09-26
+- Notes:
+  - ADOPT: default `CoverArtPriority` = `cover.*, folder.*, front.*, embedded, external` — folder images in the album directory before the embedded picture, resolved on demand per request.
+  - AVOID: the `external` step (online lookups — constitution: no outbound calls); server-side artwork resizing and caching.
+  - Uncertainty: order taken from the documentation, not read from source.
+  - Source: https://www.navidrome.org/docs/usage/library/artwork/
+
+## Audiobook directory structure (Phase 5)
+
+### advplyr/audiobookshelf (book library scanner)
+
+- Path: docs `documentation/libraries/book-library/directory-structure`; guide `guides/book-scanner`
+- License: GPL-3.0-only
+- Verdict: reference-only — folder convention adopted
+- Date: 2026-09-26
+- Notes:
+  - ADOPT: `{Author}/{Book}` and `{Author}/{Series}/{Book}` directories; single-file books allowed; disc subfolders named `CD`/`Disc`/`Disk` + number; files ordered by disc, then track.
+  - AVOID: its default metadata precedence (tags over folder names) — our grouping requires curated Author/Book folders; series modelling; OPF/NFO sidecar metadata.
+  - Source: https://audiobookshelf.org/docs/documentation/libraries/book-library/directory-structure/ , https://www.audiobookshelf.org/guides/book-scanner/
+
 ## Image thumbnails without native dependencies (Phase 6)
 
 ### exifr / exif-parser (npm)

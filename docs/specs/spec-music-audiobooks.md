@@ -2,14 +2,15 @@
 
 > Created: 2026-09-26
 
-Makes every audio file under `Musik/` and `Hörbücher/` browsable and playable in
-the browser: minimal in-house ID3v2 + FLAC tag readers, folder-convention
-parsers, a post-scan audio metadata pass (migration 004), cover art, an audio
-section with a persistent bottom-bar player and album/book queue, and audiobook
-resume on top of the Phase 4 progress API. This spec carries no lifecycle
-state — acceptance is the spec merged on the default branch with a milestone and
-issues, and all progress lives in the GitHub issues and milestone. A completed
-spec is moved to `docs/specs/archive/`.
+Makes every audio file under the music and audiobook category folders browsable
+and playable in the browser: minimal in-house ID3v2 + FLAC tag readers,
+folder-convention parsers, a post-scan audio metadata pass (migration 004),
+cover art, an audio section on `/music` and `/audiobooks` with a persistent
+bottom-bar player and album/book queue, and cross-device resume for music
+tracks and audiobook files on top of the Phase 4 progress API. This spec
+carries no lifecycle state — acceptance is the spec merged on the default
+branch with a milestone and issues, and all progress lives in the GitHub issues
+and milestone. A completed spec is moved to `docs/specs/archive/`.
 
 ## Outcome
 
@@ -18,26 +19,30 @@ spec is moved to `docs/specs/archive/`.
       track/disc order, year and duration taken from its tags — without a
       restart, within the Phase 2 freshness bounds (≤ 10 s with a working
       watcher, at the latest after the periodic rescan).
-- [ ] Audio files without readable tags (untagged MP3/FLAC, and all M4A/M4B,
-      Ogg/Opus, WAV, …) still appear, grouped and ordered by the folder/filename
-      conventions below; formats the Phase 2 compatibility table marks as not
-      playable are listed with a "Nicht abspielbar" badge and are never queued.
-- [ ] Album and book covers are shown from a folder image or from the embedded
-      picture via `GET /media/:id/cover`; items without any cover show the
-      placeholder without a broken-image icon.
-- [ ] Musik: artist sections with album cards → album detail with track list;
-      "Alle abspielen" or a track click plays the album as a queue in the
-      persistent bottom bar (play/pause, previous/next, seek, auto-advance).
-      Switching between any Musik and Hörbücher view never interrupts playback.
+- [ ] Every `library_items` row of category `music` or `audiobooks` gets an
+      `audio_meta` row and appears: files without readable tags (untagged
+      MP3/FLAC, and all M4A/M4B, Ogg/Opus, AAC, WAV, …) are grouped and ordered
+      by the folder/filename conventions below; files the Phase 2 compatibility
+      table marks as not playable are listed with a "Nicht abspielbar" badge
+      and are never queued.
+- [ ] Album and book covers are shown from a folder image, a sidecar image or
+      the embedded picture via `GET /media/:id/cover`; items without any cover
+      show the placeholder, never a broken-image icon.
+- [ ] Musik: "Weiterhören" card + artist sections with album cards → album
+      detail with track list; "Alle abspielen" or a track click plays the album
+      as a queue in the persistent bottom bar (play/pause, previous/next, seek,
+      auto-advance). Moving between `/music`, `/music?album=<id>`,
+      `/audiobooks` and `/audiobooks?book=<id>` — including through the
+      category nav — never interrupts playback.
 - [ ] Hörbücher: book grid with per-book progress and a "Weiterhören" row →
       book detail with per-file progress; "Fortsetzen" starts the book at the
       last file and position — also on a second device, within ±10 s of where
       it was stopped on the first (vision success criterion "Resume").
-- [ ] Musik "Weiterhören": the last music track a user was playing, and its
-      position, is offered on any device and resumes within ±10 s
-      (per OPEN-1, recommended option C).
+- [ ] Musik "Weiterhören": the user's most recently updated in-progress music
+      track (a Phase 4 progress row) is offered on any device and resumes
+      within ±10 s of its stop position.
 - [ ] The metadata pass never reads more than 256 KiB of any audio file and
-      never loads picture payloads during scanning; the service still meets the
+      never loads picture payloads while scanning; the service still meets the
       vision's idle-RSS criterion.
 - [ ] `npm run verify` green; `npm ls --omit=dev --all` shows no packages.
 
@@ -45,90 +50,178 @@ spec is moved to `docs/specs/archive/`.
 
 ### In scope
 
-- Tag readers `src/library/tags/id3v2.js` (ID3v2.3 + ID3v2.4),
+Every file this phase creates or edits (each owned by exactly one issue):
+
+- Tag readers: `src/library/tags/id3v2.js` (ID3v2.3 + ID3v2.4),
   `src/library/tags/mpeg.js` (MP3 duration), `src/library/tags/flac.js`
   (STREAMINFO, VORBIS_COMMENT, PICTURE) and the central tag→field mapping
   `src/library/tags/index.js` (the only module that opens audio files for tag
   reading).
 - Folder-convention parsers `src/library/parsers/music.js` and
-  `src/library/parsers/audiobook.js` (pure functions: relative path → group
-  key, fallback titles, track/disc numbers).
-- Audio metadata pass `src/library/audio-meta.js`, run after every completed
-  Phase 2 scan; migration `src/db/migrations/004-audio-meta.sql`; repository
-  `src/db/audio-repo.js`.
-- Group assembly `src/library/audio-groups.js` (pure: member rows → albums /
-  books with the display precedence below), API module `src/api/audio.js`
-  (`registerAudioRoutes(router, deps)`), resume logic
-  `src/api/audio-resume.js`, cover route `GET /media/:id/cover`
-  (`src/api/cover.js` over `src/library/cover.js`).
-- Audio section: `public/audio.html` (served at `/audio`), `public/js/audio/**`,
-  `public/css/audio.css` — four views (music overview, album detail, audiobook
-  grid, audiobook detail), persistent bottom-bar player with queue, Media
-  Session integration, audiobook progress reporting through the Phase 4 client,
-  music session reporting.
-- Category nav: "Musik" and "Hörbücher" entries point to `/audio#/musik` and
-  `/audio#/hoerbuecher`; Phase 1's placeholder pages `public/music.html` and
-  `public/audiobooks.html` become static redirects to those URLs.
-- Synthetic, browser-decodable fixture tree under
-  `test/fixtures/media/Musik/` and `test/fixtures/media/Hörbücher/`, produced by
-  committed test helpers.
-- `docs/architecture.md` updated for the new components and flow.
+  `src/library/parsers/audiobook.js` (pure).
+- Metadata pass `src/library/audio-meta.js`; migration
+  `src/db/migrations/004-audio-meta.sql`; repositories
+  `src/db/audio-meta-repo.js` (audio_meta + joined `library_items` reads) and
+  `src/db/audio-progress.js` (read-only joins onto Phase 4's `progress`).
+- Group assembly `src/library/audio-groups.js` (pure).
+- API: `src/api/music.js` (`registerMusicRoutes`), `src/api/audiobooks.js`
+  (`registerAudiobookRoutes`), pure resume derivation
+  `src/api/audiobook-resume.js`.
+- Covers: lookup `src/library/cover.js`, byte-slice responder
+  `src/http/slice.js`, route module `src/api/cover.js`
+  (`registerCoverRoutes`, `GET /media/:id/cover`).
+- Shared-file edits (one line each): `src/http/routes.js` (three
+  registrations: music, audiobooks, cover), `src/server.js` (one
+  `onScanComplete` registration).
+- Frontend: `public/music.html` and `public/audiobooks.html` (replace Phase 1's
+  placeholders), `public/js/audio/app.js`, `public/js/audio/routes.js`,
+  `public/js/audio/queue.js`, `public/js/audio/player.js`,
+  `public/js/audio/player-bar.js`, `public/js/audio/media-session.js`,
+  `public/js/audio/format.js`, `public/js/audio/audio-api.js`,
+  `public/js/audio/icons.js`, `public/js/audio/cover-img.js`,
+  `public/js/audio/views/music-overview.js`, `public/js/audio/views/album.js`,
+  `public/js/audio/views/audiobook-grid.js`,
+  `public/js/audio/views/audiobook-detail.js`, `public/css/audio.css`,
+  `public/css/audio-music.css`, `public/css/audio-books.css`.
+- Tests mirroring every module: `test/library/tags/{id3v2,mpeg,flac,index}.test.js`,
+  `test/library/parsers/{music,audiobook}.test.js`,
+  `test/library/{audio-meta,audio-groups,cover}.test.js`,
+  `test/db/{audio-meta-repo,audio-progress}.test.js`,
+  `test/api/{music,audiobooks,audiobook-resume,cover}.test.js`,
+  `test/http/slice.test.js`,
+  `test/public/{audio-routes,audio-queue,audio-player,audio-format}.test.js`.
+- Test helpers and fixtures: `test/helpers/mp3-fixture.js`,
+  `test/helpers/flac-fixture.js`, `test/helpers/make-audio-fixtures.js`,
+  `test/helpers/make-audio-fixtures.test.js`, committed tree
+  `test/fixtures/media/Musik/**` and `test/fixtures/media/Hörbücher/**`.
+- Docs: `docs/architecture.md` — component-map rows (audio metadata pass,
+  audio grouping, cover lookup + slice responder, audio section frontend) and a
+  new key flow "Audio metadata" plus an addition to key flow 4 (music and
+  audiobook files report progress like video) — made by the metadata-pass
+  issue. `docs/prior-art.md` — new concerns "Audio artwork resolution
+  (Phase 5)" and "Audiobook directory structure (Phase 5)" — made in this spec
+  PR. This spec file.
 
 ### Out of scope
 
 - Tags in M4A/M4B/MP4 atoms, Ogg/Opus Vorbis comments, ID3v1, ID3v2.2, APE,
   WAV/AIFF chunks — those files play and are listed via folder/filename
-  fallback (roadmap row and prior art name ID3v2 + FLAC only; candidate for a
-  later phase).
+  fallback (roadmap row and prior art name ID3v2 + FLAC only).
 - Chapter markers inside a single file (ID3 `CHAP`, MP4 chapter tracks): a
   single-file book is one entry in the file list.
-- Gapless playback, crossfade, shuffle, repeat, playlists, playback speed, sleep
-  timer, volume slider, lyrics, ReplayGain, genres, multi-artist/role modelling,
-  search/filter, A–Z index.
+- Gapless playback, crossfade, shuffle, repeat, playlists, playback speed,
+  sleep timer, volume control, lyrics, ReplayGain, genres, multi-artist/role
+  modelling, search/filter, A–Z index, page-level keyboard shortcuts.
 - Audiobook series grouping (`Author/Series/Book` works, the series folder is
   ignored for display).
-- Playback continuing while navigating to Filme, Serien, Bilder or admin pages
-  (see OPEN-2).
-- Server-side cover resizing, online cover/metadata lookups, transcoding
-  (vision/constitution).
-- Showing audio items in the Phase 4 "Weiterschauen" row — audio resume lives in
-  the audio section.
+- Playback continuing while navigating to Filme, Serien, Bilder, the start page
+  or admin pages (H8: leaving the audio section is a page load and stops
+  playback; resume via "Weiterhören"/"Fortsetzen").
+- Server-side cover resizing or caching, online cover/metadata lookups,
+  transcoding (vision/constitution).
+- Audio items in Phase 4's "Weiterschauen" row (it requests
+  `category=movies,series`, D11) and any edit of Phase 4 files.
+- Edits to Phase 1's nav module, `placeholder.js`, `tokens.css` or the Phase 2
+  scanner/watcher/categories.
 
 ## Constraints
 
 - Constitution applies unchanged: zero runtime dependencies, read-only
-  `MEDIA_ROOT`, path guard on every request-derived path, `fs.createReadStream`
-  for media bytes, prepared statements only, max 60 lines/function and
-  300 lines/file, JSDoc on every export, a test file per new `src/` module,
-  failure-case tests for path containment and auth, German UI copy, no
-  `innerHTML` with unescaped data, no outbound calls.
+  `MEDIA_ROOT` (files opened with flag `'r'` only), path guard on every
+  request-derived path, `fs.createReadStream` for media bytes with `Range`,
+  prepared statements only, max 60 lines/function and 300 lines/file (JS and
+  CSS), JSDoc on every export, a test file per new `src/` module, failure-case
+  tests for path containment, range and auth, German UI copy, no `innerHTML`
+  with data, no outbound calls, config only through `src/config.js`.
 - Architecture boundaries: `src/library/` knows nothing about HTTP or users;
   `src/api/` knows nothing about file formats; `src/db/` is the only place with
-  SQL; API clients reference media by index id, never by path.
-- Builds on Phase 1 (router + `src/http/routes.js` registration, migration
-  runner that applies gaps, `requireUser`, nav component in `public/js/lib/`,
-  `tokens.css`, pages served as `/<name>` → `public/<name>.html`, a CSP that
-  forbids inline `style` attributes — dynamic widths such as progress bars are
-  set through CSSOM `el.style`, never through markup), Phase 2
-  (`library_items`, category classification of `Musik/` and `Hörbücher/` —
-  category values as Phase 2 names them, recommended `music`/`audiobooks` —
-  `playable` flag, scanner/watcher and its generic post-scan hook), Phase 3
-  (`src/media/paths.js` guard, `src/http/stream.js`, `GET /media/:id` with the
-  MIME map `src/http/media-types.js` already covering mp3, m4a, m4b, aac, flac,
-  ogg, oga, opus, weba, wav; a paused stream is idle-disconnected after 60 s
-  and re-requested by the browser), Phase 4 (progress table from migration 003
-  **keyed by `rel_path`** per user, `GET/PUT /api/progress/:id`, the server-side
-  audio finished rule "within the last 30 s", `GET /api/progress?category=…`,
-  and the client `public/js/lib/progress.js`
-  `trackPlayback(media, id, { entry, onResume })` → `{ stop() }`).
+  SQL; clients reference media and groups by index id, never by path;
+  `public/` never imports server modules. Frontend modules import each other by
+  **relative** paths (`../lib/progress.js`) so `node:test` can load them, and
+  touch no DOM at import time.
+- Phase 1 contract (D4/D5), used verbatim: handler `(req, res, ctx)` with
+  `ctx = { user, params, url }`; route modules export
+  `register<X>Routes(router, deps)` with `deps = { config, db, log, now }`;
+  `requireUser` from `src/http/guards.js`; `sendJson`/`sendError` from
+  `src/http/respond.js`; router whole-segment matching (`/media/:id` ≠
+  `/media/:id/cover`), HEAD runs the GET handler with `req.method === 'HEAD'`;
+  API JSON camelCase, timestamps ISO-8601 strings named `…At`, errors strictly
+  `{ "error": "<code>" }`, `/api/*` `Cache-Control: no-store`; logging only via
+  the injected `log` (`log.info|warn|error(event, fields)`), never `console.*`;
+  `test/helpers/app.js` `startTestApp({ mediaRoot })`. Frontend:
+  `public/js/lib/api.js` `request(method, path, { json, keepalive,
+  redirectOn401 = true }) → { status, data }` (throws `ApiError { status,
+  code }`) and `toLogin()`; `public/js/lib/shell.js`
+  `mountShell({ active }) → { main, setActive(id) }`; `public/js/lib/dom.js`
+  element builder; tokens from `public/css/tokens.css` (incl. `--grid-min`,
+  `--row-min`, `--tap-min`, `--focus-width`, `--focus-offset`,
+  `--border-width`, `--bar-height-mobile`); CSP forbids `style=""`, dynamic
+  values go through `el.style.setProperty`; literal lengths outside
+  `tokens.css` only for breakpoints 768/1024, `%`, `vh/dvh`, `fr`, `0`.
+- Phase 2 contract (D3/D6/D9): category ids `music`, `audiobooks` from
+  `CATEGORIES` in `src/library/categories.js`; top-level folder aliases
+  (`Musik`/`Music`, `Hörbücher`/`Hoerbuecher`/`Audiobooks`, NFC,
+  case-insensitive) — the first `rel_path` segment is always the category
+  folder; `library_items` (`id` AUTOINCREMENT, `rel_path`, `dir`, `category`,
+  `kind`, `ext`, `playable`, `size`, `mtime_ms`, …, STRICT); only extensions
+  from `src/library/parsers/compat.js` `EXTENSIONS` (`{ kind, playable, mime }`)
+  are indexed, so music/audiobooks rows are always `kind = 'audio'` — playable:
+  mp3, m4a, m4b, aac, flac, ogg, oga, opus, weba, wav (m4a/m4b by sniff);
+  listed not playable: wma, ape, aif, aiff, mka, wv, dsf, dff, ac3, dts, amr,
+  mid, midi. `startLibrary()` returns `{ onScanComplete(listener) →
+  unsubscribe, requestFull(), stop(), status() }`; the listener fires once
+  after every completed run with `{ kind, stats, completedAt }`, is not
+  awaited, and a throw/rejection is logged by Phase 2.
+- Phase 3 contract (D10): `resolveMediaPath(mediaRoot, relPath) →
+  Promise<string | null>` from `src/media/paths.js`; `sendMedia(req, res,
+  { path, contentType?, cacheControl = 'private, no-cache', idleTimeoutMs? })`
+  from `src/http/stream.js` (Content-Type derived from compat when omitted);
+  the range parser exported by `src/http/range.js` (P3 names it; this spec
+  calls it `parseRange(header, size)`) with P3's three outcomes: a range,
+  unsatisfiable (→ 416), ignore (→ 200); `GET /media/:id` streams playable
+  items only.
+- Phase 4 contract (D11): table `progress(user_id, rel_path,
+  position_seconds, duration_seconds, finished, updated_at)` keyed by
+  `(user_id, rel_path)`; audio finished rule = remaining ≤ 30 s, applied
+  server-side on every `PUT`; a row with `finished = 0` and position < 30 s is
+  state `none`; `public/js/lib/progress.js` exports
+  `trackPlayback(media, id, { entry, onResume, resume = true }) → { stop():
+  Promise<void> }` and `formatClock(s)`, `formatRemaining(s)`.
 - Raspberry Pi 4 target: bounded reads per file, files processed sequentially
   with async I/O, no whole-file reads, no in-memory picture buffering.
+
+### Migration 004 schema (`src/db/migrations/004-audio-meta.sql`)
+
+```sql
+CREATE TABLE audio_meta (
+  item_id          INTEGER PRIMARY KEY REFERENCES library_items(id) ON DELETE CASCADE,
+  meta_version     INTEGER NOT NULL,  -- AUDIO_META_VERSION when written
+  source_mtime_ms  INTEGER NOT NULL,  -- library_items.mtime_ms when read
+  source_size      INTEGER NOT NULL,  -- library_items.size when read
+  group_key        TEXT    NOT NULL,  -- rel path of the album/book dir, or of the file (single-file book)
+  group_title      TEXT,              -- folder-derived album/book title; NULL = pseudo-album
+  group_artist     TEXT,              -- folder-derived artist/author; NULL = unknown
+  title            TEXT    NOT NULL,  -- resolved track/file title (tag, else cleaned filename)
+  track_no         INTEGER,           -- resolved (tag, else filename number)
+  disc_no          INTEGER NOT NULL,  -- resolved (tag, else disc folder, else 1)
+  tag_artist       TEXT,
+  tag_album_artist TEXT,
+  tag_album        TEXT,
+  tag_year         INTEGER,
+  duration_ms      INTEGER,           -- NULL = unknown
+  tag_format       TEXT CHECK (tag_format IN ('id3v2', 'flac'))  -- NULL = no tag read
+) STRICT;
+CREATE INDEX audio_meta_group ON audio_meta (group_key);
+```
+
+The file contains no transaction statements (D12). Metadata only: no user
+data lives in 004 (H7).
 
 ## Design
 
 Committed Stitch exports (layout references; the implementer builds with
-vanilla HTML/CSS and `public/css/tokens.css` only — exported HTML is never
-copied verbatim, see `docs/design.md`):
+vanilla HTML/CSS and `public/css/tokens.css` only — exported HTML loads a CSS
+CDN and is never served or copied, see `docs/design.md`):
 
 | Screen | Mobile | Desktop |
 |---|---|---|
@@ -137,126 +230,109 @@ copied verbatim, see `docs/design.md`):
 | Hörbücher grid | `docs/design/assets/music-audiobooks/audiobook-grid-mobile.png` | `docs/design/assets/music-audiobooks/audiobook-grid-desktop.png` |
 | Book detail + playing bar (audiobook mode) | `docs/design/assets/music-audiobooks/audiobook-detail-mobile.png` | `docs/design/assets/music-audiobooks/audiobook-detail-desktop.png` |
 
-Exported HTML sits next to each PNG (it loads a CSS CDN and is never served or
-copied). Working reference only: Stitch project `videothek`, screens titled
-`P5 …`. The designs show the recommended options of OPEN-1 (music
-"Weiterhören" card) and OPEN-2 (bar shared by both sections). The exports use
-the current `primary` token (orange); the colour always comes from
-`public/css/tokens.css`. Where a PNG and this spec
-disagree, the spec wins — known gaps: the Hörbücher grid exports lack the
-"Weiterhören" row, the desktop audiobook bars show a volume control (out of
-scope), and exact bar controls per mode follow the Bar controls row.
+Exported HTML sits next to each PNG. Working reference only: Stitch project
+`videothek`, screens titled `P5 …` (the exported "P5 Hörbücher Übersicht –
+mobile" is `9aee9956…`; an older duplicate "P5 Hörbuch Detail – mobile"
+`0b1b56bc…` is stale). All exports show the `primary` token `#ff7a1a`.
+
+Where a PNG and this spec disagree, the spec wins:
+
+- Off-token shades in the exports map to tokens or to the derived state tokens
+  in `tokens.css` (hover/active); only token custom properties are used.
+- The Hörbücher grid exports lack the "Weiterhören" row (specified below); the
+  desktop bars show a volume control (out of scope); bar controls per mode
+  follow the "Bar layout" decision.
+- Non-playable rows use `muted` text plus the badge — never reduced opacity
+  (contrast stays AA).
+- The "15"/"30" numerals inside the skip glyphs are illegible at export size:
+  the buttons show the arrow glyph plus a visible text label "15" / "30" at
+  `--text-sm`, weight semibold.
+- The seek slider's visual track is thin, but its hit area is ≥ `--tap-min`
+  high.
+- Nav, header and account menu are Phase 1's shell; the active nav entry comes
+  from `setActive`.
 
 ## Prior art
 
 - [Music and audiobook tag reading (Phase 5)](../prior-art.md#music-and-audiobook-tag-reading-phase-5)
   — central tag→field mapping table, fast scan separated from deeper analysis,
-  in-house minimal ID3v2 + FLAC parsers; drives the reader/mapping split and the
-  post-scan metadata pass.
+  in-house minimal ID3v2 + FLAC parsers; drives the reader/mapping split and
+  the post-scan metadata pass.
+- [Audio artwork resolution (Phase 5)](../prior-art.md#audio-artwork-resolution-phase-5)
+  — Navidrome's default `CoverArtPriority` (`cover.*, folder.*, front.*,
+  embedded, external`) minus `external`; drives the cover lookup order.
+- [Audiobook directory structure (Phase 5)](../prior-art.md#audiobook-directory-structure-phase-5)
+  — Audiobookshelf's `{Author}/{Book}`, `{Author}/{Series}/{Book}`,
+  single-file books and `CD|Disc|Disk` subfolders; drives both path parsers.
 - [Playback progress and resume (Phase 4)](../prior-art.md#playback-progress-and-resume-phase-4)
-  — one progress row per (user, item); audiobook files reuse it per file, book
-  resume is derived.
+  — one progress row per (user, item), last write wins; music tracks and
+  audiobook files reuse it, book resume is derived.
 - [HTTP range streaming (Phase 3)](../prior-art.md#http-range-streaming-phase-3)
-  — audio playback reuses `GET /media/:id`; folder covers reuse the stream
-  helper.
+  — audio playback reuses `GET /media/:id`; folder covers reuse `sendMedia`,
+  embedded covers the same range semantics on a byte slice.
 - [Direct-play compatibility detection (Phase 2)](../prior-art.md#direct-play-compatibility-detection-phase-2)
-  — the `playable` flag for MP3, M4A/AAC, FLAC, Ogg/Opus decides what is queued.
+  — the `playable` flag decides what is queued.
 - [Library model and naming conventions (Phase 2)](../prior-art.md#library-model-and-naming-conventions-phase-2)
-  — same "small in-house regex set, no provider machinery" stance for the audio
-  folder conventions.
-- External references consulted for this spec (not yet in `docs/prior-art.md`;
-  add them when the implementing PR touches that file):
-  Navidrome artwork resolution — default `CoverArtPriority` is
-  `cover.*, folder.*, front.*, embedded, external`
-  (https://www.navidrome.org/docs/usage/library/artwork/);
-  Audiobookshelf book directory structure — `{Author}/{Book}` or
-  `{Author}/{Series}/{Book}`, single-file books allowed, disc subfolders named
-  `Disc`/`CD`/`Disk` + number, files ordered by disc and track
-  (https://audiobookshelf.org/docs/documentation/libraries/book-library/directory-structure/,
-  https://www.audiobookshelf.org/guides/book-scanner/);
-  Subsonic `savePlayQueue`/`getPlayQueue` — per-user saved queue, current track
-  and position for moving between clients (http://www.subsonic.org/pages/api.jsp).
+  — same "small in-house regex set, no provider machinery" stance for the
+  audio folder conventions.
 
 ## Human prerequisites
 
-- none. QA runs against the committed fixture tree; a smoke test against a real
-  music/audiobook library is optional.
+none — nothing blocks implementation; every test and the QA walk run against
+generated/committed synthetic fixtures (`MEDIA_ROOT=test/fixtures/media`).
+QA-only, optional:
+
+- [ ] (QA-only) Access to the Raspberry Pi 4 target for the idle-RSS line in
+      Verification — or the human accepts the dev-machine substitute named
+      there at milestone QA.
+- [ ] (QA-only) A smoke test against a real music/audiobook library.
 
 ## Prior decisions
 
 | Decision | Rationale | Date |
 |---|---|---|
-| **Music folder convention:** `Musik/<Artist>/<Album>/[<Disc folder>/]<NN> <Title>.<ext>`. A *disc folder* is a directory named `CD`, `Disc` or `Disk` + optional space + number (case-insensitive, regex `^(cd\|disc\|disk)\s*\d+$`). The **album (group) = the directory containing the file**, rolled up once over a disc folder. Loose tracks directly in an artist folder form one pseudo-album of that folder; tracks directly in `Musik/` form one pseudo-album of the root. | Folder identity never splits compilations (differing per-track artists) and never merges two same-named albums of different artists — both failure modes of tag-based grouping. Disc-folder names follow the Audiobookshelf convention. | 2026-09-26 |
-| **Music precedence — tags win for display, path wins for grouping.** Per track: title = tag title ?? filename without extension and without a leading track number (`^\d{1,3}[\s._-]+`); track = tag ?? leading filename number; disc = tag ?? disc-folder number ?? 1. Per album (from the first track in play order): title = tag album ?? album folder name (or `Einzeltitel` for depth ≤ 1 pseudo-albums); artist = tag album artist ?? the track-artist tag if identical on all tracks ?? artist folder name ?? `Unbekannter Interpret`; year = first non-null tag year. | Navidrome precedent (tags are the source of truth for music); well-maintained music tags carry characters and ordering that folder names often lose. Grouping stays folder-based (row above). | 2026-09-26 |
-| **Audiobook folder convention:** `Hörbücher/<Author>/<Book>/[<Disc folder>/]<files>` (multi-file) or `Hörbücher/<Author>/<Book>.<ext>` / `Hörbücher/<Book>.<ext>` (single-file). **Book (group) = directory containing the file, rolled up over a disc folder — unless that directory is `Hörbücher/` itself or an author folder (depth ≤ 1): then the file alone is the book.** `Author/Series/Book/…` works (book = `Book`, author = first segment). A multi-file book without an author folder is not supported (its files would appear as single-file books) — documented convention. | Mirrors Audiobookshelf's `{Author}/{Book}` / `{Author}/{Series}/{Book}` structure and single-file-book rule; a depth rule is deterministic without reading tags. | 2026-09-26 |
-| **Audiobook precedence — folder wins for book title/author, tags win for file titles.** Book title = book folder name (single-file: filename without extension); author = first path segment under `Hörbücher/` when the book is below an author folder, else `Unbekannter Autor`. File title = tag title ?? cleaned filename (as for music). | Deliberate deviation from Audiobookshelf's default (tags over folder): our grouping *requires* the Author/Book folders, so they always exist and are curated, while CD-rip audiobook tags commonly carry disc suffixes ("… CD 1") or the narrator as artist. | 2026-09-26 |
-| **Play order within a group:** disc ascending, then track ascending (missing = after numbered), then natural filename order (`localeCompare(a, b, 'de', { numeric: true, sensitivity: 'base' })`). Artists and books sort with the same collator; albums within an artist by year (missing last), then title. | Audiobookshelf sorts by disc and track; filename tiebreak keeps untagged sets deterministic. | 2026-09-26 |
-| **Audio extensions handled by the pass:** `.mp3 .flac .m4a .m4b .aac .ogg .oga .opus .wav .wma .aif .aiff .ape .mka`. Other files under `Musik/`/`Hörbücher/` (images, `.cue`, `.nfo`, …) never get an `audio_meta` row and never appear, whatever Phase 2 indexed. Playability is Phase 2's `library_items.playable`, never re-decided here. | Keeps cover images and sidecar files out of track lists independent of Phase 2 filtering; one owner for the compatibility decision. | 2026-09-26 |
-| **Tag formats: ID3v2.3/2.4 (MP3 and ID3-prefixed FLAC) and FLAC metadata only.** M4A/M4B atoms, Ogg comments, ID3v1, ID3v2.2 and APE are out (see Out of scope). | Roadmap row "ID3v2/FLAC tag readers" and prior-art verdict "in-house minimal ID3v2 + FLAC parsers"; everything else still plays via path fallback. | 2026-09-26 |
-| **Fields read:** title, artist, album, album artist, track number, disc number, year, front-cover picture location. ID3v2 frames `TIT2`, `TPE1`, `TPE2`, `TALB`, `TRCK`, `TPOS`, `TDRC` (2.4) / `TYER` (2.3), `APIC`. FLAC Vorbis keys (case-insensitive) `TITLE`, `ARTIST`, `ALBUMARTIST` / `ALBUM ARTIST` / `ALBUM_ARTIST`, `ALBUM`, `TRACKNUMBER`, `DISCNUMBER`, `DATE` / `YEAR`, and `PICTURE` blocks. Parsing rules: text encodings 0 (ISO-8859-1), 1 (UTF-16 with BOM), 2 (UTF-16BE), 3 (UTF-8); first value of multi-value (`\0`-separated) frames; `"n/total"` → `n`; year = first four digits; trim; empty → null. Pictures: prefer type 3 (front cover), else the first; only `image/jpeg`, `image/png`, `image/webp` (`image/jpg` normalised to `image/jpeg`); ≤ 10 MiB. | Prior art: one central tag→field mapping table; the listed fields are exactly what the views show. | 2026-09-26 |
-| **ID3v2 robustness rules:** header `ID3` + version 3 or 4; synchsafe tag size; skip the extended header; v2.3 whole-tag unsynchronisation → de-unsync the read buffer (pictures in unsynchronised tags/frames are ignored); v2.4 frame sizes synchsafe, with fallback to plain big-endian when the synchsafe reading yields an invalid next frame id (iTunes writer bug); compressed or encrypted frames skipped; frame walk stops at padding (`\0` id), an invalid id, or a size past the tag end. Readers never throw on malformed input — they return what they could parse (or `null`). | Real-world tag corpora contain these defects; the pass must never abort on one bad file. | 2026-09-26 |
-| **Duration without decoding:** FLAC = `total_samples / sample_rate` from STREAMINFO (null when total samples is 0). MP3 = locate the first valid MPEG audio frame header (MPEG-1/2/2.5 Layer III) within 64 KiB after the ID3v2 tag; if a `Xing`/`Info` header with the frames flag is present → `frames × samples_per_frame / sample_rate`; else a `VBRI` header → same formula; else CBR estimate `(file_size − audio_start) × 8 / bitrate`. Other formats and failures → `duration_ms` NULL; the API then falls back to the duration the browser reported in the Phase 4 progress row, else shows `–:–`. | Exact for FLAC and LAME/Xing-tagged MP3 (the common case), cheap estimate otherwise; no decoding, no child process. | 2026-09-26 |
-| **Read budget:** a reader works on `readAt(position, length) → Promise<Buffer>` (short buffer at EOF). Per file at most **256 KiB** are read in total; ID3v2 frames are walked in chunks of ≤ 64 KiB and frame bodies larger than the chunk are skipped by offset — for `APIC` only the first 512 bytes of the body are read to locate the image data; FLAC blocks other than STREAMINFO/VORBIS_COMMENT/PICTURE are skipped by offset, a VORBIS_COMMENT block > 64 KiB is skipped, a PICTURE block is read only up to 4 KiB. Budget exhaustion ends parsing with the partial result. Files are processed one at a time. | Covers are often 0.5–5 MB inside the tag; the brief's "read only the first N KB" is met without losing frames after the picture. Sequential async reads keep a USB disk on a Pi responsive. | 2026-09-26 |
-| **Reader interfaces (contract between issues):** `readId3v2(readAt) → Promise<{ version, fields: Record<string,string>, picture: PictureRef \| null, tagEnd: number } \| null>` (fields keyed by frame id); `readMpegDurationMs(readAt, audioStart, fileSize) → Promise<number \| null>`; `readFlac(readAt, fileSize) → Promise<{ fields: Record<string,string>, picture: PictureRef \| null, durationMs: number \| null } \| null>` (fields keyed by upper-cased Vorbis key; skips a leading ID3v2 tag itself without importing `id3v2.js`); `PictureRef = { offset, length, mime }` in absolute file bytes. `src/library/tags/index.js` exports `readAudioTags(absPath) → Promise<AudioTags>` (dispatch by extension, budgeted file-backed `readAt`, central mapping to `{ title, artist, albumArtist, album, trackNo, discNo, year, durationMs, format, picture }`, all nullable) and `readPictureRef(absPath)`. | Lets the ID3v2, FLAC and mapping issues be built and tested in parallel against buffer-backed `readAt` fakes. | 2026-09-26 |
-| **Metadata pass separate from the Phase 2 scan:** `refreshAudioMeta({ db, mediaRoot, log })` in `src/library/audio-meta.js` runs after every completed scan (startup, watcher, periodic rescan): (1) delete orphan rows (item gone or no longer music/audiobook); (2) select music/audiobook items with an audio extension whose `audio_meta` row is missing or whose `source_mtime_ms`/`source_size` differ from `library_items.mtime_ms`/`size`; (3) per item: absolute path via the Phase 3 path guard, parser + `readAudioTags` → upsert. A failing file is logged by relative path (no tag content) and still gets a path-fallback row. Single-flight: a call during a running pass sets a rerun flag. Phase 2's `library_items` rows are not modified. | Prior-art ADOPT "fast scan pass separated from deeper analysis"; staleness by (mtime, size) makes unchanged files free on rescans; the fallback row guarantees every audio file appears. | 2026-09-26 |
-| **Scan hook:** `refreshAudioMeta` is registered once, at startup in `src/server.js`, through Phase 2's generic post-scan hook — the same hook Phase 6 uses for image metadata (named as Phase 2 defines it, e.g. `onScanComplete(listener)`). `scanner.js` and `watcher.js` are not edited. The pass is single-flight, so it works whether the hook awaits listeners or fires and forgets. | One registration point shared with Phase 6; no ad-hoc edits to a module owned by another phase. | 2026-09-26 |
-| **Migration 004 (`src/db/migrations/004-audio-meta.sql`):** see schema below. Items appear in the audio views only once they have an `audio_meta` row (inner join) — seconds after the scan. | Separate table keyed by `item_id` avoids depending on Phase 2's grouping columns; group-level values are computed at query time from member rows. | 2026-09-26 |
-| **Groups are addressed by any member item id** — album id / book id in URLs and JSON = the id of its first item in play order, and every endpoint accepts *any* member id and resolves the group via `group_key`. No group table, no paths in URLs. | Architecture: "API clients reference media by index id, never by raw path". A bookmark survives added tracks; it 404s only when that very file is removed (acceptable). | 2026-09-26 |
-| **API (all behind `requireUser`, JSON, errors `{ "error": "<code>" }`, 404 `not_found` for an id that is not a music/audiobook item with metadata):** `GET /api/music` → `{ session, artists: [{ name, albums: [{ id, title, year, trackCount, coverId }] }] }`; `GET /api/music/albums/:id` → `{ id, title, artist, year, coverId, durationMs, tracks: [{ id, title, artist, trackNo, discNo, durationMs, playable }] }`; `PUT /api/music/session` body `{ trackId, positionS }` → 204 (400 `invalid_body`, 404 unknown track); `DELETE /api/music/session` → 204; `GET /api/audiobooks` → `[{ id, title, author, fileCount, durationMs, coverId, progress: { fraction, finished, lastPlayedAt } \| null }]`; `GET /api/audiobooks/:id` → `{ id, title, author, coverId, durationMs, state, resume: { itemId, positionS }, progress: { fraction } \| null, files: [{ id, title, durationMs, playable, progress: { positionS, durationS, finished } \| null }] }`. `coverId` = the group's first item id. | One module `src/api/audio.js`; shapes fixed here so API and views are built in parallel. | 2026-09-26 |
-| **Audiobook resume = per-file Phase 4 progress, book state derived** (`src/api/audio-resume.js`, pure): no rows → `state: "new"`, resume first playable file at 0; latest row (max `updated_at`) unfinished → `"in_progress"`, resume that file at its position; latest row finished → next playable file after it at its saved position (0 if none); if no file follows → first unfinished playable file; all playable files finished → `"finished"`, resume first file at 0 (button "Von vorn hören"). `fraction` = Σ min(position, duration) (finished files count fully) ÷ Σ duration over files with a known duration; null when the total is 0. Progress rows are read in `src/db/audio-repo.js` by joining the Phase 4 table on (user, `rel_path`) — `finished` is the Phase 4 server rule (within the last 30 s), never recomputed here. The "Weiterhören" row and `lastPlayedAt` are derived from these rows per book, not from the per-file `GET /api/progress?category=…` list. | Phase 4 stores one row per (user, `rel_path`); multi-file books resume at "last file + position" without a book-level table. Last-write-wins matches the Phase 4 prior art. Keying by `rel_path` survives item-id churn (e.g. a temporarily unmounted disk). | 2026-09-26 |
-| **File-row click in a book** starts that file at its saved position if it is unfinished, else at 0; the queue continues with the following files. **Track-row click in an album** always starts at 0. | Audiobook listeners return to a chapter to continue it; music listeners pick a song to hear it. | 2026-09-26 |
-| **Progress reporting:** audiobook files report through the Phase 4 client — `trackPlayback(audio, itemId, { entry, onResume })` per file, and `stop()` on the previous handle before every queue switch (advance, previous/next, new queue, row click). The start position is decided by this spec's rules from the book API and the bar seeks itself; anything offered through `onResume` must not override it. Music tracks never write Phase 4 progress rows; the bar reports the music session (`PUT /api/music/session`) every 10 s while playing, on pause, on track change and on `pagehide` (`fetch` with `keepalive`), and sends `DELETE /api/music/session` when the queue ends. | Keeps song skips out of the progress table and out of "Weiterschauen"; same 10 s cadence as Phase 4 so the ±10 s criterion holds. | 2026-09-26 |
-| **Queue semantics** (`public/js/audio/queue.js`, pure and unit-tested): a queue is one album or one book; only playable items are enqueued; "previous" within the first 3 s goes to the previous item, otherwise restarts the current one; `ended` advances; the end of the queue stops and keeps the bar visible with the last item; an item that fails to load shows "Titel konnte nicht abgespielt werden" in the bar and advances. One persistent `<audio preload="metadata">` element is reused for every item (autoplay unlock carries over from the initial user gesture). | Standard player behaviour; reusing the element avoids autoplay blocks on auto-advance. | 2026-09-26 |
-| **Bar controls:** music mode = previous, play/pause, next, seek slider with elapsed/total, cover, title + artist. Audiobook mode = additionally "15 s zurück" and "30 s vor"; on viewports < 600 px audiobook mode shows 15 s zurück / play-pause / 30 s vor (previous/next file stay reachable in the file list). Seek is `<input type="range">`; all controls are `<button>`s with German `aria-label`s ("Wiedergabe", "Pause", "Vorheriger Titel", "Nächster Titel", "15 Sekunden zurück", "30 Sekunden vor", "Position"). The bar is hidden until something plays. On mobile it sits directly above the Phase 1 bottom nav; `main` gets bottom padding so the last rows stay reachable. | design.md: audio player = persistent bottom bar on `secondary`; ≥ 44 px targets; keyboard reachable. | 2026-09-26 |
-| **Media Session API:** metadata (title, artist or book title, album, artwork `/media/<coverId>/cover`), handlers play, pause, previoustrack, nexttrack, seekbackward/seekforward (15 s / 30 s), seekto, plus `setPositionState`. | Built-in browser API (no dependency) giving lock-screen and hardware-key control on phones. | 2026-09-26 |
-| **Audio section = one page `public/audio.html` (served at `/audio`) with hash routes** `#/musik`, `#/musik/album/<id>`, `#/hoerbuecher`, `#/hoerbuecher/<id>` (unknown → `#/musik`), views in `public/js/audio/views/`, the `<audio>` element and bar in the page shell. Nav "Musik" → `/audio#/musik`, "Hörbücher" → `/audio#/hoerbuecher` (same-document fragment navigation, no reload); the nav module in `public/js/lib/` gets these two hrefs and the audio shell re-renders the active entry on `hashchange`. Phase 1's placeholders `public/music.html` and `public/audiobooks.html` are replaced by static `<meta http-equiv="refresh">` redirects to the same URLs (no script, CSP-safe). `document.title` follows the hash. Leaving to another category is a normal page load and stops playback (resume via "Fortsetzen"/"Weiterhören"). | Per OPEN-2 recommended option A. Same-document navigation requires one path for both sections; hash routing needs no server change; Phase 1 serves `/<name>` → `public/<name>.html`. | 2026-09-26 |
-| **Views:** Musik overview = optional "Weiterhören" card + artist sections, each a grid of 1:1 album cards (min column 160 px, gap 16 px, covers `loading="lazy"`). Album detail = cover, title, artist, "Jahr · n Titel · Dauer", "Alle abspielen", track rows (≥ 48 px) with disc sub-headings "CD n" only when an album has more than one disc, playing row in `primary`, non-playable rows dimmed with the "Nicht abspielbar" badge. Hörbücher grid = "Weiterhören" row (in-progress books, most recent first, one row) + all books A–Z as 1:1 cards with a 4 px `primary` progress bar and "n %" or "Gehört". Book detail = cover, title, author, "n Dateien · Dauer", overall progress + "n % gehört", primary button "Fortsetzen · <file> – <mm:ss>" / "Abspielen" / "Von vorn hören" by `state`, secondary "Von vorn hören" when in progress, file rows with per-file progress, "Gehört" for finished files. Empty states: "Keine Musik gefunden." / "Keine Hörbücher gefunden." | design.md components (media card, grid/list, progress wherever started); committed exports above. | 2026-09-26 |
-| **Duration formatting (German):** tracks `m:ss` (`h:mm:ss` ≥ 1 h); album/book totals `48 Min.` / `7 Std. 12 Min.`; unknown `–:–`. Pure helpers in `public/js/audio/format.js`, unit-tested. | Consistent German UI copy. | 2026-09-26 |
-| **Cover route `GET /media/:id/cover`** (auth required; music/audiobook items only, else 404): candidate order follows Navidrome's default priority — (1) folder images `cover.*`, `folder.*`, `front.*` (extensions `jpg`, `jpeg`, `png`, `webp`, case-insensitive) in the group directory, and in the file's own directory first when that is a disc folder — only when the group is a real album/book directory (depth ≥ 2); for single-file books and depth ≤ 1 pseudo-albums instead a sidecar `<audio basename>.{jpg,jpeg,png,webp}`; (2) the embedded picture of that item (`readPictureRef`); (3) 404. Every candidate path passes the Phase 3 path guard. Folder/sidecar images are sent with the Phase 3 stream helper; an embedded picture is streamed as a 200 byte slice with `fs.createReadStream(path, { start, end })` and exact `Content-Length` (a `Range` header is ignored for this slice, as RFC 9110 permits). `Cache-Control: private, max-age=86400`. Nothing is cached server-side; the lookup runs per request. | Folder art is typically higher resolution and needs no parsing; on-demand lookup is always correct when a cover file is added without the audio file changing. The constitution's Range rule targets playback streams; a ≤ 10 MiB image slice is never buffered in memory. | 2026-09-26 |
-| **Fixtures:** `test/helpers/mp3-fixture.js` (ID3v2.3/2.4 builder incl. encodings, unsync, APIC; silent, browser-decodable MPEG-1 Layer III CBR frames — 32 kHz, 32 kbit/s, mono, all-zero side info — with optional Xing/VBRI header) and `test/helpers/flac-fixture.js` (STREAMINFO, VORBIS_COMMENT, PICTURE, optional ID3v2 prefix; silent decodable frames with CONSTANT subframes and correct CRC-8/CRC-16). `test/helpers/make-audio-fixtures.js` (CLI, deterministic) writes the committed QA tree: a tagged MP3 album with embedded cover, a multi-disc album with `CD 1`/`CD 2` and a folder `cover.png`, an untagged album, a FLAC album, a `.wma` dummy (not playable), music tracks of ≥ 60 s, a multi-file book (≥ 3 files of ≥ 180 s, so a 1:00 position is outside the Phase 4 "last 30 s" finished window), a single-file book with embedded cover in an author folder, and a book with disc folders. The PNG is generated with `node:zlib` (`deflateSync`, `crc32`). | Brief: synthetic files only, never real media; long enough files make the ±10 s resume check meaningful; zero-filled frames compress to almost nothing in git. | 2026-09-26 |
-| **Weiterschauen row stays video-only:** audio items never appear in the Phase 4 row. If the merged Phase 4 row does not already restrict itself to the video categories (it can filter via `GET /api/progress?category=…`), the audio-views issue adds that restriction there (one condition). | Audio resume has its own entry points in the audio section; with music off the progress table only audiobook files could appear, and they belong to their book. | 2026-09-26 |
-| OPEN-1 — **Music resume across devices:** A) none — music has a queue only; the vision's "Resume … video or audio item" criterion is then met by audiobooks alone. B) music tracks write Phase 4 progress rows like audiobook files; the Musik "Weiterhören" card = latest unfinished music row; row clicks start at 0; music filtered out of "Weiterschauen" — every skipped song leaves an unfinished row. C) one "music session" row per user (Subsonic `savePlayQueue` analogue: current track + position), written by the bar, shown as the "Weiterhören" card; no Phase 4 rows for music. **Recommended: C** — satisfies the vision criterion for every audio item without cluttering the progress table; cost is one table in 004, two endpoints and one card. This spec is written for C; choosing A drops `music_session`, the session endpoints and the card; choosing B replaces them with Phase 4 reporting for music. | resolved at the spec-acceptance gate | — |
-| OPEN-2 — **Where the audio player lives across navigation:** A) one audio-section page (`audio.html`, hash routes) hosting Musik + Hörbücher; switching views inside the section never interrupts, leaving the section stops playback. B) a bar re-created on every separate page, queue + position restored from `sessionStorage` — every navigation interrupts the sound and, under browser autoplay policies (Firefox/Safari block audible autoplay without a gesture on the new page), usually needs a tap to continue. C) an app-wide single-page shell so audio continues in Filme/Serien/Bilder too — requires converting the Phase 1–3 and 6 pages into views, contrary to the architecture's one-page-per-screen pattern. **Recommended: A** — the only option that is "persistent" in the design contract's sense without reworking other phases; the cost is that playback stops when leaving the audio section. This spec is written for A. | resolved at the spec-acceptance gate | — |
-
-### Migration 004 schema
-
-```sql
-CREATE TABLE audio_meta (
-  item_id          INTEGER PRIMARY KEY REFERENCES library_items(id) ON DELETE CASCADE,
-  source_mtime_ms  INTEGER NOT NULL,  -- library_items.mtime_ms when read (staleness check)
-  source_size      INTEGER NOT NULL,  -- library_items.size when read
-  group_key        TEXT    NOT NULL,  -- rel path of the album/book dir, or of the file for single-file books
-  group_title      TEXT    NOT NULL,  -- path-derived album/book title (fallback)
-  group_artist     TEXT,              -- path-derived artist/author, NULL = unknown
-  title            TEXT    NOT NULL,  -- resolved track/file title (tag, else cleaned filename)
-  track_no         INTEGER,           -- resolved (tag, else filename number)
-  disc_no          INTEGER NOT NULL DEFAULT 1, -- resolved (tag, else disc folder, else 1)
-  tag_artist       TEXT,
-  tag_album_artist TEXT,
-  tag_album        TEXT,
-  tag_year         INTEGER,
-  duration_ms      INTEGER,           -- NULL = unknown
-  tag_format       TEXT               -- 'id3v2' | 'flac' | NULL (no tag read)
-);
-CREATE INDEX audio_meta_group ON audio_meta(group_key);
-
--- OPEN-1 option C
-CREATE TABLE music_session (
-  user_id    INTEGER PRIMARY KEY REFERENCES users(id) ON DELETE CASCADE,
-  rel_path   TEXT    NOT NULL,       -- track, keyed like Phase 4 progress (survives id churn)
-  position_s REAL    NOT NULL,
-  updated_at INTEGER NOT NULL        -- epoch ms
-);
-```
-
-Table/column names of `library_items` and `users` are those of migrations 002
-and 001; if they differ, 004 follows them. The pass's orphan delete keeps
-`audio_meta` correct even when `PRAGMA foreign_keys` is off; `audio_meta` is
-derived data and is simply rebuilt when items are re-created. A
-`music_session` row whose `rel_path` has no current music item is ignored by
-`GET /api/music` (joined via `library_items.rel_path`) and overwritten on the
-next play; the API still speaks item ids (`trackId`) and maps to `rel_path`
-server-side.
+| **Music folder convention:** `Musik/<Artist>/<Album>/[<Disc folder>/]<NN> <Title>.<ext>`. A *disc folder* is a directory whose name matches `^(cd\|disc\|disk)\s*(\d+)$` (case-insensitive). Let `dirs` = the path segments between the category folder and the file; if the last one is a disc folder it is removed once (rollup) and its number becomes the folder disc. **Group (album) = the remaining directory**, `group_key` = its full rel path (the category folder itself when `dirs` is empty). Depth = remaining `dirs` count: depth ≥ 2 → real album, `group_title` = last dir, `group_artist` = first dir under the category folder; depth 1 → pseudo-album of loose tracks, `group_title` NULL, `group_artist` = that folder; depth 0 → pseudo-album of the root, both NULL. | Folder identity never splits compilations and never merges same-named albums of different artists — both failure modes of tag-based grouping. The first-segment artist rule covers `Artist/Year/Album` layouts (review finding). Disc folders follow Audiobookshelf. | 2026-09-26 |
+| **Filename cleaning (both parsers):** stem = filename without the last extension; if it matches `^(\d{1,3})[\s._-]+(.+)$` the number is the filename track number and the rest (leading `[\s._-]+` trimmed) the title; if the stem contains no space, `_` becomes a space; empty result → the raw stem. All display strings are NFC-normalised; `group_key` keeps the exact on-disk form. P2's `cleanName` is **not** used. | `cleanName` strips release tokens such as "Deutsch", "AAC" or "Multi" that are legitimate song and book titles. | 2026-09-26 |
+| **Music precedence — tags win for display, path wins for grouping.** Per track: title = tag title ?? cleaned filename; track = tag ?? filename number; disc = tag ?? folder disc ?? 1. Per real album (depth ≥ 2, first member in play order): title = its `tag_album` ?? `group_title`; artist = its `tag_album_artist` ?? the `tag_artist` if non-null and identical on every member ?? `group_artist` ?? null; year = first non-null `tag_year` in play order. Pseudo-albums ignore tags for group display: title null, artist = `group_artist`. | Navidrome precedent (tags are the music source of truth). Pseudo-albums mix unrelated files, so a first-track album tag would mislabel the group. | 2026-09-26 |
+| **Unknown names travel as `null`; the UI renders German fallbacks**: album title null → "Einzeltitel"; artist null → "Unbekannter Interpret"; author null → "Unbekannter Autor". | Server stays free of German strings (same rule as Phase 2's episode-code fallback). | 2026-09-26 |
+| **Audiobook folder convention:** `Hörbücher/<Author>/<Book>/[<Disc folder>/]<files>` (multi-file) or `Hörbücher/<Author>/<Book>.<ext>` / `Hörbücher/<Book>.<ext>` (single-file). Same disc rollup and depth as music: depth ≥ 2 → **book = remaining directory** (`group_key` = its rel path, `group_title` = last dir, `group_artist` = first dir); depth ≤ 1 → **the file alone is the book** (`group_key` = the file's rel path, `group_title` = cleaned stem without number stripping, `group_artist` = the folder at depth 1, else NULL). `Author/Series/Book/…` works (book = `Book`, author = `Author`). A multi-file book without an author folder appears as single-file books — documented convention. | Mirrors Audiobookshelf's structure and single-file-book rule; a depth rule is deterministic without reading tags. | 2026-09-26 |
+| **Audiobook precedence — folder wins for book title/author, tags win for file titles.** Book title = `group_title`, author = `group_artist`; file title = tag title ?? cleaned filename. | Deliberate deviation from Audiobookshelf's default (tags over folder): our grouping requires curated Author/Book folders, while CD-rip audiobook tags often carry disc suffixes or the narrator as artist. | 2026-09-26 |
+| **Play order within a group:** `disc_no` asc, then `track_no` asc (NULL after numbered), then filename via `new Intl.Collator('de', { numeric: true, sensitivity: 'base' })`, then `id`. Artist sections, albums without year and books use the same collator; albums within an artist by year asc (NULL last), then title (NULL last); artist section `null` last; books by title, then author. | Audiobookshelf sorts by disc and track; the collator gives natural order for untagged sets. | 2026-09-26 |
+| **Group ids:** a group is addressed by the id of its first member in play order (`id`); `coverId` = the first **playable** member in play order, else `id`. Every group endpoint accepts **any** member id and resolves the group via `group_key`. No group table, no paths in URLs. | Architecture: clients reference by index id. A bookmark survives added tracks; it 404s only when that very file is removed. | 2026-09-26 |
+| **Every music/audiobooks item gets an `audio_meta` row** (D9): tag reading only for `mp3` (ID3v2 + MPEG duration) and `flac` (FLAC metadata, leading ID3v2 skipped); every other extension gets a path-only row (`tag_format` NULL, `duration_ms` NULL). Playability is always `library_items.playable`, never stored or re-decided here. | D9 cross-phase consolidation; Phase 2 already restricts these categories to audio extensions, so no extension filter is needed in P5. | 2026-09-26 |
+| **Tag formats: ID3v2.3/2.4 and FLAC metadata only**; M4A/M4B atoms, Ogg comments, ID3v1, ID3v2.2 and APE are out. | Roadmap row "ID3v2/FLAC tag readers"; prior-art verdict "in-house minimal ID3v2 + FLAC parsers". | 2026-09-26 |
+| **Fields read:** ID3v2 frames `TIT2`, `TPE1`, `TPE2`, `TALB`, `TRCK`, `TPOS`, `TDRC` (2.4) / `TYER` (2.3), `APIC`. FLAC Vorbis keys (case-insensitive) `TITLE`, `ARTIST`, `ALBUMARTIST` / `ALBUM ARTIST` / `ALBUM_ARTIST`, `ALBUM`, `TRACKNUMBER`, `DISCNUMBER`, `DATE` / `YEAR`, and `PICTURE` blocks. Text encodings 0 (ISO-8859-1), 1 (UTF-16 with BOM), 2 (UTF-16BE), 3 (UTF-8); first value of `\0`-separated multi-values; `"n/total"` → `n`; non-numeric track/disc → null; year = first four digits; trim; empty → null. Pictures: prefer type 3 (front cover), else the first; only `image/jpeg`, `image/png`, `image/webp` (`image/jpg` → `image/jpeg`); length ≤ 10 MiB. | Prior art: one central tag→field mapping; exactly the fields the views show. | 2026-09-26 |
+| **ID3v2 robustness:** header `ID3` + major version 3 or 4; synchsafe tag size; skip the extended header; v2.3 whole-tag unsynchronisation → de-unsync the read buffer (pictures in unsynchronised tags/frames are ignored); v2.4 frame sizes synchsafe with fallback to plain big-endian when the synchsafe reading yields an invalid next frame id (iTunes bug); compressed/encrypted frames skipped; the walk stops at padding (`\0` id), an invalid id, or a size past the tag end. Readers never throw on malformed input — they return what they parsed, or `null`. | Real-world tag corpora contain these defects; one bad file must never abort the pass. | 2026-09-26 |
+| **Duration without decoding:** FLAC = `total_samples / sample_rate` (null when total samples is 0). MP3 = first valid MPEG frame header (MPEG-1/2/2.5 Layer III) within 64 KiB after the ID3v2 tag; `Xing`/`Info` header with frames flag → `frames × samples_per_frame / sample_rate`; else `VBRI` → same formula; else CBR `(file_size − audio_start) × 8 / bitrate`. Other formats and failures → NULL; the API then uses the user's Phase 4 row `duration_seconds`, else the UI shows `–:–`. | Exact for FLAC and Xing-tagged MP3, cheap estimate otherwise; no decoding, no child process. | 2026-09-26 |
+| **Read budget:** readers work on `readAt(position, length) → Promise<Buffer>` (short buffer at EOF). Per file at most **256 KiB** in total; ID3v2 frames are walked in chunks of ≤ 64 KiB, bodies larger than the chunk are skipped by offset — for `APIC` only the first 512 body bytes are read to locate the image data; FLAC blocks other than STREAMINFO/VORBIS_COMMENT/PICTURE are skipped by offset, a VORBIS_COMMENT > 64 KiB is skipped, a PICTURE block is read only up to 4 KiB. Budget exhaustion ends parsing with the partial result. | Covers are often 0.5–5 MB inside the tag; the budget bounds I/O without losing frames after the picture. | 2026-09-26 |
+| **Reader interfaces:** `readId3v2(readAt) → Promise<{ version, fields: Record<string,string>, picture: PictureRef \| null, tagEnd: number } \| null>` (fields keyed by frame id; `tagEnd` = 0 when no tag); `readMpegDurationMs(readAt, audioStart, fileSize) → Promise<number \| null>`; `readFlac(readAt, fileSize) → Promise<{ fields: Record<string,string>, picture: PictureRef \| null, durationMs: number \| null } \| null>` (fields keyed by upper-cased Vorbis key; skips a leading ID3v2 tag by its header without importing `id3v2.js`); `PictureRef = { offset, length, mime }` in absolute file bytes. `src/library/tags/index.js`: `readAudioTags(absPath, { ext, size }) → Promise<AudioTags>` (`AudioTags = { title, artist, albumArtist, album, trackNo, discNo, year, durationMs, format: 'id3v2' \| 'flac' \| null }`, all nullable; budgeted file-backed `readAt`, handle closed in `finally`; rejects only on open/read I/O errors) and `readPictureRef(absPath, { ext }) → Promise<PictureRef \| null>` (never rejects: I/O errors → null). | Lets the ID3v2, FLAC and mapping issues be built and tested in parallel against buffer-backed fakes. | 2026-09-26 |
+| **Parser interfaces:** `parseMusicPath(relPath) → { groupKey, groupTitle, groupArtist, fileTitle, fileTrackNo, folderDiscNo }` and `parseAudiobookPath(relPath) → { groupKey, groupTitle, groupArtist, fileTitle, fileTrackNo, folderDiscNo }` (nullable where the rules above say so; `groupTitle` of a book is never null). Pure, no I/O. | Contract between the parser, pass and group issues. | 2026-09-26 |
+| **Scan hook = Phase 2's `onScanComplete` (D6), not an enricher module.** `src/library/audio-meta.js` exports `AUDIO_META_VERSION` (integer, starts at 1) and `createAudioMetaPass({ db, mediaRoot, log, readTags = readAudioTags, resolvePath = resolveMediaPath }) → { refreshAudioMeta(event?): Promise<void>, idle(): Promise<void> }`. `src/server.js` gets exactly one line: `library.onScanComplete(createAudioMetaPass({ db, mediaRoot: config.mediaRoot, log }).refreshAudioMeta)` (`library` = the value returned by `startLibrary()`). `scanner.js`/`watcher.js` are not edited. | D6 cross-phase consolidation — it supersedes the review's BLOCKING-1 (per-batch enrichers): a listener gives backfill of pre-existing rows, retry after failure and never blocks the scan queue (freshness ≤ 10 s). | 2026-09-26 |
+| **Pass algorithm:** single-flight — a call while a run is active marks one coalesced rerun and returns the active promise. A run selects (`listStaleAudioItems`) every `library_items` row with category in (`music`, `audiobooks`) whose `audio_meta` row is missing or differs in `meta_version`, `source_size` (vs `size`) or `source_mtime_ms` (vs `mtime_ms`), ordered by id; per item, sequentially: parser by category → `resolvePath(mediaRoot, rel_path)` (null → skip, no row; the next scan removes the item) → `readTags` (rejection → log `audio_meta_read_failed { relPath }`, no tag content, and continue with empty tags) → resolve fields per the precedence rows → `upsertAudioMeta` with the item's `size`/`mtime_ms` as read in the select. An FK violation (item deleted mid-pass) skips that item; any other DB error ends the run with `audio_meta_pass_failed { error }` (the next completed scan retries). A run that processed ≥ 1 item logs `audio_meta_pass { processed, failed, durationMs }`. No orphan-delete code: `ON DELETE CASCADE` cleans rows (D6), and a category change is impossible for an unchanged `rel_path`. Phase 2's rows are never modified. | D6 listener contract; staleness by (version, size, mtime) makes unchanged files free on every later run; a file whose tags fail still appears; bumping `AUDIO_META_VERSION` re-derives every row once after a parser change. | 2026-09-26 |
+| **Freshness and visibility:** audio views inner-join `audio_meta`, so a new file appears once its row is written — the pass runs right after the watcher's path reconcile, within the 10 s budget. | Keeps views free of half-parsed items; D6's non-awaited listener keeps the scan queue free. | 2026-09-26 |
+| **Repository functions:** `src/db/audio-meta-repo.js`: `listStaleAudioItems(db, metaVersion)`, `upsertAudioMeta(db, row)` (`INSERT … ON CONFLICT(item_id) DO UPDATE`), `listAudioRows(db, category)` and `listGroupRows(db, groupKey)` / `getAudioRow(db, itemId)` returning joined rows `{ id, relPath, dir, category, ext, playable, groupKey, groupTitle, groupArtist, title, trackNo, discNo, tagArtist, tagAlbumArtist, tagAlbum, tagYear, durationMs }` (camelCase mapping in the repo). `src/db/audio-progress.js`: `listAudioProgress(db, userId, category)` → `[{ itemId, position, duration, finished, updatedAt }]` (join `progress.rel_path = library_items.rel_path`, epoch ms) and `getLatestMusicResume(db, userId)` → the row with max `updated_at` among the user's music rows with `finished = 0 AND position_seconds >= 30` that have an `audio_meta` row, as `{ itemId, groupKey, position, duration, updatedAt } \| null`. | SQL stays in `src/db/`; splitting the progress join off lets the metadata issues proceed before Phase 4's table exists. | 2026-09-26 |
+| **Group assembly (`src/library/audio-groups.js`, pure):** `playOrder(rows)`, `buildAlbums(rows) → [{ id, coverId, groupKey, title, artist, year, members }]`, `buildArtistSections(albums) → [{ name, albums }]`, `buildBooks(rows) → [{ id, coverId, groupKey, title, author, members }]`; totals = sum of known member durations, `null` when none is known. | One implementation of the precedence and order rules for both APIs. | 2026-09-26 |
+| **Music resume = Phase 4 rows (H7).** Music tracks report through `trackPlayback` exactly like audiobook files (server-side audio finished rule: last 30 s). The Musik "Weiterhören" card = `getLatestMusicResume` (the user's latest `in_progress` music row). A track-row click starts at 0 (entry normalised, D11). No `music_session` table, no session endpoints. | Human decision at spec-acceptance gate (H7); one resume store (vision USP). | 2026-09-26 |
+| **API (all behind `requireUser`, JSON; `:id` must match `^[1-9][0-9]{0,15}$`; 404 `not_found` for any id that is not a member of the endpoint's category with an `audio_meta` row; durations/positions in seconds, `null` when unknown):** `GET /api/music` → `{ resume: { trackId, albumId, title, artist, albumTitle, coverId, position, duration, updatedAt } \| null, artists: [{ name, albums: [{ id, title, year, trackCount, coverId }] }] }` (`artist` = track `tag_artist` ?? album artist; `duration` = meta ?? row). `GET /api/music/albums/:id` → `{ id, title, artist, year, coverId, duration, discCount, tracks: [{ id, title, artist, trackNo, discNo, duration, playable, ext }] }` (tracks in play order; `trackCount`/tracks include non-playable). `GET /api/audiobooks` → `{ books: [{ id, title, author, coverId, fileCount, duration, state, fraction, lastPlayedAt }] }`. `GET /api/audiobooks/:id` → `{ id, title, author, coverId, fileCount, duration, state, fraction, lastPlayedAt, resume: { itemId, position } \| null, files: [{ id, title, trackNo, discNo, duration, playable, ext, progress: { position, duration, finished } \| null }] }`. `state` ∈ `new`, `in_progress`, `finished`; `fraction` 0–1 or null. | Two modules (`src/api/music.js`, `src/api/audiobooks.js`, review: split allowed) so API and views are built in parallel; shapes fixed here. | 2026-09-26 |
+| **Audiobook resume (`src/api/audiobook-resume.js`, pure `deriveBookProgress(files, rows)`, `files` in play order `[{ id, playable, duration }]`):** only *counted* rows matter — `finished` or position ≥ 30 s (Phase 4's `none` rows are ignored, D11); per-file `progress` is null for uncounted rows. Only playable files take part. No counted rows → `new`, resume the first playable file at 0. All playable files finished → `finished`, resume first playable at 0. Otherwise `in_progress`: latest counted row *L* (max `updatedAt`, tie → later in play order); *L* unfinished → resume *L* at its position; *L* finished → the next playable file after *L* that is not finished (at its counted position, else 0); none after *L* → the first unfinished playable file from the start (same position rule). `fraction` = Σ (finished ? d : counted ? min(position, d) : 0) ÷ Σ d over playable files with a known duration *d* (meta, else the row's `duration`); null when Σ d = 0. `lastPlayedAt` = max `updatedAt` of counted rows (ISO) or null. No playable file → `resume: null`, `state: 'new'`. `finished` is Phase 4's stored flag, never recomputed. | Phase 4 stores one row per (user, `rel_path`); multi-file books resume at "last file + position" without a book-level table; ignoring sub-30 s rows matches Phase 4's `none` state. | 2026-09-26 |
+| **Start positions (D11):** P5 never sets an initial `currentTime`; for every queue item it passes `trackPlayback(audio, itemId, { entry })` with `entry = { state: start > 0 ? 'in_progress' : 'none', position: start }` and lets `trackPlayback` seek. Decided `start`: music track → 0, except the Musik "Weiterhören" card → its `position`; audiobook file → its `progress.position` when that progress is unfinished, else 0 — for "Fortsetzen" the `resume.position`, for "Von vorn hören" 0 for the first file (later files in that queue use the same per-file rule). | Resolves review BLOCKING-3 per D11. | 2026-09-26 |
+| **Queue (`public/js/audio/queue.js`, pure):** `createQueue(items, { startIndex = 0 })` keeps only `playable` items (a non-playable start item → the next playable one); API `current()`, `index()`, `advance()` → next item or `null` at the end, `back(currentTimeS)` → `{ item, restart }` (`currentTimeS > 3` or first item → restart current, else the previous item), `jump(itemId)` → item or `null`. A queue is one album or one book. | Standard player behaviour; pure so it is unit-tested. | 2026-09-26 |
+| **Player (`public/js/audio/player.js`):** `createAudioPlayer({ audio, track = trackPlayback, headMedia })` → `{ playQueue(items, { startIndex, mode: 'music' \| 'audiobook', groupId }), toggle(), next(), previous(), seekBy(seconds), seekTo(seconds), state() → { item, groupId, mode, playing, error } \| null, onChange(listener) → unsubscribe }`. Queue items: `{ id, title, subtitle, groupTitle, coverId, duration, playable, start }`. One persistent `<audio preload="metadata">` is reused. Every switch (advance, previous/next, new queue, row click) first `await`s `stop()` of the previous handle, then sets `src = /media/<id>`, creates the new handle, calls `play()` (a rejected promise leaves the bar paused). `ended` → `advance()`; queue end → stop, bar stays visible with the last item. An `error` event (code ≠ 1) → `HEAD /media/<id>`: 401 → `toLogin()`; otherwise the bar shows "Titel konnte nicht abgespielt werden" (`role="status"`, 5 s) and advances. Leaving the section is a page load; `trackPlayback`'s `pagehide` report saves the position. | Reusing the element keeps the autoplay unlock from the first gesture across auto-advance; the HEAD check mirrors Phase 3's error disambiguation for the expired-session case. | 2026-09-26 |
+| **Audio section URLs (H8 = D14):** `public/music.html` and `public/audiobooks.html` replace Phase 1's placeholders; both have Phase 1's placeholder head/body skeleton plus `audio.css`, `audio-music.css`, `audio-books.css` and load the one module `public/js/audio/app.js` instead of `placeholder.js`; they differ only in `<title>`. Routes (`public/js/audio/routes.js`, pure `parseAudioUrl(pathname, search) → { section: 'music' \| 'audiobooks', view: 'overview' \| 'album' \| 'grid' \| 'book', id }` and `audioUrl(route)`): `/music`, `/music?album=<id>`, `/audiobooks`, `/audiobooks?book=<id>`; an invalid id → the section overview via `replaceState`. `app.js` intercepts clicks on `a[href]` whose URL is same-origin with pathname `/music` or `/audiobooks` (primary button, no modifier key, no `target`/`download`) — this covers Phase 1's two nav links and all in-section links — then `pushState` (skipped when the URL is unchanged), renders the view, calls `setActive(section)` and scrolls to top (`history.scrollRestoration = 'manual'`); `popstate` renders from `location`. No nav edits, no redirect stubs. `document.title` = view heading + " – Videothek". | Human decision at spec-acceptance gate (H8); the query-string URLs survive Phase 1's `/login?next=` round trip, which a hash would not (review BLOCKING-4). | 2026-09-26 |
+| **View contract:** each `public/js/audio/views/*.js` exports `render({ container, id, player, navigate }) → Promise<{ title: string, dispose?: () => void }>`; `app.js` owns `container` (inside the shell's `main`), calls `dispose` before the next view and never re-creates the player. The shell issue ships the four view modules and two view CSS files as minimal stubs (heading only / comment only); the view issues replace them. | Lets the shell, music views and audiobook views be built in parallel without touching each other's files. | 2026-09-26 |
+| **Views:** Musik overview = "Weiterhören" card when `resume` is set (cover, title, "artist · album", 4 px `primary` bar = position/duration, meta `formatRemaining`; the card is a `<button>` that plays the album queue from that track at `position` and navigates to the album) + artist sections (`<h2>` name) each with a grid of 1:1 album cards (`<a href="/music?album=<id>">`, cover `loading="lazy"`, title, year muted). Album detail = back link "‹ Musik", cover, title, artist, meta "2019 · 12 Titel · 48 Min." (year omitted when null, "1 Titel" singular), primary "Alle abspielen", track rows with "CD n" sub-headings only when `discCount` > 1. Hörbücher grid = "Weiterhören" row (books with `state = 'in_progress'`, `lastPlayedAt` desc, max 20, horizontally scrollable, hidden when empty) + all books as 1:1 cards (`<a href="/audiobooks?book=<id>">`): title, author, 4 px `primary` bar + "34 %" when in progress, "Gehört" when finished, else "n Dateien · 7 Std. 12 Min.". Book detail = back link "‹ Hörbücher", cover, overline "Hörbuch", title, author, "n Dateien · Dauer", overall bar + "34 % gehört" (when fraction non-null), primary button "Abspielen" (`new`) / "Fortsetzen · <file title> – <m:ss>" (`in_progress`) / "Von vorn hören" (`finished`), secondary "Von vorn hören" when in progress, file rows with per-file bar and "Gehört" for finished files. Book-card clicks open the detail; playback always starts from a button. | design.md components (media card, grid/list, progress wherever started); committed exports. | 2026-09-26 |
+| **Rows:** playable track/file rows are full-width `<button type="button">` (≥ `--row-min`, number `font-mono` muted, title, duration right); the playing row gets `aria-current="true"`, `primary` text and an equaliser glyph instead of the number. Track click → album queue from that track at 0; file click → book queue from that file at its start rule. Non-playable rows are non-focusable `<div>`s with `muted` text and the `destructive` "Nicht abspielbar" badge. | design.md: ≥ 48 px rows, keyboard reachable; no opacity dimming (AA). | 2026-09-26 |
+| **Grid (H3):** album and book grids use `grid-template-columns: repeat(auto-fill, minmax(min(var(--grid-min), calc(50% - var(--space-2))), 1fr))`, gap `var(--space-4)`. | Human decision at spec-acceptance gate (H3) — always ≥ 2 columns on phones; `--space-2` (8 px) replaces H3's literal. | 2026-09-26 |
+| **Bar layout (`public/js/audio/player-bar.js` + `audio.css`):** `<section class="audio-bar" aria-label="Audioplayer">` on `secondary`, fixed at the bottom, `hidden` until the first `playQueue`. Contents: cover (48 px token-sized square via `--space-12`), title + subtitle (one line, ellipsis; music: artist, audiobook: "book · author"), controls, seek `<input type="range" aria-label="Position">` with elapsed/total (`formatClock`, `–:–`). Music mode: previous, play/pause, next. Audiobook mode: previous, "15 s zurück", play/pause, "30 s vor", next — below 768 px only 15 s zurück / play-pause / 30 s vor (previous/next file stay reachable via the file list). All controls are `<button>`s ≥ `--tap-min` with German `aria-label`s: "Wiedergabe"/"Pause", "Vorheriger Titel", "Nächster Titel", "15 Sekunden zurück", "30 Sekunden vor". Below 768 px the bar sits directly above Phase 1's bottom nav (`bottom: var(--bar-height-mobile)`), ≥ 768 px at `bottom: 0`. A spacer element after the view container gets the bar's measured height via `ResizeObserver` → `el.style.setProperty('height', …)`, so the last row is never hidden. No page-level keyboard shortcuts. | design.md: persistent bottom bar on `secondary`, ≥ 44 px targets; D5 (CSSOM for dynamic values, only 768/1024 breakpoint literals — replaces the draft's 600 px). | 2026-09-26 |
+| **Media Session (`public/js/audio/media-session.js`, `bindMediaSession(player)`, no-op without `navigator.mediaSession`):** metadata title, artist (music: track artist; audiobook: author ?? book title), album (album/book title), artwork `[{ src: '/media/<coverId>/cover' }]`; handlers play, pause, previoustrack, nexttrack, seekbackward (15 s), seekforward (30 s), seekto; `setPositionState` on `durationchange`, `seeked`, `play`, `pause` (inside `try`, skipped for non-finite durations). | Built-in API giving lock-screen and hardware-key control. | 2026-09-26 |
+| **German formatting (`public/js/audio/format.js`):** `formatDuration(s)` = P4's `formatClock` or `–:–` for null; `formatTotal(s)` → `48 Min.` / `7 Std. 12 Min.` / `7 Std.` (minutes rounded, minimum `1 Min.`), `–:–` for null; `formatPercent(f)` → `34 %` (floored, `Math.floor(f * 100)`). | Consistent German copy; reuses Phase 4's clock format. | 2026-09-26 |
+| **States and copy:** loading shows only the heading; empty Musik "Keine Musik gefunden." + "Lege Musik im Ordner „Musik“ ab, z. B. „Musik/Interpret/Album/01 Titel.mp3“."; empty Hörbücher "Keine Hörbücher gefunden." + "Lege Hörbücher im Ordner „Hörbücher“ ab, z. B. „Hörbücher/Autor/Titel/01.mp3“."; request error "Die Bibliothek konnte nicht geladen werden." + button "Erneut versuchen"; API 404 "Album nicht gefunden." / "Hörbuch nicht gefunden." + link back to the section. No first-scan state: lists fill as the pass writes rows. `401` → Phase 1's `request` redirects to login. | Mirrors Phase 2's copy; the audio API does not expose scan status. | 2026-09-26 |
+| **Cover lookup (`src/library/cover.js`, `findCover({ mediaRoot, row, resolvePath, readPicture }) → { kind: 'file', path } \| { kind: 'slice', path, offset, length, mime } \| null`):** (1) real album/book directory (depth ≥ 2): folder images named `cover`, `folder`, `front` (that priority) with extension `jpg`, `jpeg`, `png`, `webp` (that priority), case-insensitive — first in the item's own `dir` when it is a disc folder, then in `group_key`; pseudo-albums and single-file books instead a sidecar `<audio stem>.{jpg,jpeg,png,webp}` in the item's `dir`. Each directory is resolved with `resolvePath` **before** `readdir`; only regular-file `Dirent`s count (symlinks are skipped); the chosen file is resolved again with `resolvePath`. (2) the embedded picture of that item (`readPictureRef`). (3) null. Nothing is cached server-side. | Navidrome's default priority minus `external`; guarding the directory before listing it (review) and skipping symlinks keeps every byte inside `MEDIA_ROOT`. On-demand lookup is correct when a cover file is added without the audio file changing. | 2026-09-26 |
+| **Cover route `GET /media/:id/cover`** (`src/api/cover.js`, `registerCoverRoutes(router, deps)`, `requireUser` → 401 JSON, whole-segment route, HEAD via the GET handler): id not matching the pattern, not a music/audiobooks item, without `audio_meta`, or no cover → 404 `{ "error": "not_found" }`. A file → `sendMedia(req, res, { path, cacheControl: 'private, max-age=86400' })`; a slice → `sendSlice`. Covers of non-playable items are served too. | D10: cover route owned by P5, cache header via `sendMedia`'s option. | 2026-09-26 |
+| **Slice responder (`src/http/slice.js`, `sendSlice(req, res, { path, offset, length, contentType, cacheControl })`):** open `'r'`, `stat`; `offset + length > size` → 404; range handling = P3's range parser applied to `length` with P3's outcome mapping (206 + `Content-Range` relative to the slice, 416 `bytes */length` + `{"error":"range_not_satisfiable"}`, else 200); HEAD → headers only; body = `fs.createReadStream(path, { fd: handle, start: offset + a, end: offset + b })` through `stream.pipeline`; headers `Content-Type`, `Content-Length`, `Accept-Ranges: bytes`, `Cache-Control`, `X-Content-Type-Options: nosniff`; a response with no socket activity for 60 s is destroyed. Returns a promise like `sendMedia`. | D10 "P5 serves embedded cover slices via the same range logic"; the constitution's streaming rule holds for picture bytes; an own file keeps P3's `stream.js` untouched. | 2026-09-26 |
+| **Fixtures:** `test/helpers/mp3-fixture.js` (ID3v2.3/2.4 builder incl. encodings, unsync, extended header, APIC; silent, browser-decodable MPEG-1 Layer III CBR frames — 32 kHz, 32 kbit/s, mono, all-zero side info — with optional Xing/VBRI header) and `test/helpers/flac-fixture.js` (STREAMINFO, VORBIS_COMMENT, PICTURE, optional minimal ID3v2 prefix built inline; silent frames with CONSTANT subframes and correct CRC-8/CRC-16). `test/helpers/make-audio-fixtures.js` (CLI `node test/helpers/make-audio-fixtures.js <mediaRoot>`, deterministic) writes the committed tree: `Musik/Die Beispiele/Unterwegs/` (tagged MP3s, embedded cover), `Musik/Die Beispiele/Doppelalbum/CD 1|CD 2/` with folder `cover.png`, `Musik/Unbekannt/Ohne Tags/` (untagged, filename numbers), `Musik/Klangwerk/Flac Album/` (FLAC, `cover.jpg` absent, embedded PICTURE), `Musik/Klangwerk/Flac Album/04 Bonus (Live).wma` (dummy bytes, not playable), a loose `Musik/Einzeltrack.mp3`; music tracks ≥ 60 s; `Hörbücher/Jules Beispiel/Die Reise/` (≥ 3 MP3 files of ≥ 180 s each), `Hörbücher/Jules Beispiel/Kurzgeschichte.mp3` (single file, embedded cover), `Hörbücher/Anna Autorin/Langes Buch/CD 1|CD 2/`. The PNG is generated with `node:zlib` (`deflateSync`, `crc32`). Committed tree ≤ 10 MiB. | Synthetic files only, never real media; ≥ 180 s files keep a 1:00 position outside the "last 30 s" finished window, so the ±10 s resume check is meaningful. | 2026-09-26 |
+| **Test seeding:** DB/API tests migrate a temp DB (001–004, plus 003 where progress is read), insert `library_items`/`audio_meta`/`progress` rows with prepared statements, and use `startTestApp({ mediaRoot })` with a temp tree; no test depends on the scanner. | Keeps API/repo issues independent of the scanner and watcher. | 2026-09-26 |
+| **Docs edits:** `docs/prior-art.md` gets the two Phase 5 concerns in this spec PR; `docs/architecture.md` component map and key flows are edited by the metadata-pass issue (D13). The Subsonic play-queue reference is dropped. | D13; H7 removed the music-session design the Subsonic reference supported. | 2026-09-26 |
 
 ## Tracking
 
@@ -273,7 +349,8 @@ Each issue references this spec path in its body.
 
 Machine checks (`npm run verify`):
 
-- [ ] `npm run verify` passes; `npm ls --omit=dev --all` shows no packages.
+- [ ] `npm run verify` passes; `npm ls --omit=dev --all` shows no packages;
+      every new `src/` module has its test file.
 - [ ] ID3v2 reader: v2.3 and v2.4 tags with each text encoding (incl. `Ärzte`
       in ISO-8859-1 and UTF-16), multi-value frames, `n/total`, extended
       header, v2.3 unsynchronisation, v2.4 non-synchsafe frame sizes, APIC
@@ -287,101 +364,156 @@ Machine checks (`npm run verify`):
       bytes never throw and never loop; a fixture with a 5 MiB APIC is parsed
       with ≤ 256 KiB read (instrumented `readAt`), frames after the picture
       still found.
+- [ ] Mapping: `readAudioTags` dispatches by extension, returns all-null tags
+      for `m4a`/`ogg`/`wav`, closes the handle on success and on error.
 - [ ] Parsers: table tests for music and audiobook paths (disc-folder rollup,
-      loose tracks, root files, single-file books in author folder and root,
-      `Author/Series/Book`, filename number stripping, natural order).
-- [ ] Metadata pass: new, changed (mtime/size), unchanged (not re-read),
-      removed (orphan deleted) and non-audio files; a corrupt file gets a
-      fallback row; concurrent calls run once more, not in parallel.
-- [ ] API: every new endpoint answers 401 without a session; unknown or
-      non-audio ids → 404 `not_found`; any member id resolves the same group;
-      precedence rules visible in the JSON; `PUT /api/music/session` rejects a
-      bad body (400) and a non-music item (404).
-- [ ] Resume function: new / in-progress / latest-finished → next / gap →
-      first unfinished / all finished; fraction with unknown durations.
-- [ ] Cover route: folder image beats embedded; disc-folder and parent lookup;
-      sidecar for single-file books; embedded slice bytes equal the source
-      image and `Content-Length` matches; no cover → 404; unauthenticated → 401;
-      a cover file that is a symlink out of `MEDIA_ROOT` → 404.
-- [ ] Frontend pure modules: queue (previous 3 s rule, advance, end, skip of
-      non-playable) and German duration formatting.
+      loose tracks at depth 1 and 0, `Artist/Year/Album`, single-file books in
+      an author folder and the root, `Author/Series/Book`, filename number
+      stripping, underscore rule, NFC display strings, alias folders `Music/`
+      and `Hoerbuecher/`).
+- [ ] Migration 004 applies after 001–002 (and in either order with 003/005);
+      deleting a `library_items` row cascades to `audio_meta`.
+- [ ] Metadata pass: new, changed (size/mtime), version-bumped, unchanged (not
+      re-read), non-mp3/flac (path-only row) and non-playable items; a
+      rejecting reader still yields a fallback row and one log line without
+      tag content; an item deleted mid-pass is skipped; concurrent calls run
+      once more, never in parallel.
+- [ ] Groups: precedence (tags vs folder, album-artist fallback chain,
+      pseudo-albums ignore tags), play order (disc, track, natural filename),
+      album/artist/book ordering, `id` vs `coverId`, totals with unknown
+      durations.
+- [ ] API: every endpoint answers 401 without a session; malformed, unknown,
+      wrong-category and meta-less ids → 404 `not_found`; any member id
+      resolves the same group; shapes exactly as specified; `resume` null for
+      a new user, set from the latest in-progress music row, ignoring
+      finished and < 30 s rows; user B never sees user A's progress.
+- [ ] Resume function: new / in-progress / latest finished → next /
+      no successor → first unfinished / all finished / no playable file;
+      sub-30 s rows ignored; fraction with unknown durations.
+- [ ] Cover: folder image beats embedded; `cover` beats `folder` beats
+      `front`; disc-folder then group lookup; sidecar for single-file books and
+      pseudo-albums; embedded slice bytes equal the source image and
+      `Content-Length` matches; `Range` on the slice → 206/416 relative to the
+      slice; HEAD without body; no cover → 404; unauthenticated → 401; a cover
+      file that is a symlink out of `MEDIA_ROOT` → not used (404 when nothing
+      else exists); `Cache-Control: private, max-age=86400`.
+- [ ] Frontend pure modules: `parseAudioUrl`/`audioUrl` round trips and
+      invalid ids; queue (3 s rule both sides, advance, end, non-playable
+      skipped, `jump`); player with a fake element and fake `track`: `stop()`
+      awaited before every switch, entry normalised per the start rules,
+      error → advance; German duration/percent formatting.
+- [ ] Fixture generator: regenerating into a temp dir reproduces the committed
+      tree byte for byte.
 
 Human QA (UI check per `docs/workflow.md`, Chromium and Firefox,
-`MEDIA_ROOT=test/fixtures/media`, desktop and a ≤ 400 px viewport):
+`MEDIA_ROOT=test/fixtures/media`, desktop 1440 px and a ≤ 400 px viewport,
+compared with the exports):
 
-- [ ] Musik shows the fixture artists alphabetically; album cards show folder or
-      embedded covers, the untagged album shows a placeholder and
-      filename-derived titles; nav "Musik" is active.
+- [ ] Musik shows artist sections alphabetically ("Unbekannter Interpret"
+      last); album cards show folder or embedded covers, the untagged album
+      the placeholder and filename-derived titles; the loose track appears as
+      "Einzeltitel"; nav "Musik" is active; two columns on the phone.
 - [ ] Album detail: tracks in disc/track order, "CD 1"/"CD 2" headings on the
-      multi-disc album only, the `.wma` row dimmed with "Nicht abspielbar".
+      double album only, the `.wma` row in muted text with "Nicht abspielbar"
+      and not focusable.
 - [ ] "Alle abspielen" plays; the bar shows cover, title, artist; pause, seek,
       next, previous (both sides of the 3 s rule) work; the playing row is
-      highlighted; the album advances to the next track on its own.
-- [ ] While music plays, switching to Hörbücher, opening a book and returning to
-      Musik does not interrupt the sound.
+      highlighted; the album advances on its own.
+- [ ] While music plays, clicking nav "Hörbücher", opening a book, pressing
+      browser back and clicking nav "Musik" never interrupts the sound; the
+      active nav entry follows; reloading `/music?album=<id>` reopens the
+      album; opening it logged out returns there after login.
 - [ ] Keyboard only: every bar control and row is reachable with Tab, has a
-      visible `primary` focus ring, and works with Enter/Space; the seek slider
-      moves with arrow keys.
-- [ ] Hörbücher: the multi-file book played to ~1:00 of its second file, stopped
-      (tab closed), then opened in a second browser (other profile, same user)
-      shows the progress on the card and in "Weiterhören", and "Fortsetzen"
-      starts file 2 within ±10 s of 1:00.
+      visible `primary` focus ring, and works with Enter/Space; the seek
+      slider moves with arrow keys.
+- [ ] Hörbücher: "Die Reise" played to ~1:00 of its second file, stopped (tab
+      closed), then opened in a second browser (other profile, same user)
+      shows the progress on the card and in "Weiterhören"; "Fortsetzen" starts
+      file 2 within ±10 s of 1:00.
 - [ ] Finishing a book file advances to the next file; the finished file shows
       "Gehört"; the book percentage grows.
-- [ ] Musik "Weiterhören" (OPEN-1 = C): a track stopped at ~0:40 on browser A is
-      offered on browser B and resumes within ±10 s.
+- [ ] Musik "Weiterhören": a track stopped at ~0:40 on browser A is offered on
+      browser B and resumes within ±10 s; a track-row click starts at 0:00.
 - [ ] Copying a new tagged MP3 into a fixture album (in a scratch copy of the
       tree) shows it in the album without restart (≤ 10 s with watcher).
-- [ ] Phone viewport: bar sits above the bottom nav, the last track row is not
-      hidden behind it; lock-screen / media-key controls (Media Session) work
-      where the browser supports them.
-- [ ] Leaving to Filme stops playback; returning via "Fortsetzen"/"Weiterhören"
-      resumes within ±10 s (OPEN-2 = A).
-- [ ] `/music` and `/audiobooks` (former Phase 1 placeholders) land on
-      `/audio#/musik` and `/audio#/hoerbuecher`; the browser console shows no
-      CSP violations on any audio view.
+- [ ] Phone viewport: the bar sits above the bottom nav, the last row is not
+      hidden behind it; audiobook mode shows 15 s zurück / play-pause /
+      30 s vor; lock-screen / media-key controls (Media Session) work where the
+      browser supports them.
+- [ ] Leaving to Filme stops playback; returning via "Fortsetzen" /
+      "Weiterhören" resumes within ±10 s.
+- [ ] The browser console shows no CSP violation on any audio view; DevTools
+      shows no request to an external host.
+- [ ] Idle RSS: after the metadata pass over the fixture tree plus a
+      generated 2 000-track tree (`mp3-fixture` helper), the process RSS is
+      < 100 MB on the Pi 4 — or, if the human accepts the substitute, on the
+      dev machine — noted in the QA comment.
 
 ## Risks and mitigations
 
 | Risk | Mitigation |
 |---|---|
-| Non-conformant tags (iTunes v2.4 sizes, broken encodings, bogus sizes) crash or hang the pass | Robustness rules above; readers never throw; loop guards on zero/oversized frames; per-file try/catch writes a fallback row; fuzz-style tests with truncated and random buffers. |
-| Initial pass over a large library (10 000+ files on a USB HDD) takes minutes | Sequential async I/O keeps the server responsive; items appear progressively as rows are upserted; unchanged files are skipped on every later scan; the pass logs count and duration. |
-| Query-time grouping of all audio rows gets slow on the Pi for large libraries | Single indexed query per request plus in-JS grouping; if a request exceeds ~200 ms on the fixture-scaled benchmark, cache the grouped result in memory keyed by a pass counter (implementer's call inside the API issue, no schema change). |
-| Stale or reused `library_items` ids attach old metadata to a different file | Staleness check on (mtime, size) plus orphan delete on every pass; `ON DELETE CASCADE` when foreign keys are on. |
-| Synthetic silent MP3/FLAC fixtures are rejected by a browser decoder | Frames follow the standard layout (zero side info = digital silence; FLAC CONSTANT subframes with valid CRCs); the fixture issue verifies playback in Chromium and Firefox before merge. |
-| Auto-advance blocked by autoplay policy, or suspended on a locked phone | One persistent `<audio>` element unlocked by the initial click; Media Session handlers; iOS background behaviour checked at QA and documented if limited. |
-| Phase 2/4 contracts differ from assumptions (post-scan hook name, progress table columns, `trackPlayback` options) | Assumptions listed in Constraints; each affected issue reads the merged Phase 2/4 code first and adapts names, not semantics. A missing post-scan hook in Phase 2 is a Phase 2 defect (Phase 6 needs it too), not something to work around in `scanner.js`. |
-| Playback stops when leaving the audio section (OPEN-2 = A) | Explicit decision at the gate; resume entry points ("Fortsetzen", "Weiterhören") make the stop cheap to recover from. |
+| Non-conformant tags (iTunes v2.4 sizes, broken encodings, bogus sizes) crash or hang the pass | Robustness rules; readers never throw; loop guards on zero/oversized frames; per-file fallback row; fuzz-style tests with truncated and random buffers. |
+| Initial pass over a large library (10 000+ files on a USB HDD) takes minutes | Sequential async I/O keeps the server responsive; items appear progressively; unchanged files are free on every later run; the pass logs count and duration. |
+| Query-time grouping of all audio rows gets slow on the Pi | One indexed query per request plus in-JS grouping; if a request exceeds ~200 ms on the 2 000-track benchmark, the API issue caches the grouped result in memory keyed by the pass's completed-run counter (no schema change). |
+| Every skipped song ≥ 30 s leaves an in-progress music row (H7) | Accepted at the gate; the card shows only the latest one, and "Weiterschauen" filters to video (D11). |
+| Synthetic silent MP3/FLAC fixtures are rejected by a browser decoder | Standard frame layout (zero side info = digital silence; FLAC CONSTANT subframes with valid CRCs); the fixture issue verifies playback in Chromium and Firefox before merge. |
+| Auto-advance blocked by autoplay policy, or suspended on a locked phone | One persistent `<audio>` unlocked by the initial click; Media Session handlers; iOS background behaviour checked at QA and documented if limited. |
+| Sibling-phase export names drift (P3's range parser name, P2's `startLibrary` variable in `server.js`) | Semantics are fixed by D4–D11; an issue adapts only the imported name to the merged code, never the behaviour, and records it in the Decision log. |
+| Pass still running during shutdown hits a closed DB | Any non-FK DB error ends the run with one log line; the index is derived and the next start re-runs stale rows. |
 
 ## Decision log
 
 - 2026-09-26: Music grouping by directory, display by tags (Navidrome-style
   tags-first display, folder identity against split/merged albums).
 - 2026-09-26: Audiobooks folder-first for book title/author — deliberate
-  deviation from Audiobookshelf's default metadata priority (tags over folder
-  structure, per its book-scanner guide) because our grouping requires curated
-  Author/Book folders.
+  deviation from Audiobookshelf's default metadata priority because our
+  grouping requires curated Author/Book folders.
 - 2026-09-26: Disc folders `CD|Disc|Disk <n>` adopted from Audiobookshelf's
   directory-structure docs for both music and audiobooks.
 - 2026-09-26: Cover priority folder → embedded adopted from Navidrome's default
-  `CoverArtPriority` (`cover.*, folder.*, front.*, embedded, external`), minus
-  the external step (no outbound calls).
+  `CoverArtPriority`, minus the external step (no outbound calls).
 - 2026-09-26: M4A/Ogg tags out, per roadmap row and prior-art verdict; files
   still listed and playable.
-- 2026-09-26: Tag reading as a separate post-scan pass with its own table
-  (prior-art "fast scan separated from deeper analysis"); Phase 2 rows are never
-  modified.
-- 2026-09-26: Audiobook resume derived from per-file Phase 4 rows (no book-level
-  table); music does not write Phase 4 rows.
-- 2026-09-26: OPEN-1 (music resume) and OPEN-2 (player persistence scope) carried
-  to the spec-acceptance gate with recommendations C and A.
-- 2026-09-26: Aligned with sibling specs in review (Phase 1 PR #4, Phase 3 PR #1,
-  Phase 4 PR #2, Phase 6 PR #3): audio shell at `/audio` with Phase 1's
-  `music.html`/`audiobooks.html` placeholders turned into redirects; no inline
-  `style` attributes (CSP); no new MIME entries needed (Phase 3 map already
-  covers the playable audio extensions); audiobook progress joined by
-  `rel_path` and `finished` taken from Phase 4's server rule; `trackPlayback`
-  handle stopped before every queue switch; `music_session` keyed by
-  `rel_path` for the same reason as Phase 4; tag reading registered on
-  Phase 2's generic post-scan hook shared with Phase 6.
+- 2026-09-26: cross-phase consolidation — scan hook is P2's `onScanComplete`
+  (D6); review BLOCKING-1 (enrichers) superseded; no orphan delete (FK
+  cascade); `AUDIO_META_VERSION` + `meta_version` column for re-derivation;
+  `src/server.js` gets one registration line.
+- 2026-09-26: cross-phase consolidation — every music/audiobooks item gets an
+  `audio_meta` row; compat (P2) is the single owner of extensions,
+  playability and MIME (D9); review BLOCKING-2 resolved.
+- 2026-09-26: cross-phase consolidation — start positions via entry
+  normalisation, `trackPlayback` seeks, P5 never sets initial `currentTime`
+  (D11); review BLOCKING-3 resolved.
+- 2026-09-26: cross-phase consolidation — audio section on `/music` and
+  `/audiobooks` with `pushState` and `setActive`, no nav edits, no redirect
+  stubs, `/audio` dropped (D1, D14); review BLOCKING-4 resolved.
+- 2026-09-26: cross-phase consolidation — cover route in `src/api/cover.js`
+  with `Cache-Control` through `sendMedia`'s `cacheControl`; embedded slices
+  through the P5-owned `src/http/slice.js` with P3's range parser (D10).
+- 2026-09-26: cross-phase consolidation — migration 004 STRICT, no
+  transaction statements, depends only on 002 (D12); architecture edits listed
+  in scope (D13); category ids `music`/`audiobooks` (D3); P1 server/frontend
+  contracts used verbatim (D4, D5).
+- 2026-09-26: gate decision — H7: music resume = B; music tracks write Phase 4
+  progress rows, the Musik "Weiterhören" card is the latest `in_progress`
+  music row, track clicks start at 0; `music_session`, its endpoints and its
+  issue dropped; review BLOCKING-5 moot. OPEN-1 removed.
+- 2026-09-26: gate decision — H8: player persistence = A on the Phase 1 URLs
+  exactly as D14. OPEN-2 removed.
+- 2026-09-26: gate decision — H3: phone grid always ≥ 2 columns via the
+  `min(var(--grid-min), calc(50% - …))` rule, applied to album and book grids.
+- 2026-09-26: Pre-mortem — breakpoint 768 px replaces the draft's 600 px
+  (D5 literal rule); unknown names are `null` in JSON and rendered in German
+  by the UI; P2's `cleanName` not used for audio titles; pseudo-albums ignore
+  tags for group display; `coverId` = first playable member; book derivation
+  ignores Phase 4 `none` rows; symlinked cover files skipped; the directory is
+  guarded before `readdir`; bar spacer via `ResizeObserver`; no page-level
+  keyboard shortcuts; no first-scan state; frontend imports are relative;
+  API split into `music.js` and `audiobooks.js`, progress joins into
+  `src/db/audio-progress.js`, so the metadata issues do not wait for Phase 4.
+- 2026-09-26: Review non-blocking findings applied — off-token shade note,
+  muted text instead of opacity, seek hit area ≥ 44 px, legible 15/30 labels,
+  STRICT tables, idle-RSS QA line, external references added to
+  `docs/prior-art.md` in this PR; the Subsonic `savePlayQueue` reference is
+  dropped because H7 removed the music session.
