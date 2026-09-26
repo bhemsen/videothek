@@ -847,3 +847,41 @@ Chromium and Firefox, mobile ≤ 767 px and desktop ≥ 1024 px viewport):
   exiting 1); `admin_env_ignored` logs at `warn` (non-fatal, but flags a
   configuration the operator should probably clean up); `admin_bootstrapped`
   logs at `info`.
+- 2026-09-26 (#20): `src/cli/reset-password.js` implemented. Runs `migrate(db,
+  { log })` itself before calling `resetPassword` (mirroring `server.js`'s
+  config → DB → migrate order) so the CLI also works against a `DATA_DIR` the
+  server has never started against yet; `migrate` is idempotent so this is a
+  no-op on an already-current DB. Prompting uses one persistent reader
+  (`createPromptReader`) with a single `'data'` listener kept attached across
+  both prompts and an internal buffer, instead of two independent
+  one-shot listeners: an initial one-shot-per-prompt version lost the second
+  prompt's answer whenever both lines arrived in a single chunk (the normal
+  case for a piped shell flushing `printf 'a\nb\n'` at once, and for a
+  keystroke typed immediately after Enter on a real TTY) — the first
+  listener's `data` handler took only its own line and discarded the rest of
+  the chunk, leaving the second prompt awaiting input that would never
+  arrive and the process exiting silently (code 0, no error) once stdin hit
+  EOF with nothing left keeping the event loop alive. Caught via a manual
+  end-to-end run of the built CLI (piped input), not by the unit tests
+  (which drove the old one-shot-per-call readers directly and happened not
+  to reuse a stale buffer); the regression is now also covered directly by
+  `fakeInput` delivering every queued line as one chunk on the single
+  listener `createPromptReader` attaches. Messages not fixed elsewhere:
+  missing argument → "Benutzername fehlt. Verwendung: npm run
+  reset-password -- <username>"; mismatch is checked before the length
+  validation (matches the failure-list order in Acceptance/Verification:
+  "missing argument, unknown user, mismatch, invalid password"); the invalid-
+  password text reuses the admin-API's `invalid_password` copy verbatim for
+  one wording across the app. `resetPassword`'s username lookup/messages use
+  `normalizeUsername` (trim/NFC/lower-case) so `npm run reset-password --
+  " Julia "` still finds `julia`; the success/error text after that point
+  uses the stored, already-normalized `user.username` rather than echoing
+  the raw argument back. `config` stays a required part of the fixed
+  `resetPassword({ args, config, db, input, output, log, isTTY })` signature
+  (module-layout table) for parity with the other DI-style contracts (e.g.
+  `createApp`) even though the function body does not read it — `main()`'s
+  wiring is what actually needs it (`loadConfig(undefined, { requireMediaRoot:
+  false })` → `config.dataDir` → `openDatabase`). Entry detection reuses the
+  spec's fixed `realpathSync(process.argv[1]) === realpathSync(fileURLToPath(
+  import.meta.url))` check (this is its first use in the repo; `src/server.js`
+  does not exist yet).
