@@ -955,21 +955,14 @@ and desktop 1440 px, compared with the design exports):
   `onScanComplete` not fired for aborted runs; `sort` default and invalid
   URL values; file-size format; "Folgen 1–2" label; season-less series meta;
   README section "Medienordner".
-- 2026-09-26 (issue #28): `cleanName`'s empty-result rescue (`Empty result →
-  the stem with only separators replaced by spaces and trimmed`) despeparates
-  the same input the cut step ran on — it does not re-check whether that
-  rescued text is itself just release tags. Consequence for the episode-title
-  rule ("Empty → episodeCode(...)"): the rescue only actually triggers the
-  code fallback when the text after the matched token is empty or pure
-  separators (e.g. nothing follows `SxxEyy` before the extension); a suffix
-  that is release tags with real words (e.g. `.German.1080p.WEB.x264`) is
-  despeparated to `German 1080p WEB x264` instead of falling back to the
-  code. This affects the `Dark.S01E03.German.1080p.WEB.x264.mp4` QA-fixture
-  line's stated title `"S01E03"` (§ QA fixture tree) — with the parsers as
-  specified, that file's episode title comes out as `"German 1080p WEB
-  x264"`, not the code. Flagging for issue #33's fixture smoke test and
-  human QA: either accept the parser's literal result and correct that QA
-  line, or tighten `cleanName`'s rescue (e.g. re-run the release-token cut on
-  the despeparated text) in a follow-up — not done here since it is outside
-  #28's file list and would change `cleanName`'s general behaviour used by
-  the movie/folder-name parsers too.
+- 2026-09-26 (issue #28): review caught that `cleanName`'s empty-result
+  rescue masked the episode-title fallback rule ("Empty → `episodeCode(...)`")
+  for a suffix that is release tags with real words (e.g.
+  `.German.1080p.WEB.x264`), producing `"German 1080p WEB x264"` instead of
+  the code and breaking the `Dark.S01E03...` QA-fixture line. Fixed in
+  `src/library/parsers/text.js` by splitting `cleanName` into an exported
+  `cutReleaseTokens` step (no rescue) and the rescue itself; the
+  episode-title fallback now checks `cutReleaseTokens` emptiness before the
+  rescue can reintroduce release tags as text. `cleanName`'s own
+  input/output contract is unchanged. The QA fixture's stated title
+  `"S01E03"` stands as originally specified.

@@ -1,6 +1,12 @@
 import { test } from 'node:test';
 import assert from 'node:assert/strict';
-import { cleanName, sortKey, parseYear, episodeCode } from '../../../src/library/parsers/text.js';
+import {
+  cleanName,
+  cutReleaseTokens,
+  sortKey,
+  parseYear,
+  episodeCode
+} from '../../../src/library/parsers/text.js';
 
 const NOW_2026 = () => Date.UTC(2026, 8, 26);
 
@@ -39,6 +45,15 @@ test('cleanName: a name of only separators falls back to itself unchanged', () =
 
 test('cleanName: empty input stays empty', () => {
   assert.equal(cleanName(''), '');
+});
+
+test('cutReleaseTokens: a release-tags-only suffix cuts to empty, unlike cleanName', () => {
+  assert.equal(cutReleaseTokens('German.1080p.WEB.x264'), '');
+  assert.equal(cleanName('German.1080p.WEB.x264'), 'German 1080p WEB x264');
+});
+
+test('cutReleaseTokens: real title text before a release token is kept', () => {
+  assert.equal(cutReleaseTokens('Geheimnisse.1080p.WEB'), 'Geheimnisse');
 });
 
 test('sortKey: digit runs are left-padded for natural order', () => {

@@ -144,6 +144,16 @@ test('series folder name with a dotted title and a year keeps both title and yea
   assert.equal(result.episode, 1);
 });
 
+test('QA fixture: release-tag suffix with real words still falls back to the episode code', () => {
+  const result = parseEpisode('Dark (2017)/Staffel 1/Dark.S01E03.German.1080p.WEB.x264.mp4', NOW_2026);
+  assert.equal(result.title, 'S01E03');
+});
+
+test('bare scene form with only a resolution tag after the token falls back to the episode code', () => {
+  const result = parseEpisode('Dark (2017)/Staffel 1/Dark.S01E04.1080p.mp4', NOW_2026);
+  assert.equal(result.title, 'S01E04');
+});
+
 test('episode word without a season folder: season null, episode from the word', () => {
   const result = parseEpisode('MyShow/Folge 3 - Der Anfang.mp4', NOW_2026);
   assert.equal(result.season, null);

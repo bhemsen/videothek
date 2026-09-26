@@ -1,6 +1,6 @@
 // @ts-check
 
-import { cleanName, episodeCode } from './text.js';
+import { cleanName, cutReleaseTokens, episodeCode, stripExtension } from './text.js';
 import { titleYearFromName } from './movie.js';
 
 /**
@@ -22,16 +22,6 @@ const SEASON_FOLDER_RE = /^(?:season|staffel|s)[ ._-]*(\d{1,2})$/i;
 const SPECIALS_FOLDER_RE = /^specials?$/i;
 const EPISODE_WORD_RE = /\b(?:e|ep|episode|folge|teil)[ ._-]*(\d{1,3})\b/i;
 const LEADING_NUMBER_RE = /^(\d{1,3})[ ._-]/;
-
-/**
- * Strips the last extension from a filename.
- * @param {string} fileName the last path segment, with extension
- * @returns {string} the stem
- */
-function stripExtension(fileName) {
-  const idx = fileName.lastIndexOf('.');
-  return idx > 0 ? fileName.slice(0, idx) : fileName;
-}
 
 /**
  * Finds the season implied by the nearest matching ancestor folder below the
@@ -140,14 +130,17 @@ function deriveSeries(segments, stem, match, now) {
 
 /**
  * Derives the episode display title from the text after the matched token,
- * falling back to the episode code, then the whole stem.
+ * falling back to the episode code, then the whole stem. Uses
+ * `cutReleaseTokens` (not `cleanName`) to test for emptiness, so a suffix
+ * that is only release tags (e.g. `.German.1080p.WEB.x264`) falls back to
+ * the code instead of `cleanName`'s rescue reintroducing those tags as text.
  * @param {string} stem the file stem
  * @param {SeasonEpisodeMatch} match the detected season/episode match
  * @returns {string} the episode title, never empty
  */
 function deriveEpisodeTitle(stem, match) {
   const after = match.matchEnd !== null ? stem.slice(match.matchEnd) : '';
-  const title = cleanName(after.replace(/^[ ._-]+/, ''));
+  const title = cutReleaseTokens(after.replace(/^[ ._-]+/, ''));
   if (title !== '') {
     return title;
   }

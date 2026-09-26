@@ -14,6 +14,12 @@ const CASES = [
     year: 2017
   },
   {
+    description: 'literal parenthesised-year form (Blade Runner 2049 (2017))',
+    rel: 'Blade Runner 2049 (2017).mp4',
+    title: 'Blade Runner 2049',
+    year: 2017
+  },
+  {
     description: 'title starting with a year-like token',
     rel: '2001 A Space Odyssey 1968 1080p.mp4',
     title: '2001 A Space Odyssey',

@@ -1,6 +1,6 @@
 // @ts-check
 
-import { cleanName, normalizeSeparators, parseYear } from './text.js';
+import { cleanName, normalizeSeparators, parseYear, stripExtension } from './text.js';
 
 /**
  * @typedef {object} MovieResult
@@ -8,16 +8,6 @@ import { cleanName, normalizeSeparators, parseYear } from './text.js';
  *   after `cleanName` (e.g. a name that is only a parenthesised year)
  * @property {number | null} year release year, or `null` when not determined
  */
-
-/**
- * Strips the last extension from a filename.
- * @param {string} fileName the last path segment, with extension
- * @returns {string} the stem
- */
-function stripExtension(fileName) {
-  const idx = fileName.lastIndexOf('.');
-  return idx > 0 ? fileName.slice(0, idx) : fileName;
-}
 
 /**
  * Finds the first `(YYYY)`/`[YYYY]` group that parses as a plausible year.

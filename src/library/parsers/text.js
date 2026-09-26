@@ -59,11 +59,17 @@ export function normalizeSeparators(s) {
 }
 
 /**
- * Normalises a raw filename stem or folder name into a display title.
+ * Runs `cleanName`'s cut step without its empty-result rescue: normalises
+ * separators, strips bracketed groups, cuts at the first release token and
+ * trims. Callers that must tell "nothing but release tags followed" apart
+ * from "there was real title text" (e.g. the episode-title fallback) use
+ * this instead of `cleanName`, whose rescue would reintroduce release tags
+ * as plain text once the cut leaves nothing.
  * @param {string} s raw stem or folder name
- * @returns {string} the cleaned title; empty only when `s` itself is empty
+ * @returns {string} the cut text; empty when only release tokens (and
+ *   separators/brackets) preceded the match, or when `s` itself is empty
  */
-export function cleanName(s) {
+export function cutReleaseTokens(s) {
   let result = normalizeSeparators(s);
   result = result.replace(/\[[^\]]*\]/g, ' ');
   const match = result.match(RELEASE_TOKEN_RE);
@@ -72,6 +78,16 @@ export function cleanName(s) {
   }
   result = result.replace(/\s+/g, ' ').trim();
   result = result.replace(/[ \-._]+$/, '');
+  return result;
+}
+
+/**
+ * Normalises a raw filename stem or folder name into a display title.
+ * @param {string} s raw stem or folder name
+ * @returns {string} the cleaned title; empty only when `s` itself is empty
+ */
+export function cleanName(s) {
+  let result = cutReleaseTokens(s);
   if (result === '') {
     result = s.replace(/[._]/g, ' ').trim();
   }
@@ -109,6 +125,16 @@ export function parseYear(token, now) {
     return null;
   }
   return year;
+}
+
+/**
+ * Strips the last extension from a filename.
+ * @param {string} fileName the last path segment, with extension
+ * @returns {string} the stem
+ */
+export function stripExtension(fileName) {
+  const idx = fileName.lastIndexOf('.');
+  return idx > 0 ? fileName.slice(0, idx) : fileName;
 }
 
 /**
