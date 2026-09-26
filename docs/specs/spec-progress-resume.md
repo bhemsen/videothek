@@ -799,6 +799,19 @@ phone 390 px and desktop 1440 px, compared with the design exports):
   "Gesehen" pill named in tokens (`--text-xs`, `--weight-semibold`);
   pure `nextFocusIndex` extracted and tested; P5's read-only
   `audio-progress.js` join acknowledged in the repository rule.
+- 2026-09-26: implementation (#51) — `upsertProgress` returns the written row
+  via `RETURNING` (not fixed by the spec) so the API layer's `PUT` handler
+  gets the post-write entry without a second `getProgressRow` call;
+  `listContinueRows`/`listStateRows`/`listSeriesProgressRows` select
+  `library_items.*` plus the four progress columns under their own names (no
+  collision, so no aliasing was needed beyond `AS` for clarity); migration
+  003's gap-application (independent of 002) and last-write-wins are
+  additionally exercised against the real `001`/`003` files, not only
+  synthetic ones as in `migrate.test.js`. Adding migration 003 to the shared
+  `src/db/migrations/` directory made two pre-existing tests' hardcoded
+  `migrate(db) === [1, 2]` expectations (`test/db/index.test.js`,
+  `test/db/library-repo.test.js`) stale; updated them to `[1, 2, 3]`, the only
+  edit to files outside this issue's list.
 - 2026-09-26: `public/js/lib/progress.js` implementation (#55) — a stored
   `position` that is `>=` the media's `duration` (with `resume: true`) is
   treated the same as "nothing to resume": reporting arms directly on the
@@ -807,3 +820,19 @@ phone 390 px and desktop 1440 px, compared with the design exports):
   `playing` fallback), a later `emptied` never re-issues it — only P3's own
   reload seek moves `currentTime` after that point, so `trackPlayback` never
   fights it.
+- 2026-09-26: implementation (#52) — `src/api/progress-rules.js` fixes the
+  names/shapes the spec left open: `validateProgressBody(body)` ->
+  `{ position, duration } | null`; `decideProgressWrite({ category, position,
+  duration, existingFinished })` -> `{ write: false }` or `{ write: true,
+  finished }` (the three write-rule steps collapsed into one discriminated
+  result so a caller never upserts on the guarded branch);
+  `deriveProgressState({ finished, position })` ->
+  `'none' | 'in_progress' | 'finished'` (also the function
+  `progress-next-up.js` uses to find *L* and ignore `none` rows —
+  the reason that issue depends on this one); `toProgressEntryJson({ itemId,
+  position, duration, finished, updatedAt })` -> the entry JSON (`updatedAt:
+  null` passes through as `null`, matching the "no row" entry);
+  `parseProgressQuery(searchParams)` -> `{ categories, view, limit } | null`,
+  `null` on any violation (caller maps it to `400 invalid_query`); the
+  `category`/`limit` defaults and the valid category set are derived from
+  P2's `CATEGORIES` at module load, never re-hardcoded.

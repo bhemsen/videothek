@@ -568,3 +568,46 @@ Firefox, desktop and a 390 px phone viewport):
   reading `EXTENSIONS` directly, applying only the fallback to
   `'application/octet-stream'` on top — keeps this module a one-line lookup
   with no extension-table knowledge of its own.
+- 2026-09-27: implementation (#41, `src/http/stream.js`) — two gaps the
+  "Streaming mechanics"/"Error bodies" decisions left open, resolved as
+  follows. (1) A `SendMediaResult.error` for a pre-header `404` is not always
+  `null`: an `open`/`stat` failure's real error is returned as-is (its `code`
+  is what the future media route needs to tell `ENOENT`/`ENOTDIR` from an
+  unusual failure worth logging, per "Error bodies"), and a non-regular-file
+  stat (a directory) — which raises no error naturally, since no read is ever
+  attempted on it — is normalized to a synthetic `EISDIR` error so that route
+  can treat it the same way; every other early `404` (slice past EOF) and the
+  `416` stay `error: null`, as decided. (2) A zero-length body (an empty file
+  served in full, or a slice of length 0) is treated like `HEAD`: headers are
+  written and the response ended without creating a read stream, with an
+  explicit handle close — `fs.createReadStream` with `end < start` is
+  otherwise undefined, and this path skips it rather than adding a special
+  case for it. Verified with a real `node:http` server (port 0): byte-exact
+  200/206/HEAD/slice bodies and headers, 416/404 JSON, handle closure via a
+  `Proxy`-wrapped real `FileHandle` (a Proxy's default traps forward
+  `instanceof` to its target, so it still satisfies `fs.createReadStream`'s
+  `fd:` option), a real client abort and a real paused-socket idle timeout
+  both settling `{ aborted: true, error: null }` via `stream.pipeline`'s
+  `ERR_STREAM_PREMATURE_CLOSE`, and two concurrent 32 MiB downloads
+  hash-compared byte-exact. Shared test setup (temp files, a tracked-server
+  helper, the close-tracking `Proxy`) lives in `test/helpers/http-stream.js`
+  (mirrors the existing `test/helpers/*.js` convention) rather than inline,
+  keeping `test/http/stream.test.js` under the constitution's 300-line limit.
+- 2026-09-26: implementation (#44, `src/db/episodes.js`) — `getNextEpisode`
+  is one prepared statement using a SQLite row-value comparison
+  (`(season, episode, coalesce(episode_end, -1), sort_title, id) > (?, ?, ?,
+  ?, ?)`) against `row`'s own tuple, so ordering and "strictly greater" are
+  both expressed by SQLite itself rather than re-implemented in JS; the
+  regular/specials chain split is a single `CASE WHEN ? = 1 THEN season = 0
+  ELSE season >= 1 END` guard driven by one bound `isSpecial` flag computed
+  from `row.season === 0`, rather than two branches with separate SQL text.
+- 2026-09-26: implementation (#48, `public/js/lib/player-format.js`) —
+  `errorStateFor` returns one of the string literals `'file-missing'` |
+  `'codec'` | `'connection-lost'` (not fixed by the spec text, which only
+  names the German copy); the consuming `player-panel.js` issue matches
+  these exact keys to the state table's German copy. `episodeTitleFor` and
+  the internal `episodeHeading` helper destructure `season`/`episode`/
+  `episodeEnd` with `= null` defaults so an item missing those fields
+  (e.g. a movie) normalizes to the same `EpisodeIdentity` shape
+  `episodeCode` expects, satisfying `tsc --strict` without widening
+  `library-format.js`'s own types.
