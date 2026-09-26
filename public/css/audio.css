@@ -1,0 +1,229 @@
+/*
+ * Shared audio-section styles: the cover-image component (cover-img.js) and
+ * the persistent bottom player bar (player-bar.js). Mobile-first; the
+ * >= 768 px block moves the bar to the page edge (no bottom nav there) and
+ * lets the previous/next buttons show in audiobook mode again.
+ *
+ * Every length/colour here is a token from tokens.css, or a calc()/
+ * color-mix() built from one (enforced by test/frontend-rules.test.js). The
+ * 768 breakpoint below is the only literal length, allowed for @media.
+ */
+
+/* Cover image (cover-img.js): square, placeholder glyph when there is no
+   image or it fails to load. */
+
+.cover-img {
+  position: relative;
+  width: 100%;
+  aspect-ratio: 1 / 1;
+  overflow: hidden;
+  background: var(--color-secondary);
+  border-radius: var(--radius-md);
+}
+
+.cover-img img {
+  display: block;
+  width: 100%;
+  height: 100%;
+  object-fit: cover;
+}
+
+.cover-img__placeholder {
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  width: 100%;
+  height: 100%;
+  color: var(--color-muted);
+}
+
+.cover-img__placeholder svg {
+  width: 50%;
+  height: 50%;
+}
+
+/* Persistent audio bar */
+
+.audio-bar {
+  position: fixed;
+  left: 0;
+  right: 0;
+  bottom: calc(var(--bar-height-mobile) + env(safe-area-inset-bottom));
+  z-index: 15;
+  display: flex;
+  flex-wrap: wrap;
+  align-items: center;
+  gap: var(--space-2) var(--space-4);
+  padding: var(--space-2) var(--space-4);
+  background: var(--color-secondary);
+  border-top: var(--border-width) solid var(--color-border);
+}
+
+.audio-bar[hidden] {
+  display: none;
+}
+
+.audio-bar__cover {
+  flex: 0 0 auto;
+  width: var(--space-12);
+  height: var(--space-12);
+}
+
+.audio-bar__meta {
+  flex: 1 1 auto;
+  min-width: 0;
+}
+
+.audio-bar__title,
+.audio-bar__subtitle {
+  margin: 0;
+  overflow: hidden;
+  text-overflow: ellipsis;
+  white-space: nowrap;
+}
+
+.audio-bar__title {
+  color: var(--color-foreground);
+  font-weight: var(--weight-semibold);
+}
+
+.audio-bar__subtitle {
+  color: var(--color-muted);
+  font-size: var(--text-sm);
+}
+
+.audio-bar__controls {
+  display: flex;
+  flex: 0 0 auto;
+  align-items: center;
+  gap: var(--space-2);
+}
+
+.audio-bar__controls button {
+  position: relative;
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  min-width: var(--tap-min);
+  min-height: var(--tap-min);
+  padding: 0;
+  background: none;
+  border: 0;
+  color: var(--color-foreground);
+  cursor: pointer;
+}
+
+.audio-bar__toggle {
+  color: var(--color-primary);
+}
+
+.audio-bar__controls svg {
+  width: var(--space-6);
+  height: var(--space-6);
+}
+
+.audio-bar__controls .icon-mirror {
+  transform: scaleX(-1);
+}
+
+.audio-bar__skip-label {
+  position: absolute;
+  right: 0;
+  bottom: 0;
+  color: var(--color-foreground);
+  font-size: var(--text-sm);
+  font-weight: var(--weight-semibold);
+}
+
+/* Audiobook-only controls: hidden outright in music mode, and below the
+   breakpoint the previous/next file buttons make room for them (still
+   reachable via the file list). */
+
+.audio-bar[data-mode='audiobook'] .audio-bar__prev,
+.audio-bar[data-mode='audiobook'] .audio-bar__next {
+  display: none;
+}
+
+.audio-bar__seek {
+  display: flex;
+  flex: 1 1 100%;
+  align-items: center;
+  gap: var(--space-2);
+}
+
+.audio-bar__elapsed,
+.audio-bar__total {
+  flex: 0 0 auto;
+  color: var(--color-muted);
+  font-size: var(--text-sm);
+  font-variant-numeric: tabular-nums;
+}
+
+.audio-bar__seek-input {
+  flex: 1 1 auto;
+  min-height: var(--tap-min);
+  margin: 0;
+  background: transparent;
+  appearance: none;
+  cursor: pointer;
+}
+
+.audio-bar__seek-input::-webkit-slider-runnable-track {
+  height: var(--space-1);
+  background: var(--color-border);
+  border-radius: var(--radius-full);
+}
+
+.audio-bar__seek-input::-moz-range-track {
+  height: var(--space-1);
+  background: var(--color-border);
+  border-radius: var(--radius-full);
+}
+
+.audio-bar__seek-input::-webkit-slider-thumb {
+  appearance: none;
+  width: var(--space-4);
+  height: var(--space-4);
+  margin-top: calc((var(--space-1) - var(--space-4)) / 2);
+  border-radius: var(--radius-full);
+  background: var(--color-primary);
+}
+
+.audio-bar__seek-input::-moz-range-thumb {
+  width: var(--space-4);
+  height: var(--space-4);
+  border: 0;
+  border-radius: var(--radius-full);
+  background: var(--color-primary);
+}
+
+.audio-bar__status {
+  flex: 1 1 100%;
+  margin: 0;
+  color: var(--color-destructive);
+  font-size: var(--text-sm);
+}
+
+.audio-bar__status[hidden] {
+  display: none;
+}
+
+.audio-bar-spacer {
+  width: 100%;
+}
+
+@media (min-width: 768px) {
+  .audio-bar {
+    bottom: 0;
+    padding-bottom: env(safe-area-inset-bottom);
+  }
+
+  .audio-bar[data-mode='audiobook'] .audio-bar__prev,
+  .audio-bar[data-mode='audiobook'] .audio-bar__next {
+    display: flex;
+  }
+
+  .audio-bar__seek {
+    flex: 2 1 0%;
+  }
+}

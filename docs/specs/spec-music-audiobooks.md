@@ -697,3 +697,37 @@ compared with the exports):
   28.999999999999996`) — the visible contract (floored whole percent) is
   unchanged, only the float rounding underneath it; `defaultHeadMedia` gained
   direct test coverage via a stubbed `globalThis.fetch`.
+- 2026-09-27: issue #72 implementation (audio section shell, bar, Media
+  Session, cover images) — `player-bar.js` owns creating its own layout
+  spacer and the `ResizeObserver` that sizes it
+  (`createPlayerBar({ player, audio }) → { bar, spacer }`), since the "Bar
+  layout" row attributes the spacer entirely to this module; `app.js` only
+  appends both. Media Session's per-mode artist/album ("music: track
+  artist; audiobook: author ?? book title" / "album/book title") and the
+  bar's own subtitle line ("book · author" for audiobook mode) are both
+  read off the `QueueItem`'s two existing generic fields instead of adding
+  new ones: `subtitle` carries the artist for a music item and the author
+  for an audiobook item, `groupTitle` the album/book title — the
+  music-overview/album and audiobook-grid/detail view issues must build
+  their queue items on this convention. `public/js/audio/icons.js` carries
+  only the six transport glyphs the bar needs (play, pause, previous, next,
+  rewind, forward); "30 s vor" reuses the rewind path mirrored via a CSS
+  class (`.icon-mirror { transform: scaleX(-1) }`) instead of a second
+  path, and the album/book cover placeholders reuse the existing
+  `music`/`audiobooks` glyphs from `../lib/icons.js` rather than
+  duplicating them. `app.js` implements "an invalid id → the section
+  overview via `replaceState`" generically: it always diffs `audioUrl(route)`
+  against the current location and only calls `replaceState`/`pushState`
+  when they differ, so a bad query string is cleaned the same way a stale
+  one from a click would be. The seek slider previews the position on
+  `input` and only commits (`player.seekTo`) on `change` (drag end), so a
+  drag never fights the `timeupdate`-driven position; live position/duration
+  are read from the raw `<audio>` element directly, since `createAudioPlayer`'s
+  `state()` exposes no `currentTime`/`duration`. Not exercised in-browser
+  for this PR: `src/server.js`/app assembly (issue #17, Phase 1) is not yet
+  merged, so the app cannot be started end-to-end yet; `npm run verify`
+  (`tsc` strict + all `node:test` suites, incl. the new
+  `frontend-rules.test.js` no-innerHTML/no-style-attribute/no-raw-length
+  checks) is green, and the Chromium/Firefox walk (bar persists across
+  Musik ↔ Hörbücher, no CSP violation) is deferred to the milestone QA gate
+  once #17 and the other Phase 5 view/API issues have landed.
