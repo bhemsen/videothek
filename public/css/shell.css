@@ -1,0 +1,233 @@
+/*
+ * App shell: skip link, header (wordmark, category nav, account menu) and
+ * the shared #main padding. Mobile-first; the >= 768 px block switches the
+ * nav from a fixed bottom bar to a top bar beside the wordmark.
+ *
+ * Every length/colour here is a token from tokens.css, or a calc()/
+ * color-mix() built from one (enforced by test/frontend-rules.test.js).
+ */
+
+.skip-link:focus-visible {
+  position: fixed;
+  top: var(--space-2);
+  left: var(--space-2);
+  z-index: 100;
+  width: auto;
+  height: auto;
+  margin: 0;
+  padding: var(--space-2) var(--space-4);
+  overflow: visible;
+  clip: auto;
+  white-space: normal;
+  background: var(--color-primary);
+  color: var(--color-background);
+  border-radius: var(--radius-md);
+}
+
+.app-header {
+  position: sticky;
+  top: 0;
+  z-index: 20;
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+  gap: var(--space-4);
+  height: var(--bar-height-mobile);
+  padding: 0 var(--space-4);
+  background: var(--color-secondary);
+  border-bottom: var(--border-width) solid var(--color-border);
+}
+
+.wordmark {
+  display: flex;
+  align-items: center;
+  gap: var(--space-2);
+  color: var(--color-foreground);
+  font-size: var(--text-lg);
+  font-weight: var(--weight-bold);
+  text-decoration: none;
+}
+
+.wordmark svg {
+  width: var(--space-6);
+  height: var(--space-6);
+  color: var(--color-primary);
+}
+
+/* Category nav — mobile: fixed bottom bar */
+
+.app-nav {
+  position: fixed;
+  left: 0;
+  right: 0;
+  bottom: 0;
+  z-index: 20;
+  display: flex;
+  padding-bottom: env(safe-area-inset-bottom);
+  background: var(--color-secondary);
+  border-top: var(--border-width) solid var(--color-border);
+}
+
+.nav-link {
+  display: flex;
+  flex: 1;
+  flex-direction: column;
+  align-items: center;
+  justify-content: center;
+  gap: var(--space-1);
+  min-height: var(--tap-min);
+  color: var(--color-muted);
+  font-size: var(--text-xs);
+  text-decoration: none;
+}
+
+.nav-link svg {
+  width: var(--space-6);
+  height: var(--space-6);
+}
+
+.nav-link[aria-current='page'] {
+  color: var(--color-primary);
+}
+
+/* Account menu (disclosure) */
+
+.account-menu {
+  position: relative;
+}
+
+.account-button {
+  display: flex;
+  align-items: center;
+  gap: var(--space-2);
+  min-height: var(--tap-min);
+  padding: 0 var(--space-2);
+  background: none;
+  border: 0;
+  color: var(--color-foreground);
+  cursor: pointer;
+}
+
+.account-button:disabled {
+  cursor: default;
+  opacity: .6;
+}
+
+.account-button svg {
+  width: var(--space-4);
+  height: var(--space-4);
+  color: var(--color-muted);
+}
+
+.avatar {
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  width: var(--space-8);
+  height: var(--space-8);
+  border-radius: var(--radius-full);
+  background: var(--color-border);
+  font-size: var(--text-sm);
+  font-weight: var(--weight-semibold);
+}
+
+.account-username {
+  display: none;
+}
+
+.account-menu-list {
+  position: absolute;
+  top: calc(100% + var(--space-2));
+  right: 0;
+  z-index: 30;
+  min-width: calc(var(--space-16) * 3);
+  padding: var(--space-2) 0;
+  background: var(--color-secondary);
+  border: var(--border-width) solid var(--color-border);
+  border-radius: var(--radius-md);
+  box-shadow: var(--shadow-md);
+}
+
+.account-menu-meta {
+  margin: 0;
+  padding: var(--space-2) var(--space-4);
+  color: var(--color-muted);
+  font-size: var(--text-sm);
+  border-bottom: var(--border-width) solid var(--color-border);
+}
+
+.account-menu-item {
+  display: flex;
+  align-items: center;
+  gap: var(--space-2);
+  width: 100%;
+  min-height: var(--tap-min);
+  padding: 0 var(--space-4);
+  background: none;
+  border: 0;
+  color: var(--color-foreground);
+  font-size: var(--text-md);
+  text-align: left;
+  text-decoration: none;
+  cursor: pointer;
+}
+
+.account-menu-item svg {
+  width: var(--space-4);
+  height: var(--space-4);
+  color: var(--color-muted);
+}
+
+.account-menu-item:hover {
+  background: var(--color-secondary-hover);
+}
+
+.account-menu-item[hidden] {
+  display: none;
+}
+
+/* Content slot — top padding plus room for the fixed bottom nav on mobile */
+
+#main {
+  padding: var(--space-6) var(--space-4) calc(var(--bar-height-mobile) + var(--space-6) + env(safe-area-inset-bottom));
+}
+
+@media (min-width: 768px) {
+  .app-header {
+    justify-content: flex-start;
+    height: var(--bar-height);
+  }
+
+  .app-nav {
+    position: static;
+    padding-bottom: 0;
+    margin-left: var(--space-8);
+    background: none;
+    border-top: 0;
+  }
+
+  .nav-link {
+    flex: none;
+    flex-direction: row;
+    gap: var(--space-2);
+    padding: 0 var(--space-1);
+    font-size: var(--text-md);
+    border-bottom: var(--focus-width) solid transparent;
+  }
+
+  .nav-link[aria-current='page'] {
+    border-bottom-color: var(--color-primary);
+  }
+
+  .account-menu {
+    margin-left: auto;
+  }
+
+  .account-username {
+    display: block;
+  }
+
+  #main {
+    padding: var(--space-8) var(--space-6);
+  }
+}
