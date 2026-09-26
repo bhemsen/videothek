@@ -514,9 +514,9 @@ committed exports are the durable design:
   2560 px canvas to the 390 px phone column.
 
 Where an export and this spec differ, the spec and `docs/design.md` win: the
-primary colour is the current `primary` token (the `filme-mobile`,
-`serien-desktop`, `serien-mobile` and `serie-detail-mobile` exports predate the token change and show
-the old primary hue); fonts are the system stack (Stitch's design system may
+primary colour is the current `primary` token, `#ff7a1a` (all six exports were
+recoloured after the amber-to-orange token change and already show it); fonts
+are the system stack (Stitch's design system may
 name web fonts); initials are at most two characters (an export shows "HTS");
 tiles in one grid row have equal height; the app bar/nav belong to Phase 1's
 shell; the empty and first-scan states are specified in text above (no
