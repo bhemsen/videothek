@@ -28,9 +28,11 @@ completed spec is moved to `docs/specs/archive/`.
       failures for one username within 15 minutes further attempts for it are
       refused (`429`) until the window has passed.
 - [ ] Without a valid session every page redirects to `/login?next=…` and every
-      other route (`/api/*`, `/logout`, later `/media/*`) answers
+      other registered route (`/api/*`, `/logout`, later `/media/*`) answers
       `401 {"error":"unauthorized"}`; only `/login`, static assets and
       `/healthz` are reachable — machine-checked for every registered route.
+      Unregistered `/api/*` paths answer `404` and method mismatches `405`
+      before any session check (they are not routes and reveal nothing).
 - [ ] Every authenticated page shows the app shell: wordmark, the five category
       entries Filme, Serien, Musik, Hörbücher, Bilder (top bar ≥ 768 px, bottom
       bar below), and an account menu with username, "Benutzerverwaltung"
@@ -76,6 +78,10 @@ Files this phase creates (each owned by exactly one issue):
   `test/helpers/app.js`.
 - Docs/config: `README.md` (new), `.env.example` (comments), `package.json`
   (`test` script, `reset-password` script).
+- `docs/design.md` Input line, edited in this spec PR: "Input — `background`
+  fill (inputs and selects sit on `secondary` cards, where a secondary fill
+  would be invisible), 1 px `border`, …" (rest unchanged). P2 edits only the
+  Grid line, so the two edits do not collide.
 - `docs/architecture.md` edits, made by the app-assembly issue (not in this
   spec PR): Component map — add rows `src/app.js` (assembly: session
   resolution, origin check, dispatch, error mapping), `src/log.js` (JSON-line
@@ -87,7 +93,11 @@ Files this phase creates (each owned by exactly one issue):
   headers + origin check, `requireUser`/`requireAdmin` guards
   (`src/http/guards.js`)"; API handlers row adds `src/api/auth.js`
   (`/login`, `/logout`, `/api/me`); Key flow 5 gets "JSON login, hashed
-  session id, 30-day sliding expiry"; "Where new code goes" → new endpoint line
+  session id, 30-day sliding expiry"; Boundaries line "`public/` talks to the
+  server exclusively via `/api/*` JSON and media stream URLs" becomes
+  "`public/` talks to the server exclusively via `/api/*` JSON, the JSON auth
+  endpoints `POST /login` / `POST /logout`, page routes and media stream URLs";
+  "Where new code goes" → new endpoint line
   reads "`register<X>Routes(router, deps)` in `src/api/<x>.js`, one line in
   `src/http/routes.js`, test in `test/api/`".
 
@@ -165,10 +175,16 @@ Stitch project `videothek` (`15222119956003233865`), screens titled `P1 …`.
 Stitch renders every screen on a desktop canvas; the mobile PNGs are the
 centred mobile frame cropped from that canvas.
 
+Home (`/`), the 404 page and the two admin dialogs have no export on purpose:
+they are fully specified in the text below and only reuse components that the
+exports already show (shell, empty state, card, buttons, inputs).
+
 Implementation notes that override the exports:
 
-- Off-token shades in the exports map to tokens: input/select fill on a card =
-  `--color-background`; hover/active = the derived state tokens in
+- Off-token shades in the exports map to tokens: input/select fill =
+  `--color-background` (design.md Input line amended in this spec PR — the
+  fields sit on `secondary` cards, where a secondary fill would be invisible);
+  hover/active = the derived state tokens in
   `tokens.css` (design.md: hover lightens 8 %, active darkens 8 %). The
   exports' Tailwind CDN script and placeholder image URLs are never copied.
 - Selects are native `<select>` with `appearance: none` inside a
@@ -177,8 +193,13 @@ Implementation notes that override the exports:
 - Login: wordmark, fields "Benutzername" (`autocomplete="username"`) and
   "Passwort" (`autocomplete="current-password"`), primary button "Anmelden"
   (disabled while the request runs), error line `role="alert"` above the
-  button, muted footer "Konten werden von der Verwaltung angelegt." (kept from
-  the export). No shell on the login page.
+  button (`alert` icon + text, colour `destructive`), muted footer "Konten
+  werden von der Verwaltung angelegt." (kept from the export). No shell on the
+  login page. `login.js` submits with
+  `request('POST', '/login', { json: { username, password }, redirectOn401: false })`
+  — never with the default, which would navigate away on `401
+  invalid_credentials` and lose the message; on success it navigates to
+  `safeNext(new URLSearchParams(location.search).get('next'))`.
 - Home (`/`): shell without an active nav entry; `<h1>Start</h1>`, then a rows
   slot `<section class="home-rows" aria-label="Übersicht">`, then the empty
   state (title "Willkommen", text "Wähle eine Kategorie, um loszulegen.") which
@@ -210,8 +231,8 @@ Implementation notes that override the exports:
 - Account menu: button (initial circle — first letter of the username,
   upper-cased; plus username ≥ 768 px) toggling a disclosure menu
   (`aria-expanded`, `aria-controls`): muted "Angemeldet als {name}
-  (Admin|Benutzer)", "Benutzerverwaltung" (admins only, link `/admin`),
-  "Abmelden" (button). The button stays disabled until `/api/me` resolves.
+  (Admin|Benutzer)", "Benutzerverwaltung" (admins only, link `/admin`, `users`
+  icon), "Abmelden" (button, `logout` icon). The button stays disabled until `/api/me` resolves.
   Escape or outside click closes it and returns focus to the button.
   "Abmelden" sends `POST /logout` (`redirectOn401: false`) and then navigates
   to `/login` whatever the status (204, 401 or network error).
@@ -237,7 +258,9 @@ Implementation notes that override the exports:
   geändert.", "Passwort von „{name}“ geändert.", "Benutzer „{name}“ gelöscht."
 - German error copy (API code → text): `invalid_credentials` "Benutzername oder
   Passwort falsch."; `too_many_attempts` "Zu viele Fehlversuche. Bitte in {n}
-  Minuten erneut versuchen." (n = `ceil(Retry-After / 60)`, singular "1 Minute");
+  Minuten erneut versuchen." (n = `max(1, ceil(err.retryAfterSec / 60))` from
+  `ApiError.retryAfterSec`, singular "1 Minute"; when `retryAfterSec` is
+  `null`: "Zu viele Fehlversuche. Bitte später erneut versuchen.");
   `username_taken` "Dieser Benutzername ist bereits vergeben.";
   `invalid_username` "Benutzername: 1–32 Zeichen, nur Buchstaben, Ziffern,
   Punkt, Binde- und Unterstrich."; `invalid_password` "Das Passwort muss
@@ -280,8 +303,8 @@ Implementation notes that override the exports:
 | `public/css/base.css` | reset, typography, focus ring, buttons, inputs, `.select`, `.empty-state`, `.visually-hidden`, dialog |
 | `public/css/shell.css`, `home.css`, `login.css`, `admin.css` | header/nav/menu; home rows + empty state layout; login card; admin table/cards/form |
 | `public/js/lib/dom.js` | `el(tag, attrs = {}, ...children)` → `HTMLElement` (strings become text nodes; `class`, `dataset`, `on<event>` functions, boolean attributes; `null`/`false` omitted; never `innerHTML`); `createEmptyState({ title, text })` → `HTMLElement` |
-| `public/js/lib/icons.js` | `createIcon(paths, { viewBox = '0 0 24 24' } = {})` → `SVGSVGElement` (`aria-hidden="true"`, `focusable="false"`); `icon(name)` for `'logo' \| 'movies' \| 'series' \| 'music' \| 'audiobooks' \| 'images' \| 'chevron-down'` |
-| `public/js/lib/api.js` | `request(method, path, { json, keepalive, redirectOn401 = true } = {})` → `Promise<{ status, data }>`; `ApiError { status, code }`; `toLogin()`; `safeNext(value)` |
+| `public/js/lib/icons.js` | `createIcon(paths, { viewBox = '0 0 24 24' } = {})` → `SVGSVGElement` (`aria-hidden="true"`, `focusable="false"`); `icon(name)` for `'logo' \| 'movies' \| 'series' \| 'music' \| 'audiobooks' \| 'images' \| 'chevron-down' \| 'users' \| 'logout' \| 'alert'` |
+| `public/js/lib/api.js` | `request(method, path, { json, keepalive, redirectOn401 = true } = {})` → `Promise<{ status, data }>`; `ApiError { status, code, retryAfterSec }` (`retryAfterSec: number \| null`); `toLogin()`; `safeNext(value)` |
 | `public/js/lib/nav.js` | `NAV_ENTRIES` (frozen `{ id, label, href }[]`, ids = `CATEGORIES` order: movies, series, music, audiobooks, images); `renderNav(active)` → `HTMLElement`; arrow-key handling |
 | `public/js/lib/shell.js` | `mountShell({ active = null } = {})` → `{ main, setActive(id), me }` (`me`: `Promise<AuthUser>`) |
 | `public/js/{login,home,placeholder,admin}.js` | page scripts; `placeholder.js` reads the category from `<body data-category="<id>">` |
@@ -345,9 +368,12 @@ Implementation notes that override the exports:
 - `request(method, path, opts)`: sends JSON when `opts.json` is given
   (`Content-Type: application/json`), `credentials: 'same-origin'`,
   `keepalive` passed through. 2xx → `{ status, data }` (`data` = parsed JSON,
-  `null` for 204/empty). Non-2xx → throws `ApiError { status, code }` with
-  `code` = body `error` or `'unknown'`; network failure → `ApiError { status: 0,
-  code: 'network' }`. On `401` with `redirectOn401` (default) it calls
+  `null` for 204/empty). Non-2xx → throws `ApiError { status, code,
+  retryAfterSec }` with `code` = body `error` or `'unknown'` and
+  `retryAfterSec` = the `Retry-After` response header parsed as a
+  non-negative integer number of seconds, `null` when absent or not an integer
+  (this server never sends the HTTP-date form); network failure →
+  `ApiError { status: 0, code: 'network', retryAfterSec: null }`. On `401` with `redirectOn401` (default) it calls
   `toLogin()` before throwing. Progress/beacon-like calls pass
   `redirectOn401: false` and drop the error.
 - `toLogin()`: `location.assign('/login?next=' + encodeURIComponent(location.pathname + location.search))`;
@@ -389,7 +415,7 @@ Implementation notes that override the exports:
 | Route | Auth | Behaviour |
 |---|---|---|
 | `GET /healthz` | none | `200 {"status":"ok"}`; `503 {"error":"db_unavailable"}` if `ping(db)` is false |
-| `POST /login` | none | JSON `{username, password}` (both strings, else `400 invalid_json`) → `200 {id, username, role}` + session cookie; a valid prior session cookie is revoked first (fixation defence); `401 invalid_credentials`; `429 too_many_attempts` + `Retry-After` (seconds) |
+| `POST /login` | none | JSON `{username, password}` (both strings, else `400 invalid_json`) → `200 {id, username, role}` + session cookie; a still-valid prior session cookie is revoked only after a successful verify, right before the new session is created (fixation defence; a failed or throttled login never logs anyone out); `401 invalid_credentials`; `429 too_many_attempts` + `Retry-After` (seconds) |
 | `POST /logout` | session | deletes the session, clears the cookie, `204`; without a valid session → `401 unauthorized` (cookie cleared too) |
 | `GET /api/me` | user | `200 {id, username, role}` |
 | `GET /api/users` | admin | `200 [{id, username, role, createdAt}]` ordered by username |
@@ -479,7 +505,7 @@ Migration files contain no transaction statements. Each applied file logs
 | User ids use `AUTOINCREMENT` and all tables are `STRICT` | D12: all migrations STRICT; ids are never reused, so logs and stale client state never point at a different person | 2026-09-26 |
 | Sessions: 32 random bytes base64url token in cookie `vt_session`; DB stores only its SHA-256 hex; idle lifetime 30 days, sliding; `expires_at` refreshed (and cookie re-sent) only when less than 29 days remain — at most one write per session per day; invalid/expired cookie → anonymous, cookie cleared (`Max-Age=0`) | Household TVs/phones should stay logged in; hashed ids make a DB copy useless for hijacking (OWASP Session Mgmt); minimal SD-card writes | 2026-09-26 |
 | Session cleanup: `purgeExpired()` at startup and hourly (`setInterval(...).unref()`); logout, password reset (target's sessions except the caller's), CLI reset (all of the target's sessions) and user deletion (FK cascade) revoke; role changes take effect on the next request because the role is read from `users` per request | No stale privileges, bounded table | 2026-09-26 |
-| Login with a still-valid session cookie revokes that session before creating the new one | OWASP session fixation guidance; no orphan sessions | 2026-09-26 |
+| Login with a still-valid session cookie revokes that session only after the password verified, immediately before creating the new one; a failed or throttled login leaves it untouched | OWASP session fixation guidance; no orphan sessions; a mistyped password on a shared device must not log the current user out (review finding) | 2026-09-26 |
 | Cookie: `Path=/; HttpOnly; SameSite=Lax; Max-Age=2592000`, plus `Secure` when the socket is TLS or the first `X-Forwarded-Proto` value is `https` | Zero-config behind a proxy; a spoofed header only affects the spoofer's own cookie; no new env var needed | 2026-09-26 |
 | Login throttle: in-memory, keyed by normalized username; checked before verifying; 5 failures within a sliding 15 min window → `429` + `Retry-After` (seconds, rounded up) until the oldest failure leaves the window; success resets; max 1000 keys (least-recently-failed evicted); lost on restart | OWASP Authentication cheat sheet (throttle per account); IP keys are useless behind a proxy and `X-Forwarded-For` is spoofable | 2026-09-26 |
 | CSRF / mutation guard exactly as in "Server contract" (host-only `Origin` match, JSON content type only when a body is present, no custom marker) | OWASP CSRF cheat sheet (Origin + SameSite); JSON content type forces a CORS preflight cross-site; cross-phase decision D4 | 2026-09-26 |
@@ -490,6 +516,11 @@ Migration files contain no transaction statements. Each applied file logs
 | Server contract (handler/ctx, `createApp`/deps, `Config`, router matching, HEAD, `readJson`, mutation guard, logging, JSON conventions) as specified in "Server contract" | Cross-phase consolidation D4 — every phase codes against it verbatim; `ctx.sessionId` is an additive P1-internal key | 2026-09-26 |
 | Router exposes `match()` + `routes()` instead of `handle()`; the app decides between handler, static fallback, 405 and 404 | `GET /login` (page) and `POST /login` (API) share a path; `routes()` lets `test/route-auth.test.js` check every registered route | 2026-09-26 |
 | Frontend contract (`api.js`, `shell.js`, tokens, literal-length rule, CSP `setProperty`, page-private files) as specified in "Frontend contract"; `mountShell` additionally returns `me` | Cross-phase consolidation D5; `me` avoids a second `/api/me` fetch on the admin page and is additive | 2026-09-26 |
+| `ApiError` carries an additive third field `retryAfterSec: number \| null` parsed from `Retry-After`; `login.js` calls `request('POST', '/login', { json, redirectOn401: false })` | D5-additive (like `me`): the throttle message needs the minute count, which lives only in the header, and the error body stays strictly `{ "error": "<code>" }`; a raw `fetch` in `login.js` would duplicate `request()`; without `redirectOn401: false` a `401 invalid_credentials` would navigate away (review finding) | 2026-09-26 |
+| P1 icon set = `logo`, the five categories, `chevron-down`, `users`, `logout`, `alert` | The exports show icons on the account-menu items and the login error line; later phases never edit `icons.js` (D5), so P1 ships every icon its own screens use | 2026-09-26 |
+| Input and select fill = `background`; `docs/design.md` Input line amended in this spec PR | design.md said "secondary surface", but every P1 input sits on a `secondary` card where that fill would be invisible; the exports show the `background` fill (review finding) | 2026-09-26 |
+| Architecture boundary for `public/` widened to name the JSON auth endpoints and page routes (edit made by the app-assembly issue) | `POST /login`/`POST /logout` are JSON endpoints outside `/api/*` (key flow 5) and pages are served routes; the declared deviation must be complete (review finding) | 2026-09-26 |
+| Unregistered `/api/*` paths → `404` and method mismatches → `405` are answered before any session check; the 401 guarantee covers every registered route | They are not routes, so the constitution's session rule is untouched; they reveal no data; dispatch stays one simple match | 2026-09-26 |
 | Layout tokens `--border-width`, `--focus-width`, `--focus-offset`, `--grid-min` (160 px, H3), `--row-min` (48 px) ship in P1 | D5: later phases never edit `tokens.css`, so P2/P4/P6 do not collide | 2026-09-26 |
 | Page URLs are English kebab-case matching page files (`GET /<name>` → `public/<name>.html`, `*.html` → 404); canonical URLs `/`, `/login`, `/admin`, `/movies`, `/series`, `/series-detail?id=`, `/player?id=`, `/music`, `/audiobooks`, `/images`; nav labels German | Cross-phase consolidation D1; one generic page rule means later phases only add/replace `public/<page>.html` | 2026-09-26 |
 | Category placeholders are real files (`public/movies.html` …) sharing `public/js/placeholder.js`; the owning phase replaces its file; nobody edits `nav.js`; nav ids are the plural category ids (`movies, series, music, audiobooks, images`) | D1, D3; no shared nav-config edits between parallel phases | 2026-09-26 |
@@ -500,9 +531,9 @@ Migration files contain no transaction statements. Each applied file logs
 | Graceful shutdown on SIGINT/SIGTERM: `stop()` clears timers, `server.close()` + `closeIdleConnections()`, after 5 s `closeAllConnections()` (open media streams), closes the DB, exit 0; a second signal exits 1 immediately; startup/listen errors exit 1; no global crash handlers — a supervisor restarts (README systemd `Restart=on-failure`) | Clean WAL checkpoint; long streams must not block shutdown | 2026-09-26 |
 | `createApp` is separate from the entry so tests run the full stack in-process on port 0; `test/helpers/app.js` exports `startTestApp({ mediaRoot?, now?, ...extra } = {})` → `Promise<{ baseUrl, db, config, deps, createUser(name, pw, role = 'user') → Promise<{id, username, role}>, login(name, pw) → Promise<string /* "vt_session=…" */>, close() }>`; it uses temp `DATA_DIR`/`MEDIA_ROOT` dirs (removed on `close`), runs migrations, no bootstrap, a silent logger (`deps.logLines` collects lines), listens on `127.0.0.1:0`, and `login` creates the session through the session store (no HTTP) | Signals cannot be tested portably (Windows); one shared helper avoids six ad-hoc harnesses; `...extra` lets P2 inject `library` | 2026-09-26 |
 | `npm test` = `node --test "test/**/*.test.js"`; tests mirror `src/` (`src/a/b.js` ↔ `test/a/b.test.js`) | Default discovery would execute `test/helpers/*.js` and fixtures as test files; a fixed mirror makes "every module has a test" machine-checkable | 2026-09-26 |
-| Machine-checked rules — `test/constitution.test.js`: no `dependencies` key and devDependencies exactly `typescript` + `@types/node`; `process.env` only in `src/config.js`; no `console.` in `src/`; no `child_process`, `eval(` or `new Function` in `src/`/`public/`; no `src/` import from `public/` and vice versa; every `src/**/*.js` has its mirrored test; no `.js/.css/.html` file under `src/`, `public/`, `test/` (fixtures excluded) over 300 lines. `test/frontend-rules.test.js`: `tokens.css` mirrors every design.md colour and the token list above; no hex/`rgb(`/`hsl(` colour outside `tokens.css`; no `px`/`rem`/`em` length outside `tokens.css` except breakpoints in `@media` preludes; no `http(s)://` in `public/` except `http://www.w3.org/2000/svg`; no `innerHTML`/`outerHTML`/`insertAdjacentHTML`/`document.write`; no `style=` attribute or `setAttribute('style'` and no inline `<script>`/`<style>` in `public/`. `test/route-auth.test.js`: every route from `router.routes()` except `GET /healthz`, `HEAD /healthz`, `POST /login` answers `401 {"error":"unauthorized"}` without a session (`:param` → `1`) | Turns constitution/design rules into verify failures; later phases' routes are covered automatically once registered | 2026-09-26 |
+| Machine-checked rules — `test/constitution.test.js`: no `dependencies` key and devDependencies exactly `typescript` + `@types/node`; `process.env` only in `src/config.js`; no `console.` in `src/`; no `child_process`, `eval(` or `new Function` in `src/`/`public/`; no `src/` import from `public/` and vice versa; every `src/**/*.js` has its mirrored test; no `.js/.css/.html` file under `src/`, `public/`, `test/` (fixtures excluded) over 300 lines. `test/frontend-rules.test.js` (scans `public/**/*.{css,js,html}`): `tokens.css` mirrors every design.md colour and the token list above; no hex/`rgb(`/`hsl(` colour outside `tokens.css`; no `px`/`rem`/`em` length outside `tokens.css` except breakpoints in `@media` preludes; `public/favicon.svg` is outside that scan (an SVG favicon cannot read CSS tokens) but every hex colour in it must equal a design.md colour token (checked); no `http(s)://` in `public/` except `http://www.w3.org/2000/svg`; no `innerHTML`/`outerHTML`/`insertAdjacentHTML`/`document.write`; no `style=` attribute or `setAttribute('style'` and no inline `<script>`/`<style>` in `public/`. `test/route-auth.test.js`: every route from `router.routes()` except `GET /healthz`, `HEAD /healthz`, `POST /login` answers `401 {"error":"unauthorized"}` without a session (`:param` → `1`) | Turns constitution/design rules into verify failures; later phases' routes are covered automatically once registered | 2026-09-26 |
 | The ≤ 60-lines-per-function rule is enforced in PR review, not by a test | TypeScript 7 exposes no parser API and a hand-written brace counter would be brittle | 2026-09-26 |
-| Frontend libs are unit-tested only where pure: `test/public/api.test.js` covers `request`/`ApiError`/`safeNext` with a stubbed `fetch`/`location`; DOM modules are verified in the browser QA | Node has no DOM and no dependency may be added | 2026-09-26 |
+| Frontend libs are unit-tested only where pure: `test/public/api.test.js` covers `request`/`ApiError` (incl. `retryAfterSec`: `Retry-After: 840` → 840, absent/non-integer → `null`, network → `null`; `redirectOn401: false` never calls `toLogin`)/`safeNext` with a stubbed `fetch`/`location`; DOM modules are verified in the browser QA | Node has no DOM and no dependency may be added | 2026-09-26 |
 | Timestamps: DB columns are INTEGER epoch ms; API exposes ISO-8601 strings | One convention across phases (D4) | 2026-09-26 |
 | Login page keeps the export's footer "Konten werden von der Verwaltung angelegt."; the mobile admin card drops the export's role pill (the select is the only role display) | Footer answers "how do I get an account" (no self-registration); a pill next to an editable select duplicates state | 2026-09-26 |
 | Human decision at spec-acceptance gate (H1): account recovery = offline CLI `npm run reset-password -- <username>` (`node --env-file-if-exists=.env src/cli/reset-password.js`): loads config with `requireMediaRoot: false`, opens the DB (works while the server runs — WAL + `busy_timeout`), normalizes the username, prompts "Neues Passwort für {name}: " and "Passwort wiederholen: " without echo (TTY raw mode; plain line read when stdin is not a TTY), validates (8–256), sets the hash, revokes all of that user's sessions, prints "Passwort für {name} gesetzt, {n} Sitzung(en) beendet.", logs `password_reset {user, by: "cli"}`, exit 0; missing argument, unknown user ("Unbekannter Benutzer: {name}"), mismatch ("Passwörter stimmen nicht überein.") or invalid password → message on stderr, exit 1; promotes nothing; own test with injected streams; README recovery section | Recovers a lost last-admin password without losing progress; needs no new env var | 2026-09-26 |
@@ -545,7 +576,8 @@ Chromium and Firefox, mobile ≤ 767 px and desktop ≥ 1024 px viewport):
       `Origin` allowed, forwarded host honoured); admin guards (self delete,
       own role, last admin incl. concurrent demotion, non-admin 403); CLI
       (success revokes sessions, unknown user, mismatch, short password, missing
-      argument — all with injected streams).
+      argument — all with injected streams); frontend `api.js`
+      (`ApiError.retryAfterSec` parsing, `redirectOn401: false`, `safeNext`).
 - [ ] `start()`/`stop()` test: importing `src/server.js` starts nothing;
       `stop()` resolves within 6 s while a request stream is still open.
 - [ ] Start without `MEDIA_ROOT` → exit 1, log names `MEDIA_ROOT`; with
@@ -556,7 +588,8 @@ Chromium and Firefox, mobile ≤ 767 px and desktop ≥ 1024 px viewport):
       `/` → 302 `/login?next=%2F`; `/css/tokens.css` 200; `/admin.html` 404;
       every response has the CSP and `nosniff` headers.
 - [ ] Login page matches the exports on both viewports; wrong password shows
-      the error; the 6th wrong attempt shows the throttle message; `next`
+      the error (no navigation); the 6th wrong attempt shows the throttle
+      message with the minute count ("in 15 Minuten"); `next`
       is honoured, `next=//evil.example` falls back to `/`.
 - [ ] Shell: bottom nav on mobile, top nav on desktop; each category entry opens
       its placeholder with the entry active in primary (orange); home shows
@@ -649,3 +682,11 @@ Chromium and Firefox, mobile ≤ 767 px and desktop ≥ 1024 px viewport):
   and `/404` not routable, page `no-store`; home copy "Willkommen"; admin
   status/error copy; CLI `requireMediaRoot: false`; `AUTOINCREMENT` user ids;
   JSON `Cache-Control: no-store` on every JSON response.
+- 2026-09-26: Spec-acceptance review findings resolved (D5 additive):
+  `ApiError.retryAfterSec` from `Retry-After` for the throttle minute count;
+  `login.js` uses `redirectOn401: false`; P1 icon set adds `users`, `logout`,
+  `alert`; design.md Input line amended to `background` fill; architecture
+  boundary for `public/` widened (auth endpoints, page routes); frontend-rules
+  scan scoped to css/js/html with a token-colour check for `favicon.svg`;
+  401 guarantee worded for registered routes; prior session revoked only after
+  a successful login; missing exports for home/404/dialogs noted.
