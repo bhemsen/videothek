@@ -132,8 +132,11 @@ function splitRelPath(relPath) {
 export async function buildItem({ mediaRoot, relPath, category, stat, now }) {
   const { dir, fileName } = splitRelPath(relPath);
   const ext = extensionOf(fileName);
+  if (!Object.hasOwn(EXTENSIONS, ext)) {
+    return null;
+  }
   const entry = EXTENSIONS[ext];
-  if (!entry || !kindsFor(category).includes(entry.kind)) {
+  if (!kindsFor(category).includes(entry.kind)) {
     return null;
   }
 

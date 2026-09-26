@@ -1,12 +1,14 @@
 // @ts-check
 import { readdir, stat as fsStat } from 'node:fs/promises';
 import { join } from 'node:path';
+import { EXTENSIONS } from './parsers/compat.js';
 
 /**
  * One directory's worth of I/O for the scanner: `readdir({ withFileTypes:
- * true })` plus one `stat` per candidate file, with the skip rules (hidden
- * names, known NAS/OS system folders, symlinks, undecodable names) applied so
- * a caller never sees a skipped entry in `files` or `dirs`.
+ * true })` plus one `stat` per candidate file (extension known), with the
+ * skip rules (hidden names, known NAS/OS system folders, symlinks,
+ * undecodable names, unknown extension) applied so a caller never sees a
+ * skipped entry in `files` or `dirs`.
  *
  * Spec: docs/specs/spec-library-video.md, "Classification" (skip rules) and
  * "Scanner modules" (`walk.js`).
@@ -68,6 +70,20 @@ function isUndecodable(name) {
 }
 
 /**
+ * @param {string} name a file's on-disk name
+ * @returns {boolean} whether `name`'s lower-cased extension is a known key of
+ *   `EXTENSIONS` — `item-builder.js` can never admit any other extension, so
+ *   `stat`-ing such a file is wasted I/O on every rescan (spec: "Scanner
+ *   modules", `walk.js`)
+ */
+function hasKnownExtension(name) {
+  const idx = name.lastIndexOf('.');
+  if (idx <= 0) return false;
+  const ext = name.slice(idx + 1).toLowerCase();
+  return Object.hasOwn(EXTENSIONS, ext);
+}
+
+/**
  * Lists one directory's admissible entries. A `stat` failing with `ENOENT`
  * (the file vanished between `readdir` and `stat`) drops the file silently;
  * any other `stat` error is reported in `files` as `{ name, error }` so the
@@ -107,6 +123,9 @@ export async function listDirectory(absDir, { statFn = fsStat } = {}) {
     }
     if (!entry.isFile()) {
       continue; // socket, FIFO, device, or another non-media entry type
+    }
+    if (!hasKnownExtension(name)) {
+      continue; // .nfo/.srt/.vtt/.txt/no-extension etc. - never indexable
     }
     try {
       const stat = await statFn(join(absDir, name));

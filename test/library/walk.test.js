@@ -56,6 +56,28 @@ test('listDirectory: lists regular files with their stat and subdirectories', as
   assert.deepEqual(result.skipped, { symlinks: 0, undecodable: 0 });
 });
 
+test('listDirectory: skips files with an unknown or missing extension, uncounted, without stat-ing them', async (t) => {
+  const root = await createMediaTree();
+  t.after(() => removeMediaTree(root));
+  await writeMediaFile(root, 'Movie.nfo');
+  await writeMediaFile(root, 'README');
+  await writeMediaFile(root, 'Movie.mp4');
+
+  const statted = /** @type {string[]} */ ([]);
+  /** @param {string} absPath */
+  const statFn = (absPath) => {
+    statted.push(absPath);
+    return fs.stat(absPath);
+  };
+
+  const result = await listDirectory(root, { statFn });
+
+  assert.deepEqual(result.files.map((f) => f.name), ['Movie.mp4']);
+  assert.deepEqual(result.skipped, { symlinks: 0, undecodable: 0 });
+  assert.equal(statted.some((p) => p.endsWith('Movie.nfo')), false);
+  assert.equal(statted.some((p) => p.endsWith('README')), false);
+});
+
 test('listDirectory: skips hidden files and directories entirely, uncounted', async (t) => {
   const root = await createMediaTree();
   t.after(() => removeMediaTree(root));

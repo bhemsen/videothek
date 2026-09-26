@@ -186,7 +186,10 @@ test('buildItem: music/audiobooks/images (P2 minimal) get only a cleaned title, 
   assert.equal(row?.season, null);
 });
 
-test('buildItem: a zero-byte sniff-table file is not playable and is never sniffed', async (t) => {
+// Not a proof that sniffMp4Codecs is never invoked: it catches every error
+// (including ENOENT) and returns null, the same result a genuine sniff of an
+// empty file would produce, so codecs/playable cannot distinguish the two.
+test('buildItem: a zero-byte sniff-table file is not playable and has no codecs', async (t) => {
   const root = await createMediaTree();
   t.after(() => removeMediaTree(root));
   await writeMediaFile(root, 'Filme/Empty.mp4', { content: Buffer.alloc(0) });
