@@ -49,14 +49,21 @@ const BACKSPACE_CHARS = new Set(['\u007f', '\b']);
  * second prompt's answer whenever a test/shell wrote both lines at once,
  * leaving the CLI waiting forever on input that would never arrive).
  * Non-TTY: chunks are appended verbatim and sliced on the next newline (no
- * echo control needed). TTY: keystrokes are interpreted with echo disabled —
- * Backspace/Delete edit the buffer, Enter submits, Ctrl+C aborts the process.
+ * echo control needed). TTY: each chunk's characters are replayed one at a
+ * time through `onKeystroke` (a pasted password arrives as one multi-char
+ * chunk, not one keystroke per chunk) with echo disabled — Backspace/Delete
+ * edit the buffer, Enter submits, Ctrl+C aborts the process. If `input` ends
+ * (EOF/closed) while a call is still waiting — empty/closed stdin, or a
+ * final line with no trailing newline — that call resolves with whatever is
+ * left in the buffer (possibly `''`) instead of hanging forever; any later
+ * call resolves the same way immediately, since no more data can arrive.
  * @param {CliInput} input
  * @param {boolean} isTTY
  * @returns {() => Promise<string>} resolves the next queued line
  */
 function createPromptReader(input, isTTY) {
   let buffer = '';
+  let ended = false;
   /** @type {((line: string) => void) | null} */
   let waiting = null;
 
@@ -70,14 +77,14 @@ function createPromptReader(input, isTTY) {
     resolve(line);
   };
 
-  /** @param {string} text */
-  const onKeystroke = (text) => {
-    if (text === CTRL_C) {
+  /** @param {string} ch a single character/code point from a TTY data chunk */
+  const onKeystroke = (ch) => {
+    if (ch === CTRL_C) {
       input.setRawMode?.(false);
       process.exit(1);
       return;
     }
-    if (text === '\r' || text === '\n') {
+    if (ch === '\r' || ch === '\n') {
       const resolve = waiting;
       const line = buffer;
       buffer = '';
@@ -85,26 +92,45 @@ function createPromptReader(input, isTTY) {
       resolve?.(line);
       return;
     }
-    buffer = BACKSPACE_CHARS.has(text) ? buffer.slice(0, -1) : buffer + text;
+    buffer = BACKSPACE_CHARS.has(ch) ? buffer.slice(0, -1) : buffer + ch;
   };
 
   /** @param {unknown} chunk */
   const onData = (chunk) => {
     const text = String(chunk);
     if (isTTY) {
-      onKeystroke(text);
+      for (const ch of text) onKeystroke(ch);
     } else {
       buffer += text;
       tryResolveLine();
     }
   };
 
+  const onEnd = () => {
+    if (ended) return;
+    ended = true;
+    if (!waiting) return;
+    const resolve = waiting;
+    const line = buffer;
+    buffer = '';
+    waiting = null;
+    resolve(line);
+  };
+
   input.setRawMode?.(isTTY);
   input.setEncoding?.('utf8');
   input.on('data', onData);
+  input.on('end', onEnd);
+  input.on('close', onEnd);
   input.resume?.();
 
   return () => new Promise((resolveLine) => {
+    if (ended) {
+      const line = buffer;
+      buffer = '';
+      resolveLine(line);
+      return;
+    }
     waiting = resolveLine;
     if (!isTTY) tryResolveLine();
   });
@@ -126,29 +152,31 @@ async function promptSecret(label, output, readNext) {
 
 /**
  * Runs the offline `reset-password` CLI against already-opened dependencies.
- * Never throws: every failure is reported on `output` in German and
- * reflected in the returned exit code.
+ * Never throws: every failure is reported on `errorOutput` (stderr in
+ * `main()`) in German and reflected in the returned exit code; `output`
+ * (stdout in `main()`) only ever carries the prompts and the success line.
  * @param {{
  *   args: string[],
  *   config: Config,
  *   db: import('node:sqlite').DatabaseSync,
  *   input: CliInput,
  *   output: CliOutput,
+ *   errorOutput: CliOutput,
  *   log: Logger,
  *   isTTY: boolean,
  * }} deps
  * @returns {Promise<number>} process exit code
  */
-export async function resetPassword({ args, db, input, output, log, isTTY }) {
+export async function resetPassword({ args, db, input, output, errorOutput, log, isTTY }) {
   const rawUsername = args[0];
   if (!rawUsername) {
-    output.write('Benutzername fehlt. Verwendung: npm run reset-password -- <username>\n');
+    errorOutput.write('Benutzername fehlt. Verwendung: npm run reset-password -- <username>\n');
     return 1;
   }
   const username = normalizeUsername(rawUsername);
   const user = getUserByUsername(db, username);
   if (!user) {
-    output.write(`Unbekannter Benutzer: ${username}\n`);
+    errorOutput.write(`Unbekannter Benutzer: ${username}\n`);
     return 1;
   }
 
@@ -158,11 +186,11 @@ export async function resetPassword({ args, db, input, output, log, isTTY }) {
   input.setRawMode?.(false);
   input.pause?.();
   if (password !== repeat) {
-    output.write('Passwörter stimmen nicht überein.\n');
+    errorOutput.write('Passwörter stimmen nicht überein.\n');
     return 1;
   }
   if (!validatePassword(password)) {
-    output.write('Das Passwort muss 8–256 Zeichen lang sein.\n');
+    errorOutput.write('Das Passwort muss 8–256 Zeichen lang sein.\n');
     return 1;
   }
 
@@ -189,6 +217,7 @@ async function main() {
       db,
       input: /** @type {CliInput} */ (process.stdin),
       output: process.stdout,
+      errorOutput: process.stderr,
       log,
       isTTY: process.stdin.isTTY === true,
     });

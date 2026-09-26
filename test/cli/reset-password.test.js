@@ -98,6 +98,7 @@ test('success: sets the new hash, revokes every session, prints and logs', async
     };
     const log = createLogger({ out, err: fakeLogStream(), now: () => 0 });
     const output = fakeOutput();
+    const errorOutput = fakeOutput();
 
     // normalizeUsername accepts stray whitespace/case; the argument need not
     // match the stored, already-normalized form exactly.
@@ -107,6 +108,7 @@ test('success: sets the new hash, revokes every session, prints and logs', async
       db,
       input: fakeInput(['NewPassw0rd', 'NewPassw0rd']),
       output,
+      errorOutput,
       log,
       isTTY: false,
     });
@@ -114,9 +116,11 @@ test('success: sets the new hash, revokes every session, prints and logs', async
     assert.equal(code, 0);
     const updated = getUserById(db, user.id);
     assert.equal(await verifyPassword('NewPassw0rd', updated?.password_hash ?? ''), true);
+    assert.equal(updated?.role, 'admin'); // promotes nothing
     assert.equal(getSessionWithUser(db, 'sess-1'), undefined);
     assert.equal(getSessionWithUser(db, 'sess-2'), undefined);
     assert.match(output.text, /Passwort für julia gesetzt, 2 Sitzung\(en\) beendet\./);
+    assert.equal(errorOutput.text, '');
     assert.deepEqual(logLines, [
       { t: new Date(0).toISOString(), level: 'info', event: 'password_reset', user: 'julia', by: 'cli' },
     ]);
@@ -133,6 +137,7 @@ test('unknown user: exits 1, reports the name, changes nothing, logs nothing', a
     const logged = /** @type {unknown[]} */ ([]);
     log.info = (/** @type {string} */ event) => logged.push(event);
     const output = fakeOutput();
+    const errorOutput = fakeOutput();
 
     const code = await resetPassword({
       args: ['ghost'],
@@ -140,12 +145,14 @@ test('unknown user: exits 1, reports the name, changes nothing, logs nothing', a
       db,
       input: fakeInput([]),
       output,
+      errorOutput,
       log,
       isTTY: false,
     });
 
     assert.equal(code, 1);
-    assert.match(output.text, /Unbekannter Benutzer: ghost/);
+    assert.match(errorOutput.text, /Unbekannter Benutzer: ghost/);
+    assert.equal(output.text, ''); // failure goes to stderr, never stdout
     assert.equal(logged.length, 0);
   } finally {
     db.close();
@@ -164,6 +171,7 @@ test('mismatch: exits 1, reports it, leaves the hash untouched', async () => {
     });
     const log = createLogger({ out: fakeLogStream(), err: fakeLogStream(), now: () => 0 });
     const output = fakeOutput();
+    const errorOutput = fakeOutput();
 
     const code = await resetPassword({
       args: ['bob'],
@@ -171,12 +179,14 @@ test('mismatch: exits 1, reports it, leaves the hash untouched', async () => {
       db,
       input: fakeInput(['PasswordOne', 'PasswordTwo']),
       output,
+      errorOutput,
       log,
       isTTY: false,
     });
 
     assert.equal(code, 1);
-    assert.match(output.text, /Passwörter stimmen nicht überein\./);
+    assert.match(errorOutput.text, /Passwörter stimmen nicht überein\./);
+    assert.doesNotMatch(output.text, /Passwörter stimmen nicht überein/);
     assert.equal(getUserById(db, user.id)?.password_hash, 'scrypt$old');
   } finally {
     db.close();
@@ -195,6 +205,7 @@ test('invalid password (too short): exits 1, reports it, leaves the hash untouch
     });
     const log = createLogger({ out: fakeLogStream(), err: fakeLogStream(), now: () => 0 });
     const output = fakeOutput();
+    const errorOutput = fakeOutput();
 
     const code = await resetPassword({
       args: ['carol'],
@@ -202,12 +213,14 @@ test('invalid password (too short): exits 1, reports it, leaves the hash untouch
       db,
       input: fakeInput(['short1', 'short1']),
       output,
+      errorOutput,
       log,
       isTTY: false,
     });
 
     assert.equal(code, 1);
-    assert.match(output.text, /Das Passwort muss 8–256 Zeichen lang sein\./);
+    assert.match(errorOutput.text, /Das Passwort muss 8–256 Zeichen lang sein\./);
+    assert.doesNotMatch(output.text, /Das Passwort muss/);
     assert.equal(getUserById(db, user.id)?.password_hash, 'scrypt$old');
   } finally {
     db.close();
@@ -220,6 +233,7 @@ test('missing argument: exits 1 and reports usage without touching the db', asyn
   try {
     const log = createLogger({ out: fakeLogStream(), err: fakeLogStream(), now: () => 0 });
     const output = fakeOutput();
+    const errorOutput = fakeOutput();
 
     const code = await resetPassword({
       args: [],
@@ -227,12 +241,14 @@ test('missing argument: exits 1 and reports usage without touching the db', asyn
       db,
       input: fakeInput([]),
       output,
+      errorOutput,
       log,
       isTTY: false,
     });
 
     assert.equal(code, 1);
-    assert.match(output.text, /Benutzername fehlt/);
+    assert.match(errorOutput.text, /Benutzername fehlt/);
+    assert.equal(output.text, ''); // failure goes to stderr, never stdout
   } finally {
     db.close();
     rmSync(dataDir, { recursive: true, force: true });
