@@ -955,3 +955,22 @@ and desktop 1440 px, compared with the design exports):
   `onScanComplete` not fired for aborted runs; `sort` default and invalid
   URL values; file-size format; "Folgen 1–2" label; season-less series meta;
   README section "Medienordner".
+- 2026-09-26: change detection (#31) — `MEDIA_ROOT` itself is watched by
+  `watcher.js`'s `start()` calling `dirObserver.seen('')` directly, not by the
+  scanner's walk: the scanner (#33) only calls `seen(relDir)` for category
+  roots and their descendants (readdir(MEDIA_ROOT) enumerates roots but is
+  never itself passed to `syncDirectory`), yet "MEDIA_ROOT and every directory
+  the walk visits get one watch" requires it watched too. `seen('')` is
+  idempotent, so `startLibrary` (#34) needs no special-casing either way.
+- 2026-09-26: change detection (#31) — "the same backoff applies to the
+  Linux MEDIA_ROOT watch" is implemented by having `watcher.js` intercept
+  `dirObserver`'s `onWatchError('')` (the root's entry in the same
+  per-directory watch set, not a second parallel watch) and run it through
+  the identical 5 s→5 min doubling reconnect + "one full scan on recovery"
+  used for the macOS/Windows recursive watch, instead of the generic
+  per-directory `requestPaths([dir])` handling every other directory gets.
+- 2026-09-26: change detection (#31) — `dir-watch.js`'s ENOSPC/EMFILE
+  "stop adding watches" flag is cleared inside `sweep()` (only ever called
+  after a full scan), so watches resume being attempted starting with the
+  next full scan's walk, matching "stops adding watches until the next full
+  scan" without a separate reset signal.
