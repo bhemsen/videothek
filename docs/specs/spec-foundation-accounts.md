@@ -720,3 +720,12 @@ Chromium and Firefox, mobile ≤ 767 px and desktop ≥ 1024 px viewport):
   `'unknown'` respectively rather than throwing, and `Retry-After` is accepted
   only as a non-negative-integer digit string (`^\d+$`) per the spec's
   "never sends the HTTP-date form" note.
+- 2026-09-26: Issue #26 (`README.md`/`.env.example`) implemented — README
+  covers install, the config table (incl. `ADMIN_USER`/`ADMIN_PASSWORD`
+  validation and the `config_invalid`/`admin_missing` failure paths), first
+  start, a systemd unit (`Restart=on-failure`), Caddy and nginx reverse-proxy
+  snippets (both preserving the host and setting `X-Forwarded-Proto`), backup
+  (stop, copy `videothek.db*`) and recovery via
+  `npm run reset-password -- <username>`; `.env.example` blanks
+  `ADMIN_PASSWORD` so copying it unedited fails loudly instead of creating an
+  admin with a known password. No new design decisions.
