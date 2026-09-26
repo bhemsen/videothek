@@ -7,7 +7,7 @@ kind: "ui"
 color:
   background: "#0f1115"   # page background
   foreground: "#e8eaed"   # primary text (contrast 15.7:1 on background)
-  primary: "#f5b301"      # amber accent: primary actions, progress bars, focus ring
+  primary: "#ff7a1a"      # vivid orange accent: primary actions, progress bars, focus ring (7.3:1 with background text)
   secondary: "#1c2029"    # raised surfaces: cards, player bar, dialogs
   accent: "#4fb3ff"       # links, selected state, secondary highlights
   muted: "#9aa0aa"        # secondary text, meta info (contrast 7.2:1 on background)
@@ -42,7 +42,7 @@ shadow:
 
 Dark, media-first interface in the spirit of a home cinema: content (titles,
 thumbnails, the player) carries the page, chrome stays quiet. Dark background
-reduces glare on TVs and in the evening; a single warm amber accent marks what
+reduces glare on TVs and in the evening; a single vivid orange accent marks what
 is actionable and how far something has been watched. Layouts are responsive
 from phone (360 px) to TV (1920 px), with touch targets of at least 44×44 px and
 full keyboard/remote navigation (arrow keys, Enter, Escape). Accessibility
@@ -97,7 +97,7 @@ as a committed file at the location above, not as a link.
 
 ## Components
 
-- **Button** — variants `primary` (amber background, `#0f1115` text), `secondary`
+- **Button** — variants `primary` (orange background, `#0f1115` text), `secondary`
   (secondary surface, foreground text, border), `danger` (destructive text on
   secondary surface); height ≥ 44 px, radius `md`; states: hover lightens 8 %,
   active darkens 8 %, disabled 40 % opacity, focus = 2 px `primary` outline with
