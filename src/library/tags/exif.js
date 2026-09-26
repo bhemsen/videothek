@@ -49,6 +49,7 @@ export function isJpegStart(buf) {
  * @returns {Promise<boolean>}
  */
 export async function verifyThumb(path, { thumbOffset, sourceSize, sourceMtimeMs }, { openFile = (p) => fsOpen(p, 'r') } = {}) {
+  if (!Number.isSafeInteger(thumbOffset) || thumbOffset < 0) return false;
   /** @type {import('node:fs/promises').FileHandle | undefined} */
   let handle;
   try {
@@ -76,12 +77,12 @@ export async function verifyThumb(path, { thumbOffset, sourceSize, sourceMtimeMs
  */
 export function parseExif(buf) {
   try {
-    if (!isJpegStart(buf)) return NULL_RESULT;
+    if (!isJpegStart(buf)) return { ...NULL_RESULT };
     const window = Math.min(buf.length, EXIF_WINDOW_BYTES);
     const app1 = findExifApp1(buf, window);
-    return app1 ? readExifFromApp1(buf, app1, window) : NULL_RESULT;
+    return app1 ? readExifFromApp1(buf, app1, window) : { ...NULL_RESULT };
   } catch {
-    return NULL_RESULT;
+    return { ...NULL_RESULT };
   }
 }
 
@@ -128,14 +129,14 @@ function findExifApp1(buf, window) {
 function readExifFromApp1(buf, { payloadStart, segmentEnd }, window) {
   const tiffStart = payloadStart + 6;
   const limit = Math.min(segmentEnd, window);
-  if (tiffStart + 8 > limit) return NULL_RESULT;
+  if (tiffStart + 8 > limit) return { ...NULL_RESULT };
   const little = buf[tiffStart] === 0x49 && buf[tiffStart + 1] === 0x49;
   const big = buf[tiffStart] === 0x4d && buf[tiffStart + 1] === 0x4d;
-  if ((!little && !big) || readU16(buf, tiffStart + 2, little) !== 42) return NULL_RESULT;
+  if ((!little && !big) || readU16(buf, tiffStart + 2, little) !== 42) return { ...NULL_RESULT };
 
   const visited = new Set();
   const ifd0 = readIfd(buf, tiffStart, readU32(buf, tiffStart + 4, little), little, limit, visited);
-  if (!ifd0) return NULL_RESULT;
+  if (!ifd0) return { ...NULL_RESULT };
 
   return {
     orientation: readShortTag(buf, ifd0, 0x0112, tiffStart, little, limit, 1, 8),
@@ -188,7 +189,7 @@ function readU32(buf, pos, little) {
 function typeSize(type) {
   if (type === 1 || type === 2 || type === 6 || type === 7) return 1; // BYTE/ASCII/SBYTE/UNDEFINED
   if (type === 3 || type === 8) return 2; // SHORT/SSHORT
-  if (type === 4 || type === 9 || type === 11) return 4; // LONG/SLONG/FLOAT
+  if (type === 4 || type === 9 || type === 11 || type === 13) return 4; // LONG/SLONG/FLOAT/IFD
   if (type === 5 || type === 10 || type === 12) return 8; // RATIONAL/SRATIONAL/DOUBLE
   return 0;
 }

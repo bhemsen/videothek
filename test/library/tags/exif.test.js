@@ -130,14 +130,27 @@ test('parseExif: every truncation length of a valid sample never throws and yiel
   const full = buildExifJpeg({ orientation: 6, dateTimeOriginal: '2024:07:14 09:14:00', thumbnail: { compression: 6 } });
   for (let cut = 0; cut <= full.length; cut++) {
     const truncated = full.subarray(0, cut);
-    assert.doesNotThrow(() => parseExif(truncated));
+    let result = parseExif(Buffer.alloc(0)); // placeholder, overwritten below without throwing
+    assert.doesNotThrow(() => { result = parseExif(truncated); });
+    assert.ok(result.orientation === null || (Number.isInteger(result.orientation) && result.orientation >= 1 && result.orientation <= 8));
+    assert.ok(result.takenAt === null || typeof result.takenAt === 'string');
+    assert.ok(result.thumbOffset === null || (Number.isInteger(result.thumbOffset) && result.thumbOffset >= 0));
+    assert.ok(result.thumbLength === null || (Number.isInteger(result.thumbLength) && result.thumbLength > 0 && result.thumbLength <= 65535));
+    assert.equal(result.thumbOffset === null, result.thumbLength === null);
   }
 });
 
 test('parseExif: random bytes never throw', () => {
   for (let i = 0; i < 20; i++) {
     const junk = randomBytes(50 + i * 37);
-    assert.doesNotThrow(() => parseExif(junk));
+    // A plausible JPEG/EXIF/TIFF prefix so the marker walk and IFD parser
+    // actually get fuzzed, instead of bailing out at the first SOI/APP1 check.
+    const prefix = Buffer.concat([
+      Buffer.from([0xff, 0xd8, 0xff, 0xe1, 0xff, 0xff]),
+      Buffer.from('Exif\0\0', 'latin1'),
+      Buffer.from('II*\0', 'latin1'),
+    ]);
+    assert.doesNotThrow(() => parseExif(Buffer.concat([prefix, junk])));
   }
 });
 
@@ -199,28 +212,48 @@ test('verifyThumb: an openFile rejection returns false without throwing', async 
   assert.equal(ok, false);
 });
 
-test('verifyThumb: every opened handle is closed, on both the success and failure paths', async () => {
-  const dir = await mkdtemp(path.join(tmpdir(), 'exif-thumb-'));
-  const file = path.join(dir, 'photo.jpg');
-  const buf = buildExifJpeg({ thumbnail: { compression: 6 } });
-  await writeFile(file, buf);
-  const thumbOffset = parseExif(buf).thumbOffset ?? -1;
+test('verifyThumb: every opened handle is closed, on every success and failure path', async () => {
   const fs = await import('node:fs/promises');
-  const stat = await fs.stat(file);
+  const dir = await mkdtemp(path.join(tmpdir(), 'exif-thumb-'));
+
+  const matchFile = path.join(dir, 'photo.jpg');
+  const buf = buildExifJpeg({ thumbnail: { compression: 6 } });
+  await writeFile(matchFile, buf);
+  const thumbOffset = parseExif(buf).thumbOffset ?? -1;
+  const matchStat = await fs.stat(matchFile);
+
+  const shortFile = path.join(dir, 'short.jpg');
+  await writeFile(shortFile, Buffer.from([0xff, 0xd8]));
+  const shortStat = await fs.stat(shortFile);
+
+  const nonSoiFile = path.join(dir, 'non-soi.jpg');
+  await writeFile(nonSoiFile, Buffer.from([0x00, 0x00, 0x00, 0x00]));
+  const nonSoiStat = await fs.stat(nonSoiFile);
+
+  const subDir = path.join(dir, 'sub');
+  await mkdir(subDir);
+
+  /** @type {{ label: string, file: string, expected: { thumbOffset: number, sourceSize: number, sourceMtimeMs: number }, wantOk: boolean, breakRead?: boolean }[]} */
   const scenarios = [
-    { sourceSize: stat.size, sourceMtimeMs: Math.trunc(stat.mtimeMs) },
-    { sourceSize: 1, sourceMtimeMs: 0 },
+    { label: 'match', file: matchFile, expected: { thumbOffset, sourceSize: matchStat.size, sourceMtimeMs: Math.trunc(matchStat.mtimeMs) }, wantOk: true },
+    { label: 'size mismatch', file: matchFile, expected: { thumbOffset, sourceSize: 1, sourceMtimeMs: 0 }, wantOk: false },
+    { label: 'directory', file: subDir, expected: { thumbOffset: 0, sourceSize: 0, sourceMtimeMs: 0 }, wantOk: false },
+    { label: 'short read near EOF', file: shortFile, expected: { thumbOffset: shortStat.size - 1, sourceSize: shortStat.size, sourceMtimeMs: Math.trunc(shortStat.mtimeMs) }, wantOk: false },
+    { label: 'bytes not FF D8', file: nonSoiFile, expected: { thumbOffset: 0, sourceSize: nonSoiStat.size, sourceMtimeMs: Math.trunc(nonSoiStat.mtimeMs) }, wantOk: false },
+    { label: 'read error', file: matchFile, expected: { thumbOffset, sourceSize: matchStat.size, sourceMtimeMs: Math.trunc(matchStat.mtimeMs) }, wantOk: false, breakRead: true },
   ];
-  for (const source of scenarios) {
+  for (const { label, file, expected, wantOk, breakRead } of scenarios) {
     let closed = false;
     /** @param {string} p */
     const spy = async (p) => {
       const handle = await fs.open(p, 'r');
       const close = handle.close.bind(handle);
       handle.close = async (...args) => { closed = true; return close(...args); };
+      if (breakRead) handle.read = async () => { throw new Error('simulated read error'); };
       return handle;
     };
-    await verifyThumb(file, { thumbOffset, ...source }, { openFile: spy });
-    assert.equal(closed, true);
+    const ok = await verifyThumb(file, expected, { openFile: spy });
+    assert.equal(ok, wantOk, `unexpected result for scenario "${label}"`);
+    assert.equal(closed, true, `handle not closed for scenario "${label}"`);
   }
 });

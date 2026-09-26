@@ -12,16 +12,42 @@
 
 import { writeFileSync, mkdirSync, utimesSync } from 'node:fs';
 import path from 'node:path';
-import { pathToFileURL } from 'node:url';
+import { pathToFileURL, fileURLToPath } from 'node:url';
 
 // 16x16 baseline grayscale JPEG, flat 8x8 blocks (top row dark, bottom row
 // light), so orientation is visible as an asymmetric marker band.
 const BASE_JPEG_B64 =
   '/9j/2wBDABALDA4MChAODQ4SERATGCgaGBYWGDEjJR0oOjM9PDkzODdASFxOQERXRTc4UG1RV19iZ2hnPk1xeXBkeFxlZ2P/wAALCAAQABABAREA/8QAHwAAAQUBAQEBAQEAAAAAAAAAAAECAwQFBgcICQoL/8QAFBABAAAAAAAAAAAAAAAAAAAAAP/aAAgBAQAAPwDkw9YD/9k=';
 
+// Same 16x16 flat-8x8-block JPEG, but with the dark/light blocks re-arranged
+// so the marker band sits on the LEFT before any orientation rotation is
+// applied. Orientation 6 is displayed with CSS `rotate(90deg)` (clockwise),
+// which moves a raw left edge to the displayed top — so the tile/lightbox
+// show the band at the top per the spec's Human QA step. Same header bytes
+// (DQT/SOF0/DHT/SOS) as `BASE_JPEG_B64`, only the DC-only entropy data
+// differs (which of the four flat blocks are dark vs. light).
+const LEFT_BAND_JPEG_B64 =
+  '/9j/2wBDABALDA4MChAODQ4SERATGCgaGBYWGDEjJR0oOjM9PDkzODdASFxOQERXRTc4UG1RV19iZ2hnPk1xeXBkeFxlZ2P/wAALCAAQABABAREA/8QAHwAAAQUBAQEBAQEAAAAAAAAAAAECAwQFBgcICQoL/8QAFBABAAAAAAAAAAAAAAAAAAAAAP/aAAgBAQAAPwDk3rDyd6w//9k=';
+
+// Mirror of the above with the band on the RIGHT, for orientation-8 fixtures:
+// orientation 8 is displayed with `rotate(270deg)` (90° counter-clockwise),
+// which moves a raw right edge to the displayed top.
+const RIGHT_BAND_JPEG_B64 =
+  '/9j/2wBDABALDA4MChAODQ4SERATGCgaGBYWGDEjJR0oOjM9PDkzODdASFxOQERXRTc4UG1RV19iZ2hnPk1xeXBkeFxlZ2P/wAALCAAQABABAREA/8QAHwAAAQUBAQEBAQEAAAAAAAAAAAECAwQFBgcICQoL/8QAFBABAAAAAAAAAAAAAAAAAAAAAP/aAAgBAQAAPwDrHk71h5O//9k=';
+
 /** @returns {Buffer} A fresh copy of the tiny base JPEG (SOI..EOI, no EXIF). */
 export function baseJpegBuffer() {
   return Buffer.from(BASE_JPEG_B64, 'base64');
+}
+
+/** @returns {Buffer} Base JPEG with the marker band on the LEFT (pre-rotation) — orientation-6 fixtures. */
+export function leftBandJpegBuffer() {
+  return Buffer.from(LEFT_BAND_JPEG_B64, 'base64');
+}
+
+/** @returns {Buffer} Base JPEG with the marker band on the RIGHT (pre-rotation) — orientation-8 fixtures. */
+export function rightBandJpegBuffer() {
+  return Buffer.from(RIGHT_BAND_JPEG_B64, 'base64');
 }
 
 const TYPE_ASCII = 2;
@@ -152,8 +178,8 @@ export function buildExifJpeg(opts = {}) {
  * @type {{ p: string, exif?: Parameters<typeof buildExifJpeg>[0], raw?: Buffer, mtime: string }[]} */
 const QA_FILES = [
   { p: 'Bilder/Urlaub 2024/Italien/IMG_0412.jpg', exif: { order: 'II', orientation: 1, dateTimeOriginal: '2024:07:14 09:14:00', thumbnail: { compression: 6 } }, mtime: '2024-07-14T09:14:00' },
-  { p: 'Bilder/Urlaub 2024/Italien/IMG_0415.jpg', exif: { order: 'MM', orientation: 6, dateTimeOriginal: '2024:07:14 10:28:00', thumbnail: { compression: 6 } }, mtime: '2024-07-14T10:28:00' },
-  { p: 'Bilder/Urlaub 2024/Italien/IMG_0419.jpg', exif: { orientation: 8, dateTimeOriginal: '2024:07:14 11:45:00', thumbnail: { compression: 6 } }, mtime: '2024-07-14T11:45:00' },
+  { p: 'Bilder/Urlaub 2024/Italien/IMG_0415.jpg', exif: { order: 'MM', orientation: 6, dateTimeOriginal: '2024:07:14 10:28:00', base: leftBandJpegBuffer(), thumbnail: { compression: 6, data: leftBandJpegBuffer() } }, mtime: '2024-07-14T10:28:00' },
+  { p: 'Bilder/Urlaub 2024/Italien/IMG_0419.jpg', exif: { orientation: 8, dateTimeOriginal: '2024:07:14 11:45:00', base: rightBandJpegBuffer(), thumbnail: { compression: 6, data: rightBandJpegBuffer() } }, mtime: '2024-07-14T11:45:00' },
   { p: 'Bilder/Urlaub 2024/Italien/IMG_0424.jpg', raw: baseJpegBuffer(), mtime: '2024-07-14T12:00:00' },
   { p: 'Bilder/Urlaub 2024/Italien/IMG_0431.heic', raw: Buffer.from('synthetic-heic-fixture'), mtime: '2024-07-14T12:05:00' },
   { p: 'Bilder/Urlaub 2024/Italien/VID_0433.webm', raw: Buffer.from('synthetic-webm-fixture'), mtime: '2024-07-14T12:10:00' },
@@ -179,7 +205,7 @@ function writeQaTree(root) {
     const t = new Date(f.mtime);
     utimesSync(full, t, t);
   }
-  console.log(`wrote ${QA_FILES.length} QA fixture files under ${root}`);
+  process.stdout.write(`wrote ${QA_FILES.length} QA fixture files under ${root}\n`);
 }
 
 /** Writes `n` copies of the base JPEG into `dir`, for the large-folder check.
@@ -188,12 +214,14 @@ function writeBulk(n, dir) {
   mkdirSync(dir, { recursive: true });
   const data = baseJpegBuffer();
   for (let i = 1; i <= n; i++) writeFileSync(path.join(dir, `bulk_${String(i).padStart(5, '0')}.jpg`), data);
-  console.log(`wrote ${n} bulk files under ${dir}`);
+  process.stdout.write(`wrote ${n} bulk files under ${dir}\n`);
 }
+
+const FIXTURES_MEDIA_DIR = new URL('../fixtures/media/', import.meta.url);
 
 function main() {
   const [cmd, a, b] = process.argv.slice(2);
-  if (cmd === '--write') writeQaTree(path.resolve('test/fixtures/media'));
+  if (cmd === '--write') writeQaTree(fileURLToPath(FIXTURES_MEDIA_DIR));
   else if (cmd === '--bulk' && a && b) writeBulk(Number(a), b);
   else {
     process.stderr.write('Usage: node test/helpers/exif-jpeg.js --write | --bulk <n> <dir>\n');
