@@ -31,6 +31,30 @@
   - AVOID: the npm package itself; ETag/conditional-GET machinery beyond what browsers need for media seeking.
   - Source: https://github.com/pillarjs/send/blob/master/index.js , https://developer.mozilla.org/en-US/docs/Web/HTTP/Status/206
 
+### nginx `send_timeout`
+
+- Path: `ngx_http_core_module` directive `send_timeout`
+- License: BSD-2-Clause
+- Verdict: reference-only — a configuration default, adopted as a behaviour
+- Date: 2026-09-26
+- Notes:
+  - ADOPT: an idle timeout of 60 s measured between two successive writes (not over the whole response); a client that receives nothing for that long is disconnected, releasing the file descriptor of a paused or sleeping player.
+  - AVOID: socket-level timeouts that would also cut keep-alive connections.
+  - Source: https://nginx.org/en/docs/http/ngx_http_core_module.html#send_timeout
+
+## Subtitle sidecars (Phase 3)
+
+### jellyfin/jellyfin (external subtitles)
+
+- Path: docs `jellyfin.org/docs/general/server/media/movies`, section "External Subtitles and Audio Tracks"
+- License: GPL-2.0-only (docs describe a naming convention only)
+- Verdict: reference-only — adopt the naming convention, not the code
+- Date: 2026-09-26
+- Notes:
+  - ADOPT: subtitle files next to the video named `<video name>.<ext>` or `<video name>.<lang>.<ext>` (e.g. `Film.en.srt`), discovered by base-name match in the video's folder.
+  - AVOID: flag suffixes (`default`, `forced`, `sdh`, `cc`, `hi`) and non-WebVTT formats (`.srt`, `.ass`) — they need parsing or conversion; v1 serves `.vtt` byte-for-byte to the browser's native `<track>` menu.
+  - Source: https://jellyfin.org/docs/general/server/media/movies/
+
 ## Direct-play compatibility detection (Phase 2)
 
 ### Browser codec support (MDN / chromestatus)
@@ -110,6 +134,33 @@
   - ADOPT: one central tag->field mapping table (ID3v2 / Vorbis comment / MP4 atoms); fast scan pass separated from deeper analysis; in-house minimal ID3v2 + FLAC parsers.
   - AVOID: full tag coverage, multi-artist/role modelling, ReplayGain etc.
   - Source: https://deepwiki.com/navidrome/navidrome/6.3-metadata-extraction-and-tag-parsing
+
+## Audio artwork resolution (Phase 5)
+
+### navidrome/navidrome (artwork)
+
+- Path: docs `usage/library/artwork`; config option `CoverArtPriority`
+- License: GPL-3.0-only
+- Verdict: reference-only — adopt the lookup order, not the code
+- Date: 2026-09-26
+- Notes:
+  - ADOPT: default `CoverArtPriority` = `cover.*, folder.*, front.*, embedded, external` — folder images in the album directory before the embedded picture, resolved on demand per request.
+  - AVOID: the `external` step (online lookups — constitution: no outbound calls); server-side artwork resizing and caching.
+  - Uncertainty: order taken from the documentation, not read from source.
+  - Source: https://www.navidrome.org/docs/usage/library/artwork/
+
+## Audiobook directory structure (Phase 5)
+
+### advplyr/audiobookshelf (book library scanner)
+
+- Path: docs `documentation/libraries/book-library/directory-structure`; guide `guides/book-scanner`
+- License: GPL-3.0-only
+- Verdict: reference-only — folder convention adopted
+- Date: 2026-09-26
+- Notes:
+  - ADOPT: `{Author}/{Book}` and `{Author}/{Series}/{Book}` directories; single-file books allowed; disc subfolders named `CD`/`Disc`/`Disk` + number; files ordered by disc, then track.
+  - AVOID: its default metadata precedence (tags over folder names) — our grouping requires curated Author/Book folders; series modelling; OPF/NFO sidecar metadata.
+  - Source: https://audiobookshelf.org/docs/documentation/libraries/book-library/directory-structure/ , https://www.audiobookshelf.org/guides/book-scanner/
 
 ## Image thumbnails without native dependencies (Phase 6)
 

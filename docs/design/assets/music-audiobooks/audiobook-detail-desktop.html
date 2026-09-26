@@ -1,0 +1,314 @@
+<!DOCTYPE html>
+<html lang="de" class="h-full">
+<head>
+  <meta charset="UTF-8">
+  <meta name="viewport" content="width=device-width, initial-scale=1.0">
+  <title>P5 Hörbuch Detail – desktop</title>
+  <script src="https://cdn.tailwindcss.com"></script>
+  <style>
+    :root {
+      --bg: #0f1115;
+      --fg: #e8eaed;
+      --primary: #ff7a1a;
+      --secondary: #1c2029;
+      --accent: #4fb3ff;
+      --muted: #9aa0aa;
+      --border: #2a2f3a;
+      --destructive: #ff5c5c;
+    }
+    body {
+      background-color: var(--bg);
+      color: var(--fg);
+      font-family: system-ui, -apple-system, BlinkMacSystemFont, 'Segoe UI', Roboto, Helvetica, Arial, sans-serif;
+      margin: 0;
+      padding: 0;
+      -webkit-font-smoothing: antialiased;
+    }
+  </style>
+</head>
+<body class="min-h-full flex flex-col pb-28">
+
+  <!-- Top Bar -->
+  <header class="w-full border-b border-[#2a2f3a] bg-[#0f1115]/90 sticky top-0 z-40 backdrop-blur-sm">
+    <div class="max-w-[1440px] mx-auto h-16 px-8 flex items-center justify-between">
+      <div class="flex items-center gap-10">
+        <!-- Logo / App Name -->
+        <a href="#" class="flex items-center gap-2.5 text-[#e8eaed] font-semibold text-lg hover:opacity-90 transition-opacity">
+          <svg class="w-5 h-5 fill-[#ff7a1a]" viewBox="0 0 24 24">
+            <path d="M8 5v14l11-7z" />
+          </svg>
+          <span class="tracking-tight font-bold">Videothek</span>
+        </a>
+
+        <!-- Category Nav -->
+        <nav class="flex items-center gap-1">
+          <a href="#" class="px-4 py-2 text-sm font-medium text-[#9aa0aa] hover:text-[#e8eaed] transition-colors rounded">Filme</a>
+          <a href="#" class="px-4 py-2 text-sm font-medium text-[#9aa0aa] hover:text-[#e8eaed] transition-colors rounded">Serien</a>
+          <a href="#" class="px-4 py-2 text-sm font-medium text-[#9aa0aa] hover:text-[#e8eaed] transition-colors rounded">Musik</a>
+          <a href="#" class="px-4 py-2 text-sm font-semibold text-[#ff7a1a] relative flex items-center">
+            Hörbücher
+            <span class="absolute bottom-[-17px] left-4 right-4 h-[2px] bg-[#ff7a1a]"></span>
+          </a>
+          <a href="#" class="px-4 py-2 text-sm font-medium text-[#9aa0aa] hover:text-[#e8eaed] transition-colors rounded">Bilder</a>
+        </nav>
+      </div>
+
+      <!-- User / Abmelden -->
+      <div>
+        <button class="text-sm font-medium text-[#9aa0aa] hover:text-[#e8eaed] flex items-center gap-2 px-3 py-1.5 rounded hover:bg-[#1c2029] transition-colors">
+          <svg class="w-4 h-4 stroke-[#9aa0aa]" fill="none" viewBox="0 0 24 24" stroke-width="2" stroke-linecap="round" stroke-linejoin="round">
+            <path d="M9 21H5a2 2 0 0 1-2-2V5a2 2 0 0 1 2-2h4"></path>
+            <polyline points="16 17 21 12 16 7"></polyline>
+            <line x1="21" y1="12" x2="9" y2="12"></line>
+          </svg>
+          Abmelden
+        </button>
+      </div>
+    </div>
+  </header>
+
+  <!-- Main Content Area -->
+  <main class="w-full flex-1 max-w-[1100px] mx-auto px-6 pt-6 pb-12">
+    <!-- Back Link -->
+    <div class="mb-6">
+      <a href="#" class="inline-flex items-center gap-1.5 text-sm font-medium text-[#4fb3ff] hover:underline">
+        <svg class="w-4 h-4 stroke-current" fill="none" viewBox="0 0 24 24" stroke-width="2.5" stroke-linecap="round" stroke-linejoin="round">
+          <polyline points="15 18 9 12 15 6"></polyline>
+        </svg>
+        Hörbücher
+      </a>
+    </div>
+
+    <!-- Header Row (Cover + Details) -->
+    <section class="flex flex-col md:flex-row items-start gap-8 mb-12">
+      <!-- 240px Square Cover Placeholder -->
+      <div class="w-[240px] h-[240px] flex-shrink-0 bg-[#1c2029] rounded-[8px] border border-[#2a2f3a] flex items-center justify-center shadow-lg">
+        <!-- Open book SVG -->
+        <svg class="w-24 h-24 stroke-[#9aa0aa]/40" fill="none" viewBox="0 0 24 24" stroke-width="1.2" stroke-linecap="round" stroke-linejoin="round">
+          <path d="M4 19.5A2.5 2.5 0 0 1 6.5 17H20"></path>
+          <path d="M6.5 2H20v20H6.5A2.5 2.5 0 0 1 4 19.5v-15A2.5 2.5 0 0 1 6.5 2z"></path>
+          <line x1="10" y1="7" x2="16" y2="7"></line>
+          <line x1="10" y1="11" x2="16" y2="11"></line>
+        </svg>
+      </div>
+
+      <!-- Info Column -->
+      <div class="flex-1 flex flex-col justify-center min-w-0 pt-1">
+        <span class="text-xs uppercase tracking-wider font-semibold text-[#9aa0aa] mb-1.5">Hörbuch</span>
+        <h1 class="text-[32px] leading-tight font-bold text-[#e8eaed] mb-1.5 truncate">Die Reise zum Mittelpunkt</h1>
+        <p class="text-[20px] font-normal text-[#e8eaed] mb-2.5">Jules Beispiel</p>
+        <p class="text-sm text-[#9aa0aa] mb-5">14 Dateien · 7 Std. 12 Min.</p>
+
+        <!-- Overall Progress Bar (360px wide, 4px track) -->
+        <div class="mb-6">
+          <div class="flex items-center justify-between w-[360px] max-w-full text-xs text-[#9aa0aa] mb-1.5 font-medium">
+            <span>34 % gehört</span>
+          </div>
+          <div class="w-[360px] max-w-full h-1 bg-[#2a2f3a] rounded-full overflow-hidden">
+            <div class="h-full bg-[#ff7a1a] rounded-full" style="width: 34%;"></div>
+          </div>
+        </div>
+
+        <!-- Action Buttons -->
+        <div class="flex flex-wrap items-center gap-3">
+          <!-- Primary button with orange background and dark text -->
+          <button class="h-11 px-5 rounded-[8px] bg-[#ff7a1a] text-[#0f1115] font-semibold text-sm flex items-center gap-2 hover:bg-[#ff8933] active:scale-[0.99] transition-all focus:outline-none focus:ring-2 focus:ring-[#ff7a1a] focus:ring-offset-2 focus:ring-offset-[#0f1115]">
+            <svg class="w-4 h-4 fill-[#0f1115]" viewBox="0 0 24 24">
+              <path d="M8 5v14l11-7z" />
+            </svg>
+            Fortsetzen · Kapitel 05 – 12:34
+          </button>
+
+          <!-- Secondary button -->
+          <button class="h-11 px-5 rounded-[8px] bg-[#1c2029] text-[#e8eaed] border border-[#2a2f3a] font-medium text-sm hover:bg-[#252a36] hover:border-[#383f4d] active:scale-[0.99] transition-all focus:outline-none focus:ring-2 focus:ring-[#ff7a1a] focus:ring-offset-2 focus:ring-offset-[#0f1115]">
+            Von vorn hören
+          </button>
+        </div>
+      </div>
+    </section>
+
+    <!-- File / Chapter List -->
+    <section class="w-full">
+      <!-- List Header -->
+      <div class="grid grid-cols-[48px_1fr_120px] px-4 py-2 border-b border-[#2a2f3a] text-xs font-semibold text-[#9aa0aa] uppercase tracking-wider">
+        <span>#</span>
+        <span>Titel</span>
+        <span class="text-right">Dauer</span>
+      </div>
+
+      <!-- Rows -->
+      <div class="divide-y divide-[#2a2f3a]">
+        <!-- Row 01 -->
+        <div class="grid grid-cols-[48px_1fr_120px] items-center px-4 min-h-[48px] text-sm text-[#9aa0aa] hover:bg-[#1c2029]/50 transition-colors">
+          <span class="text-xs">01</span>
+          <span class="truncate">Kapitel 01</span>
+          <span class="flex items-center justify-end gap-1.5 text-xs text-[#9aa0aa]">
+            <svg class="w-3.5 h-3.5 stroke-current" fill="none" viewBox="0 0 24 24" stroke-width="2.5" stroke-linecap="round" stroke-linejoin="round">
+              <polyline points="20 6 9 17 4 12"></polyline>
+            </svg>
+            Gehört
+          </span>
+        </div>
+
+        <!-- Row 02 -->
+        <div class="grid grid-cols-[48px_1fr_120px] items-center px-4 min-h-[48px] text-sm text-[#9aa0aa] hover:bg-[#1c2029]/50 transition-colors">
+          <span class="text-xs">02</span>
+          <span class="truncate">Kapitel 02</span>
+          <span class="flex items-center justify-end gap-1.5 text-xs text-[#9aa0aa]">
+            <svg class="w-3.5 h-3.5 stroke-current" fill="none" viewBox="0 0 24 24" stroke-width="2.5" stroke-linecap="round" stroke-linejoin="round">
+              <polyline points="20 6 9 17 4 12"></polyline>
+            </svg>
+            Gehört
+          </span>
+        </div>
+
+        <!-- Row 03 -->
+        <div class="grid grid-cols-[48px_1fr_120px] items-center px-4 min-h-[48px] text-sm text-[#9aa0aa] hover:bg-[#1c2029]/50 transition-colors">
+          <span class="text-xs">03</span>
+          <span class="truncate">Kapitel 03</span>
+          <span class="flex items-center justify-end gap-1.5 text-xs text-[#9aa0aa]">
+            <svg class="w-3.5 h-3.5 stroke-current" fill="none" viewBox="0 0 24 24" stroke-width="2.5" stroke-linecap="round" stroke-linejoin="round">
+              <polyline points="20 6 9 17 4 12"></polyline>
+            </svg>
+            Gehört
+          </span>
+        </div>
+
+        <!-- Row 04 -->
+        <div class="grid grid-cols-[48px_1fr_120px] items-center px-4 min-h-[48px] text-sm text-[#9aa0aa] hover:bg-[#1c2029]/50 transition-colors">
+          <span class="text-xs">04</span>
+          <span class="truncate">Kapitel 04</span>
+          <span class="flex items-center justify-end gap-1.5 text-xs text-[#9aa0aa]">
+            <svg class="w-3.5 h-3.5 stroke-current" fill="none" viewBox="0 0 24 24" stroke-width="2.5" stroke-linecap="round" stroke-linejoin="round">
+              <polyline points="20 6 9 17 4 12"></polyline>
+            </svg>
+            Gehört
+          </span>
+        </div>
+
+        <!-- Row 05 (Current / Active) -->
+        <div class="grid grid-cols-[48px_1fr_120px] items-center px-4 min-h-[54px] bg-[#1c2029]/70 text-sm">
+          <span class="text-xs font-bold text-[#ff7a1a]">05</span>
+          <div class="pr-6 py-1">
+            <span class="font-semibold text-[#ff7a1a] block mb-1">Kapitel 05</span>
+            <!-- 2px progress bar (40%) -->
+            <div class="w-48 max-w-full h-[2px] bg-[#2a2f3a] rounded-full overflow-hidden">
+              <div class="h-full bg-[#ff7a1a] rounded-full" style="width: 40%;"></div>
+            </div>
+          </div>
+          <span class="text-right text-xs font-semibold text-[#ff7a1a]">12:34 / 31:05</span>
+        </div>
+
+        <!-- Row 06 -->
+        <div class="grid grid-cols-[48px_1fr_120px] items-center px-4 min-h-[48px] text-sm text-[#e8eaed] hover:bg-[#1c2029]/50 transition-colors">
+          <span class="text-xs text-[#9aa0aa]">06</span>
+          <span class="truncate">Kapitel 06</span>
+          <span class="text-right text-xs text-[#9aa0aa]">28:40</span>
+        </div>
+
+        <!-- Row 07 -->
+        <div class="grid grid-cols-[48px_1fr_120px] items-center px-4 min-h-[48px] text-sm text-[#e8eaed] hover:bg-[#1c2029]/50 transition-colors">
+          <span class="text-xs text-[#9aa0aa]">07</span>
+          <span class="truncate">Kapitel 07</span>
+          <span class="text-right text-xs text-[#9aa0aa]">33:12</span>
+        </div>
+
+        <!-- Row 08 -->
+        <div class="grid grid-cols-[48px_1fr_120px] items-center px-4 min-h-[48px] text-sm text-[#e8eaed] hover:bg-[#1c2029]/50 transition-colors">
+          <span class="text-xs text-[#9aa0aa]">08</span>
+          <span class="truncate">Kapitel 08</span>
+          <span class="text-right text-xs text-[#9aa0aa]">30:02</span>
+        </div>
+      </div>
+    </section>
+  </main>
+
+  <!-- Persistent Audio Player Bar -->
+  <footer class="fixed bottom-0 left-0 right-0 h-20 bg-[#1c2029] border-t border-[#2a2f3a] z-50 shadow-2xl flex items-center">
+    <div class="w-full max-w-[1440px] mx-auto px-8 grid grid-cols-[1fr_auto_1fr] items-center">
+      
+      <!-- Left: Thumbnail & Title Info -->
+      <div class="flex items-center gap-3.5 min-w-0 pr-4">
+        <div class="w-14 h-14 bg-[#0f1115] rounded-[6px] border border-[#2a2f3a] flex-shrink-0 flex items-center justify-center">
+          <svg class="w-6 h-6 stroke-[#9aa0aa]/60" fill="none" viewBox="0 0 24 24" stroke-width="1.5" stroke-linecap="round" stroke-linejoin="round">
+            <path d="M4 19.5A2.5 2.5 0 0 1 6.5 17H20"></path>
+            <path d="M6.5 2H20v20H6.5A2.5 2.5 0 0 1 4 19.5v-15A2.5 2.5 0 0 1 6.5 2z"></path>
+          </svg>
+        </div>
+        <div class="min-w-0">
+          <h4 class="text-sm font-semibold text-[#e8eaed] truncate">Kapitel 05</h4>
+          <p class="text-xs text-[#9aa0aa] truncate">Die Reise zum Mittelpunkt · Jules Beispiel</p>
+        </div>
+      </div>
+
+      <!-- Center: Controls & Seek Slider -->
+      <div class="flex flex-col items-center justify-center gap-1.5">
+        <!-- Controls Buttons -->
+        <div class="flex items-center gap-4">
+          <!-- Vorheriges Kapitel -->
+          <button title="Vorheriges Kapitel" class="w-8 h-8 flex items-center justify-center text-[#9aa0aa] hover:text-[#e8eaed] transition-colors rounded">
+            <svg class="w-5 h-5 fill-current" viewBox="0 0 24 24">
+              <path d="M6 6h2v12H6zm3.5 6l8.5 6V6z"/>
+            </svg>
+          </button>
+
+          <!-- 15s zurück -->
+          <button title="15 Sekunden zurück" class="w-9 h-9 relative flex items-center justify-center text-[#9aa0aa] hover:text-[#e8eaed] transition-colors rounded">
+            <svg class="w-6 h-6 stroke-current" fill="none" viewBox="0 0 24 24" stroke-width="1.8" stroke-linecap="round" stroke-linejoin="round">
+              <path d="M3 12a9 9 0 1 0 9-9 9.75 9.75 0 0 0-6.74 2.74L3 8"/>
+              <path d="M3 3v5h5"/>
+            </svg>
+            <span class="absolute text-[8px] font-bold mt-[1px]">15</span>
+          </button>
+
+          <!-- Play/Pause 48px Orange circular -->
+          <button title="Pause" class="w-12 h-12 rounded-full bg-[#ff7a1a] text-[#0f1115] flex items-center justify-center hover:bg-[#ff8933] active:scale-95 transition-all shadow-md focus:outline-none focus:ring-2 focus:ring-[#ff7a1a] focus:ring-offset-2 focus:ring-offset-[#1c2029]">
+            <svg class="w-5 h-5 fill-[#0f1115]" viewBox="0 0 24 24">
+              <path d="M6 19h4V5H6v14zm8-14v14h4V5h-4z"/>
+            </svg>
+          </button>
+
+          <!-- 30s vor -->
+          <button title="30 Sekunden vor" class="w-9 h-9 relative flex items-center justify-center text-[#9aa0aa] hover:text-[#e8eaed] transition-colors rounded">
+            <svg class="w-6 h-6 stroke-current" fill="none" viewBox="0 0 24 24" stroke-width="1.8" stroke-linecap="round" stroke-linejoin="round">
+              <path d="M21 12a9 9 0 1 1-9-9 9.75 9.75 0 0 1 6.74 2.74L21 8"/>
+              <path d="M21 3v5h-5"/>
+            </svg>
+            <span class="absolute text-[8px] font-bold mt-[1px]">30</span>
+          </button>
+
+          <!-- Nächstes Kapitel -->
+          <button title="Nächstes Kapitel" class="w-8 h-8 flex items-center justify-center text-[#9aa0aa] hover:text-[#e8eaed] transition-colors rounded">
+            <svg class="w-5 h-5 fill-current" viewBox="0 0 24 24">
+              <path d="M6 18l8.5-6L6 6v12zM16 6v12h2V6h-2z"/>
+            </svg>
+          </button>
+        </div>
+
+        <!-- Seek Slider -->
+        <div class="flex items-center gap-3 w-[480px]">
+          <span class="text-[12px] font-medium text-[#9aa0aa] w-10 text-right tabular-nums">12:34</span>
+          <div class="relative flex-1 h-1 bg-[#2a2f3a] rounded-full overflow-hidden cursor-pointer group">
+            <div class="h-full bg-[#ff7a1a] rounded-full group-hover:bg-[#ff7a1a]" style="width: 40%;"></div>
+          </div>
+          <span class="text-[12px] font-medium text-[#9aa0aa] w-10 text-left tabular-nums">31:05</span>
+        </div>
+      </div>
+
+      <!-- Right: Placeholder for balance / volume controls (empty or minimal) -->
+      <div class="flex items-center justify-end gap-3 pl-4">
+        <!-- Optional volume indicator / mute icon purely aesthetic -->
+        <button class="text-[#9aa0aa] hover:text-[#e8eaed] p-1.5 transition-colors" title="Lautstärke">
+          <svg class="w-5 h-5 stroke-current" fill="none" viewBox="0 0 24 24" stroke-width="2" stroke-linecap="round" stroke-linejoin="round">
+            <polygon points="11 5 6 9 2 9 2 15 6 15 11 19 11 5"></polygon>
+            <path d="M15.54 8.46a5 5 0 0 1 0 7.07"></path>
+            <path d="M19.07 4.93a10 10 0 0 1 0 14.14"></path>
+          </svg>
+        </button>
+      </div>
+
+    </div>
+  </footer>
+
+</body>
+</html>

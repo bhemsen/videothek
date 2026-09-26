@@ -1,0 +1,678 @@
+<!DOCTYPE html>
+<html lang="de">
+<head>
+  <meta charset="UTF-8">
+  <meta name="viewport" content="width=device-width, initial-scale=1.0">
+  <title>P5 Musik Album – mobile</title>
+  <style>
+    :root {
+      --color-background: #0f1115;
+      --color-foreground: #e8eaed;
+      --color-primary: #ff7a1a;
+      --color-secondary: #1c2029;
+      --color-accent: #4fb3ff;
+      --color-muted: #9aa0aa;
+      --color-border: #2a2f3a;
+      --color-destructive: #ff5c5c;
+      --font-sans: system-ui, -apple-system, 'Segoe UI', Roboto, 'Helvetica Neue', Arial, sans-serif;
+      --radius-sm: 4px;
+      --radius-md: 8px;
+      --radius-lg: 16px;
+      --radius-full: 9999px;
+    }
+
+    * {
+      box-sizing: border-box;
+      margin: 0;
+      padding: 0;
+      -webkit-tap-highlight-color: transparent;
+    }
+
+    body {
+      background-color: #050608;
+      font-family: var(--font-sans);
+      color: var(--color-foreground);
+      line-height: 1.5;
+      display: flex;
+      justify-content: center;
+      min-height: 100vh;
+    }
+
+    /* Mobile Frame 390px */
+    .app-viewport {
+      width: 100%;
+      max-width: 390px;
+      background-color: var(--color-background);
+      min-height: 100vh;
+      display: flex;
+      flex-direction: column;
+      position: relative;
+      border-left: 1px solid rgba(255, 255, 255, 0.05);
+      border-right: 1px solid rgba(255, 255, 255, 0.05);
+    }
+
+    /* Top navigation / Back link */
+    .top-bar {
+      padding: 16px 20px 8px 20px;
+      display: flex;
+      align-items: center;
+    }
+
+    .back-link {
+      display: inline-flex;
+      align-items: center;
+      gap: 6px;
+      color: var(--color-accent);
+      text-decoration: none;
+      font-size: 15px;
+      font-weight: 500;
+      min-height: 44px;
+      min-width: 44px;
+      cursor: pointer;
+    }
+
+    .back-link svg {
+      width: 18px;
+      height: 18px;
+      stroke: currentColor;
+      fill: none;
+      stroke-width: 2.2;
+      stroke-linecap: round;
+      stroke-linejoin: round;
+    }
+
+    /* Main Scrollable Content */
+    .content {
+      flex: 1;
+      padding: 8px 20px 180px 20px; /* buffer for bottom floating player + nav */
+      overflow-y: auto;
+    }
+
+    /* Album Header */
+    .album-header {
+      display: flex;
+      flex-direction: column;
+      align-items: center;
+      text-align: center;
+      margin-bottom: 28px;
+    }
+
+    .cover-art {
+      width: 160px;
+      height: 160px;
+      border-radius: var(--radius-md);
+      background-color: var(--color-secondary);
+      border: 1px solid var(--color-border);
+      display: flex;
+      align-items: center;
+      justify-content: center;
+      margin-bottom: 20px;
+      box-shadow: 0 8px 24px rgba(0, 0, 0, 0.5);
+    }
+
+    .cover-art svg {
+      width: 64px;
+      height: 64px;
+      stroke: var(--color-muted);
+      opacity: 0.6;
+      stroke-width: 1.5;
+      fill: none;
+      stroke-linecap: round;
+      stroke-linejoin: round;
+    }
+
+    .album-title {
+      font-size: 24px;
+      font-weight: 700;
+      line-height: 1.2;
+      color: var(--color-foreground);
+      margin-bottom: 6px;
+    }
+
+    .album-artist {
+      font-size: 16px;
+      font-weight: 600;
+      color: var(--color-foreground);
+      margin-bottom: 6px;
+    }
+
+    .album-meta {
+      font-size: 13px;
+      color: var(--color-muted);
+      margin-bottom: 20px;
+    }
+
+    /* Primary CTA Button */
+    .play-all-btn {
+      width: 100%;
+      height: 48px;
+      min-height: 44px;
+      border-radius: var(--radius-md);
+      background-color: var(--color-primary);
+      color: #0f1115;
+      border: none;
+      font-family: inherit;
+      font-size: 16px;
+      font-weight: 700;
+      display: flex;
+      align-items: center;
+      justify-content: center;
+      gap: 10px;
+      cursor: pointer;
+      box-shadow: 0 2px 8px rgba(255, 122, 26, 0.25);
+    }
+
+    .play-all-btn svg {
+      width: 20px;
+      height: 20px;
+      fill: currentColor;
+    }
+
+    /* Track List Section */
+    .track-section {
+      margin-top: 8px;
+    }
+
+    .section-subtitle {
+      font-size: 12px;
+      font-weight: 600;
+      text-transform: uppercase;
+      letter-spacing: 0.06em;
+      color: var(--color-muted);
+      padding-bottom: 8px;
+      border-bottom: 1px solid var(--color-border);
+    }
+
+    .track-list {
+      list-style: none;
+    }
+
+    .track-row {
+      display: flex;
+      align-items: center;
+      min-height: 52px;
+      padding: 10px 4px;
+      border-bottom: 1px solid var(--color-border);
+      gap: 14px;
+      font-size: 15px;
+    }
+
+    .track-num {
+      width: 24px;
+      text-align: center;
+      font-size: 14px;
+      font-variant-numeric: tabular-nums;
+      color: var(--color-muted);
+      flex-shrink: 0;
+      display: flex;
+      align-items: center;
+      justify-content: center;
+    }
+
+    .track-title {
+      flex: 1;
+      white-space: nowrap;
+      overflow: hidden;
+      text-overflow: ellipsis;
+      color: var(--color-foreground);
+      font-weight: 500;
+    }
+
+    .track-meta {
+      flex-shrink: 0;
+      font-size: 14px;
+      font-variant-numeric: tabular-nums;
+      color: var(--color-muted);
+    }
+
+    /* Active / Playing State */
+    .track-row.is-playing .track-title {
+      color: var(--color-primary);
+      font-weight: 600;
+    }
+
+    .playing-indicator {
+      display: flex;
+      align-items: flex-end;
+      gap: 2.5px;
+      height: 14px;
+      width: 14px;
+      justify-content: center;
+    }
+
+    .playing-bar {
+      width: 2.5px;
+      background-color: var(--color-primary);
+      border-radius: 1px;
+    }
+
+    .playing-bar:nth-child(1) { height: 60%; }
+    .playing-bar:nth-child(2) { height: 100%; }
+    .playing-bar:nth-child(3) { height: 40%; }
+
+    /* Incompatible / Disabled Row */
+    .track-row.is-disabled {
+      opacity: 0.55;
+    }
+
+    .badge-unplayable {
+      display: inline-flex;
+      align-items: center;
+      gap: 4px;
+      padding: 3px 8px;
+      border: 1px solid var(--color-destructive);
+      color: var(--color-destructive);
+      border-radius: var(--radius-full);
+      font-size: 11px;
+      font-weight: 600;
+      line-height: 1;
+      white-space: nowrap;
+    }
+
+    /* Fixed Bottom Region: Player + Nav */
+    .bottom-container {
+      position: fixed;
+      bottom: 0;
+      width: 100%;
+      max-width: 390px;
+      z-index: 100;
+      display: flex;
+      flex-direction: column;
+      box-shadow: 0 -8px 24px rgba(0, 0, 0, 0.6);
+    }
+
+    /* Persistent Audio Player Bar */
+    .audio-player {
+      background-color: var(--color-secondary);
+      border-top: 1px solid var(--color-border);
+      padding: 10px 16px 10px 16px;
+      display: flex;
+      flex-direction: column;
+      gap: 8px;
+    }
+
+    .player-row-1 {
+      display: flex;
+      align-items: center;
+      justify-content: space-between;
+      gap: 12px;
+    }
+
+    .player-track-info {
+      display: flex;
+      align-items: center;
+      gap: 10px;
+      min-width: 0;
+      flex: 1;
+    }
+
+    .player-thumb {
+      width: 40px;
+      height: 40px;
+      border-radius: var(--radius-sm);
+      background-color: #151820;
+      border: 1px solid var(--color-border);
+      display: flex;
+      align-items: center;
+      justify-content: center;
+      flex-shrink: 0;
+    }
+
+    .player-thumb svg {
+      width: 20px;
+      height: 20px;
+      stroke: var(--color-muted);
+      stroke-width: 1.5;
+      fill: none;
+    }
+
+    .player-text {
+      min-width: 0;
+      display: flex;
+      flex-direction: column;
+    }
+
+    .player-title {
+      font-size: 14px;
+      font-weight: 600;
+      color: var(--color-foreground);
+      white-space: nowrap;
+      overflow: hidden;
+      text-overflow: ellipsis;
+      line-height: 1.3;
+    }
+
+    .player-artist {
+      font-size: 12px;
+      color: var(--color-muted);
+      white-space: nowrap;
+      overflow: hidden;
+      text-overflow: ellipsis;
+    }
+
+    .player-controls {
+      display: flex;
+      align-items: center;
+      gap: 6px;
+      flex-shrink: 0;
+    }
+
+    .icon-btn {
+      width: 44px;
+      height: 44px;
+      display: flex;
+      align-items: center;
+      justify-content: center;
+      background: none;
+      border: none;
+      color: var(--color-foreground);
+      cursor: pointer;
+      border-radius: var(--radius-full);
+    }
+
+    .icon-btn svg {
+      width: 20px;
+      height: 20px;
+      fill: currentColor;
+    }
+
+    .play-pause-btn {
+      width: 48px;
+      height: 48px;
+      border-radius: var(--radius-full);
+      background-color: var(--color-primary);
+      border: none;
+      display: flex;
+      align-items: center;
+      justify-content: center;
+      cursor: pointer;
+      color: #0f1115;
+      box-shadow: 0 2px 6px rgba(0, 0, 0, 0.4);
+    }
+
+    .play-pause-btn svg {
+      width: 20px;
+      height: 20px;
+      fill: currentColor;
+    }
+
+    /* Row 2: Seek bar */
+    .player-row-2 {
+      display: flex;
+      flex-direction: column;
+      gap: 3px;
+    }
+
+    .progress-track {
+      width: 100%;
+      height: 4px;
+      background-color: var(--color-border);
+      border-radius: 2px;
+      position: relative;
+      overflow: hidden;
+    }
+
+    .progress-fill {
+      height: 100%;
+      width: 30.2%;
+      background-color: var(--color-primary);
+      border-radius: 2px;
+    }
+
+    .time-indicators {
+      display: flex;
+      justify-content: space-between;
+      font-size: 11px;
+      font-variant-numeric: tabular-nums;
+      color: var(--color-muted);
+      line-height: 1;
+      padding-top: 2px;
+    }
+
+    /* Bottom Category Navigation Bar */
+    .category-nav {
+      background-color: #0f1115;
+      border-top: 1px solid var(--color-border);
+      display: flex;
+      justify-content: space-around;
+      align-items: center;
+      height: 56px;
+      padding: 0 4px;
+    }
+
+    .nav-item {
+      display: flex;
+      flex-direction: column;
+      align-items: center;
+      justify-content: center;
+      gap: 3px;
+      color: var(--color-muted);
+      text-decoration: none;
+      min-width: 58px;
+      min-height: 44px;
+      font-size: 11px;
+      font-weight: 500;
+      cursor: pointer;
+    }
+
+    .nav-item svg {
+      width: 22px;
+      height: 22px;
+      stroke: currentColor;
+      fill: none;
+      stroke-width: 1.8;
+      stroke-linecap: round;
+      stroke-linejoin: round;
+    }
+
+    .nav-item.active {
+      color: var(--color-primary);
+    }
+  </style>
+</head>
+<body>
+
+<div class="app-viewport">
+  <!-- Top Bar: Back Link -->
+  <header class="top-bar">
+    <a href="#" class="back-link" aria-label="Zurück zu Musik">
+      <svg viewBox="0 0 24 24" aria-hidden="true">
+        <polyline points="15 18 9 12 15 6"></polyline>
+      </svg>
+      <span>Musik</span>
+    </a>
+  </header>
+
+  <!-- Main Content Area -->
+  <main class="content">
+    <!-- Album Header Section -->
+    <section class="album-header">
+      <div class="cover-art" aria-hidden="true">
+        <svg viewBox="0 0 24 24">
+          <circle cx="6" cy="18" r="3"></circle>
+          <circle cx="18" cy="16" r="3"></circle>
+          <path d="M9 18V5l12-2v13"></path>
+          <line x1="9" y1="9" x2="21" y2="7"></line>
+        </svg>
+      </div>
+
+      <h1 class="album-title">Unterwegs</h1>
+      <div class="album-artist">Die Beispiele</div>
+      <div class="album-meta">2019 · 12 Titel · 48 Min.</div>
+
+      <button type="button" class="play-all-btn">
+        <svg viewBox="0 0 24 24" aria-hidden="true">
+          <polygon points="5 3 19 12 5 21 5 3"></polygon>
+        </svg>
+        <span>Alle abspielen</span>
+      </button>
+    </section>
+
+    <!-- Track List -->
+    <section class="track-section">
+      <h2 class="section-subtitle">CD 1</h2>
+      <ol class="track-list">
+        <!-- Track 1 -->
+        <li class="track-row">
+          <span class="track-num">1</span>
+          <span class="track-title">Aufbruch</span>
+          <span class="track-meta">3:41</span>
+        </li>
+
+        <!-- Track 2 -->
+        <li class="track-row">
+          <span class="track-num">2</span>
+          <span class="track-title">Am Fluss</span>
+          <span class="track-meta">4:05</span>
+        </li>
+
+        <!-- Track 3 (Playing) -->
+        <li class="track-row is-playing">
+          <span class="track-num" aria-label="Wird abgespielt">
+            <div class="playing-indicator" aria-hidden="true">
+              <span class="playing-bar"></span>
+              <span class="playing-bar"></span>
+              <span class="playing-bar"></span>
+            </div>
+          </span>
+          <span class="track-title">Nachtzug</span>
+          <span class="track-meta" style="color: var(--color-primary); font-weight: 600;">3:58</span>
+        </li>
+
+        <!-- Track 4 -->
+        <li class="track-row">
+          <span class="track-num">4</span>
+          <span class="track-title">Grenzland</span>
+          <span class="track-meta">5:12</span>
+        </li>
+
+        <!-- Track 5 -->
+        <li class="track-row">
+          <span class="track-num">5</span>
+          <span class="track-title">Heimweg</span>
+          <span class="track-meta">3:27</span>
+        </li>
+
+        <!-- Track 6 (Bonus Live, dimmed with badge) -->
+        <li class="track-row is-disabled">
+          <span class="track-num">6</span>
+          <span class="track-title">Bonus (Live)</span>
+          <div class="track-meta">
+            <span class="badge-unplayable">Nicht abspielbar</span>
+          </div>
+        </li>
+      </ol>
+    </section>
+  </main>
+
+  <!-- Fixed Bottom Area: Audio Player + Category Navigation -->
+  <div class="bottom-container">
+    <!-- Persistent Audio Player Bar -->
+    <section class="audio-player" aria-label="Audio-Player">
+      <!-- Row 1: Cover, Track Info & Playback Controls -->
+      <div class="player-row-1">
+        <div class="player-track-info">
+          <div class="player-thumb" aria-hidden="true">
+            <svg viewBox="0 0 24 24">
+              <circle cx="6" cy="18" r="3"></circle>
+              <circle cx="18" cy="16" r="3"></circle>
+              <path d="M9 18V5l12-2v13"></path>
+            </svg>
+          </div>
+          <div class="player-text">
+            <span class="player-title">Nachtzug</span>
+            <span class="player-artist">Die Beispiele</span>
+          </div>
+        </div>
+
+        <div class="player-controls">
+          <button type="button" class="icon-btn" aria-label="Vorheriger Titel">
+            <svg viewBox="0 0 24 24">
+              <polygon points="19 20 9 12 19 4 19 20"></polygon>
+              <line x1="5" y1="4" x2="5" y2="20" stroke="currentColor" stroke-width="2.5"></line>
+            </svg>
+          </button>
+
+          <button type="button" class="play-pause-btn" aria-label="Pause">
+            <svg viewBox="0 0 24 24">
+              <rect x="6" y="4" width="4" height="16" rx="1"></rect>
+              <rect x="14" y="4" width="4" height="16" rx="1"></rect>
+            </svg>
+          </button>
+
+          <button type="button" class="icon-btn" aria-label="Nächster Titel">
+            <svg viewBox="0 0 24 24">
+              <polygon points="5 4 15 12 5 20 5 4"></polygon>
+              <line x1="19" y1="4" x2="19" y2="20" stroke="currentColor" stroke-width="2.5"></line>
+            </svg>
+          </button>
+        </div>
+      </div>
+
+      <!-- Row 2: Seekbar & Timestamps -->
+      <div class="player-row-2">
+        <div class="progress-track" role="progressbar" aria-valuenow="30" aria-valuemin="0" aria-valuemax="100">
+          <div class="progress-fill"></div>
+        </div>
+        <div class="time-indicators">
+          <span>1:12</span>
+          <span>3:58</span>
+        </div>
+      </div>
+    </section>
+
+    <!-- App Bottom Category Navigation -->
+    <nav class="category-nav" aria-label="Hauptnavigation">
+      <a href="#" class="nav-item">
+        <svg viewBox="0 0 24 24" aria-hidden="true">
+          <rect x="2" y="2" width="20" height="20" rx="2.18" ry="2.18"></rect>
+          <line x1="7" y1="2" x2="7" y2="22"></line>
+          <line x1="17" y1="2" x2="17" y2="22"></line>
+          <line x1="2" y1="12" x2="22" y2="12"></line>
+          <line x1="2" y1="7" x2="7" y2="7"></line>
+          <line x1="2" y1="17" x2="7" y2="17"></line>
+          <line x1="17" y1="17" x2="22" y2="17"></line>
+          <line x1="17" y1="7" x2="22" y2="7"></line>
+        </svg>
+        <span>Filme</span>
+      </a>
+
+      <a href="#" class="nav-item">
+        <svg viewBox="0 0 24 24" aria-hidden="true">
+          <rect x="2" y="7" width="20" height="15" rx="2" ry="2"></rect>
+          <polyline points="17 2 12 7 7 2"></polyline>
+        </svg>
+        <span>Serien</span>
+      </a>
+
+      <a href="#" class="nav-item active" aria-current="page">
+        <svg viewBox="0 0 24 24" aria-hidden="true">
+          <path d="M9 18V5l12-2v13"></path>
+          <circle cx="6" cy="18" r="3"></circle>
+          <circle cx="18" cy="16" r="3"></circle>
+        </svg>
+        <span>Musik</span>
+      </a>
+
+      <a href="#" class="nav-item">
+        <svg viewBox="0 0 24 24" aria-hidden="true">
+          <path d="M3 18v-6a9 9 0 0 1 18 0v6"></path>
+          <path d="M21 19a2 2 0 0 1-2 2h-1a2 2 0 0 1-2-2v-3a2 2 0 0 1 2-2h3zM3 19a2 2 0 0 0 2 2h1a2 2 0 0 0 2-2v-3a2 2 0 0 0-2-2H3z"></path>
+        </svg>
+        <span>Hörbücher</span>
+      </a>
+
+      <a href="#" class="nav-item">
+        <svg viewBox="0 0 24 24" aria-hidden="true">
+          <rect x="3" y="3" width="18" height="18" rx="2" ry="2"></rect>
+          <circle cx="8.5" cy="8.5" r="1.5"></circle>
+          <polyline points="21 15 16 10 5 21"></polyline>
+        </svg>
+        <span>Bilder</span>
+      </a>
+    </nav>
+  </div>
+</div>
+
+</body>
+</html>
