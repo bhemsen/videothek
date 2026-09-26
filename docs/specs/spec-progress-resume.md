@@ -23,8 +23,11 @@ moved to `docs/specs/archive/`.
       primary bar, remaining time) plus a "Nächste Folge" card for the next
       episode after a finished one; without entries the row is absent and P1's
       home empty state ("Willkommen") is shown instead.
-- [ ] Every in-progress card has a "×" that removes the item from the row for
-      good (its progress is reset to "not started").
+- [ ] Every in-progress card has a "×" that removes that in-progress entry
+      (its progress is reset to "not started"): a removed movie stays out of
+      the row; a removed episode whose previous episode is finished comes back
+      on the next page load as that series' "Nächste Folge" card at 0:00
+      (accepted H5/H6 consequence, see Next up).
 - [ ] A video watched to ≥ 90 % leaves the row and shows a "Gesehen" badge on its
       movie card / episode row; a started one shows the 4 px bar there.
 - [ ] Progress is strictly per user: no API call can read or change another
@@ -145,8 +148,8 @@ parameter; `src/db/` never hard-codes it.
 All routes are wrapped in P1's `requireUser`; the user is always
 `ctx.user.id` (no user id in any URL). `:id` is a P2 index id: anything not
 matching `^[1-9][0-9]{0,15}$` or not a safe integer, or not present in
-`library_items` (P2's `getItemById(db, id)` returns `null`) →
-`404 {"error":"not_found"}`. `updated_at` is written from `deps.now()`
+`library_items` (P2's `getItemById(db, id)` returns `undefined`; the handler
+checks the result as falsy, never `=== null`) → `404 {"error":"not_found"}`. `updated_at` is written from `deps.now()`
 (epoch ms), never from a client value.
 
 | Route | Request | Success | Errors |
@@ -213,10 +216,25 @@ series (`series_id`):
 So the last episode of a season continues with the next season's first, and
 the finale yields nothing.
 
+Interaction with "×" (H5 × H6, accepted, no suppression rule): `DELETE`
+removes the episode's row, so its state becomes `none`. If that episode's
+predecessor is the series' latest remaining finished row, step 3 emits the
+removed episode as `next_up` (position 0, sorted by the predecessor's
+`updated_at`) — the "×" turns an in-progress episode into a "Nächste Folge"
+card at 0:00, which has no "×". The card leaves the row once the episode is
+watched past 30 s (then it is `in_progress`) or when 20 newer entries push it
+out. No per-series dismissal is stored: it would need state that D11's
+"ignore `none` rows" rule and H5's "reset to `none`" do not provide.
+
 ### Repository (`src/db/progress.js`)
 
-All SQL for `progress`; every function takes `db` first:
-`getProgressRow(db, userId, relPath)` → row | null;
+Every write to `progress` and all of P4's queries; every function takes `db`
+first (P5's `src/db/audio-progress.js` adds read-only joins onto the table
+and must bind `START_THRESHOLD_S` from `src/api/progress-rules.js` the same
+way — passed in by its `src/api/` caller as a parameter, no literal 30 in
+SQL):
+`getProgressRow(db, userId, relPath)` → row | `undefined` (the
+`node:sqlite` `get()` result, like P1's and P2's lookups; callers check falsy);
 `upsertProgress(db, { userId, relPath, positionSeconds, durationSeconds,
 finished, updatedAt })` (`INSERT … ON CONFLICT(user_id, rel_path) DO UPDATE`);
 `deleteProgress(db, userId, relPath)` → boolean;
@@ -246,10 +264,15 @@ finished, updatedAt })` (`INSERT … ON CONFLICT(user_id, rel_path) DO UPDATE`);
      `entry.position ≥ media.duration` (then no seek). On the following
      `seeked`, call `onResume?.(entry.position)` once and arm reporting. If the
      element is emptied before the seek lands, the seek is repeated on the next
-     `loadedmetadata`. `resume: false` never seeks and never calls `onResume`.
-  3. Reporting is armed after the resume seek, or on metadata when there is
-     nothing to resume, and only while `media.duration` is finite and > 0 — an
-     early `timeupdate`/`pause` can never overwrite the stored position with 0.
+     `loadedmetadata`. Fallback for a seek that never lands (stalled or
+     rejected, no `seeked`): the first `playing` event after the seek was
+     issued arms reporting without calling `onResume` (a later `seeked` still
+     calls it, at most once); reports then carry wherever playback really is.
+     `resume: false` never seeks and never calls `onResume`.
+  3. Reporting is armed after the resume seek (or its `playing` fallback), or
+     on metadata when there is nothing to resume, and only while
+     `media.duration` is finite and > 0 — an early `timeupdate`/`pause` before
+     the seek can never overwrite the stored position with 0.
   4. Reports: every 10 s while playing (interval started on `playing`, cleared
      on `pause`/`ended`/`emptied`/`error`) and immediately on `pause`, `ended`,
      `document` `visibilitychange` → hidden, `window` `pagehide`, and `stop()`.
@@ -257,7 +280,8 @@ finished, updatedAt })` (`INSERT … ON CONFLICT(user_id, rel_path) DO UPDATE`);
      starts at the loaded position (or 0), so opening and leaving writes
      nothing. Payload `{ position: media.currentTime, duration: media.duration }`.
   5. `emptied` disarms reporting until the next `playing` event (covers P3's
-     "Erneut versuchen" source reload, which seeks back itself).
+     "Erneut versuchen" source reload of the same element, which seeks back
+     itself).
   6. A failed report is dropped with `console.warn` and does not advance
      `lastSent`, so the next trigger retries. `stop()` sends a final report,
      detaches every listener and timer, and resolves when that report settled
@@ -287,8 +311,10 @@ text = `--color-muted`, card/toast surfaces = `--color-secondary`, borders =
 - **Resume toast** (`public/js/lib/resume-toast.js`,
   `showResumeToast({ media, position })` → `{ hide() }`): host = the media
   element's parent, given class `resume-toast-host` (`position: relative`);
-  the toast is inserted right after the media element. It hides itself on the
-  media's `emptied` event.
+  the toast is inserted right after the media element. It hides itself
+  (removes its node) on the media's `emptied` and `error` events — P3's error
+  panel detaches the `<video>` from the same host, so a toast must never
+  outlive a playback error.
   Content: rotate icon (`--color-primary`), "Fortgesetzt bei 12:34"
   (`formatClock`), secondary button "Von vorn" (sets `currentTime = 0`, hides
   the toast, focus → the media element), icon button "×"
@@ -316,9 +342,12 @@ text = `--color-muted`, card/toast surfaces = `--color-secondary`, borders =
   error state); right after `startPlayback` the hook calls
   `trackPlayback(video, item.id, { entry, onResume: (p) =>
   showResumeToast({ media: video, position: p }) })`. Non-playable and error
-  states start no tracker. P3's "Erneut versuchen" reloads the source of the
-  same `<video>` element and seeks back itself; the tracker sees `emptied` and
-  re-arms on the next `playing`.
+  states start no tracker. The tracker and the toast bind to exactly one
+  `HTMLVideoElement` instance for the page's lifetime: P3's error panel only
+  detaches that element and "Erneut versuchen" re-inserts the **same
+  instance** (never a new `<video>`), sets the same `src` and seeks back
+  itself; the tracker sees `emptied` and re-arms on the next `playing`. The
+  hook never re-creates the tracker on retry.
 - **Home page** (`public/js/home.js`, replaces P1's placeholder; P1's
   `public/index.html`, `public/css/home.css` and `public/js/placeholder.js`
   are not edited): renders exactly P1's home structure —
@@ -350,25 +379,39 @@ text = `--color-muted`, card/toast surfaces = `--color-secondary`, borders =
   in DOM order. "×" → `removeProgress(id)`; on `204` the card is removed and
   focus moves to the next card's link, else the previous one, else (row now
   empty) the row section is removed from the slot, the empty state is
-  un-hidden and focus goes to the page's H1 (`tabindex="-1"`); on failure the card stays and the row's `role="status"`
-  line reads "Entfernen fehlgeschlagen. Bitte erneut versuchen.".
+  un-hidden and focus goes to the page's H1 (`tabindex="-1"`). The target is
+  chosen by the exported pure `nextFocusIndex(count, removedIndex)` → index
+  into the remaining cards (`removedIndex` if `< count − 1`, else
+  `removedIndex − 1`, `-1` when `count` was 1). The row is not re-fetched
+  after a removal (a resulting "Nächste Folge" card, see Next up, appears on
+  the next page load). On failure the card stays and the row's
+  `role="status"` line reads "Entfernen fehlgeschlagen. Bitte erneut
+  versuchen.".
 - **Grid decoration** (`public/js/lib/progress-badges.js`):
   `decorateProgress(root, entries)` (idempotent: removes earlier P4
   decorations first) and `decorateProgressFor(root, category)` → `Promise<void>`
   (`listProgress({ category, view: 'all' })`, then `decorateProgress`; any
   failure leaves the page undecorated). For each `[data-item-id]` under `root`
-  with an entry, the host is its `[data-progress-host]` descendant or the
-  element itself (class `progress-host` → `position: relative`,
-  `overflow: hidden`). `in_progress` → 4 px `--color-primary` bar along the
-  host's bottom edge + visually hidden "Zu 45 % gesehen"; `finished` → pill
-  top right: check SVG in `--color-accent`, text "Gesehen" in
-  `--color-foreground` 12 px semibold, `--color-background` fill,
-  `--border-width` `--color-border` border; `none` → nothing. Series cards
-  (`data-series-id`) are never decorated. Hooks: P2's `public/js/movies.js`
-  calls `decorateProgressFor(grid, 'movies')` and `public/js/series-detail.js`
-  `decorateProgressFor(list, 'series')` after every render; P2's
-  `public/js/lib/media-card.js` puts `data-progress-host` on the movie card's
-  tile element (episode rows use the row itself).
+  with an entry, the host is resolved through P2's DOM contract: the element
+  itself if it matches `.media-card__tile, .episode-row`, else its first
+  descendant matching that selector, else the element is skipped. P2 makes
+  both host classes `position: relative`; P4 adds no class to the host and
+  never edits P2's markup or CSS. `in_progress` → 4 px (`--space-1`)
+  `--color-primary` bar absolutely positioned along the host's bottom edge
+  (width via `--progress`, `border-bottom-left-radius` and
+  `border-bottom-right-radius: inherit` so it follows the tile's rounded
+  corners) + visually hidden "Zu 45 % gesehen"; `finished` → pill top right:
+  check SVG in `--color-accent`, text "Gesehen" in `--color-foreground`
+  `--text-xs` `--weight-semibold`, `--color-background` fill,
+  `--border-width` `--color-border` border, radius `--radius-full`; `none` →
+  nothing. Every decoration node carries `data-progress-decoration`, which is
+  how `decorateProgress` finds and removes earlier ones. Series cards
+  (`data-series-id`) are never decorated. Hooks (P2's DOM contract: one
+  import + one call after the render function resolved): `public/js/movies.js` calls
+  `decorateProgressFor(grid, 'movies')` and `public/js/series-detail.js`
+  `decorateProgressFor(list, 'series')` after every render. P2's wording
+  names the pure `decorateProgress(root, entries)`; `decorateProgressFor` is
+  the fetching wrapper around it and is the one function the hook lines call.
 
 ### File ownership (P4)
 
@@ -385,8 +428,8 @@ New: `src/db/migrations/003-progress.sql`, `src/db/progress.js`,
 Replaced (owning-phase-replaces rule): `public/js/home.js` (P1 placeholder).
 Edited (minimal hooks only): `src/http/routes.js` (one
 `registerProgressRoutes(router, deps)` line), `public/js/player.js` (P3),
-`public/js/movies.js`, `public/js/series-detail.js`,
-`public/js/lib/media-card.js` (P2; one call / one attribute each),
+`public/js/movies.js`, `public/js/series-detail.js` (P2; one import + one
+call each; `public/js/lib/media-card.js` is not edited),
 `docs/architecture.md` — Key flow 4 rewritten (identity `(user, rel_path)`,
 keepalive `PUT` every ~10 s and on pause/ended/hidden/`pagehide`, continue list
 = `in_progress` rows + next-up, start page mount) and one Boundaries line
@@ -395,8 +438,10 @@ keepalive `PUT` every ~10 s and on pause/ended/hidden/`pagehide`, continue list
 
 ### Cross-phase contract P4 relies on
 
-- **P1:** `openDatabase(dataDir)` + `migrate(db, dir?)` (all unapplied files
-  ascending, gaps allowed, one transaction per file, `foreign_keys = ON`);
+- **P1:** `openDatabase(dataDir)` + `migrate(db, { dir = <src/db/migrations>,
+  log } = {})` from `src/db/migrate.js` (re-exported by `src/db/index.js`; all
+  unapplied files ascending, gaps allowed, one transaction per file,
+  `foreign_keys = ON`; tests pass `{ dir }` to point at a temp copy);
   `users(id INTEGER PRIMARY KEY)`; handler `(req, res, ctx)` with
   `ctx = { user, params, url }`; `requireUser(handler)` from
   `src/http/guards.js`; `sendJson(res, status, body)`,
@@ -423,18 +468,26 @@ keepalive `PUT` every ~10 s and on pause/ended/hidden/`pagehide`, continue list
   `/series`, `/player?id=`.
 - **P2:** `CATEGORIES` (`movies`, `series`, `music`, `audiobooks`, `images`)
   from `src/library/categories.js`; `getItemById(db, id)` → full
-  `library_items` row incl. `rel_path` | null from `src/db/library-queries.js`;
-  `toItemJson(row)` from `src/api/library-json.js`; `library_items` with
-  `rel_path` UNIQUE, `category`, `playable`, `series_id`, `season`, `episode`,
-  AUTOINCREMENT ids and hard deletes; `data-item-id` on movie card and episode
-  row roots, `data-series-id` on series cards; pages `public/js/movies.js`,
-  `public/js/series-detail.js`, shared `public/js/lib/media-card.js`.
+  `library_items` row incl. `rel_path`, or `undefined`, from
+  `src/db/library-queries.js`; `toItemJson(row)` from
+  `src/api/library-json.js`; `library_items` with `rel_path` UNIQUE,
+  `category`, `playable`, `series_id`, `season`, `episode`, `episode_end`,
+  AUTOINCREMENT ids and hard deletes (migration 002); DOM contract:
+  `data-item-id` on movie card and episode row roots, host elements
+  `.media-card__tile` / `.episode-row` (both `position: relative`),
+  `data-series-id` on series cards, and `public/js/movies.js` /
+  `public/js/series-detail.js` render all cards/rows before their render
+  function resolves.
 - **P3:** `getNextEpisode(db, row)` → `LibraryItemRow | null` from
   `src/db/episodes.js` (the function behind the single-item `next` field);
   player page `/player?id=<id>` with the seam in `public/js/player.js`:
   `loadItem(id)` and exactly one `startPlayback(video, item)` call (tracks,
-  `src`, `play()`), never repeated by retry; "Erneut versuchen" reloads the
-  same `<video>` element and seeks back itself (emits `emptied`).
+  `src`, `play()`), never repeated by retry; one `HTMLVideoElement` instance
+  per page: loading/error panels only detach it and "Erneut versuchen"
+  re-inserts that same instance, sets the same `src` and seeks back itself
+  (emits `emptied`) — P3's "rebuilds the `<video>` stage" means the stage
+  around this element, as its own rationale (`emptied` reaching P4's tracker)
+  requires.
 
 ## Prior art
 
@@ -516,11 +569,17 @@ the second test account is created through `/admin` during QA.
 | Auto-resume with a dismissible toast ("Fortgesetzt bei …" + "Von vorn"), exact stored position | Vision: pick up exactly where they left off; a prompt costs a click on every playback and is awkward on TV remotes; "Von vorn" is the undo. | 2026-09-26 |
 | Toast: centred, `--space-16` above the video's bottom edge on ≥ 768 px (positioned from the video's box, independent of P3's wrapper markup), in flow below the video on phones; 8 s auto-hide paused on hover/focus | Matches the desktop export and never covers native controls; P3's stage is the `<video>` itself, so the toast cannot rely on a wrapper; WCAG 2.2.1 (timing adjustable). | 2026-09-26 |
 | `PUT` without a body or with a non-object body → `400 invalid_json`; field violations → `400 invalid_progress` | P1's convention for handlers that require a body (`readJson` → `undefined`). | 2026-09-26 |
-| Player hook confined to P3's `loadItem`/`startPlayback` seam; retry keeps the same element | P3's spec defines the seam for P4; `emptied` + re-arm on `playing` covers the retry without editing P3's retry code. | 2026-09-26 |
+| Player hook confined to P3's `loadItem`/`startPlayback` seam; one `HTMLVideoElement` instance per player page — P3's error panel only detaches it and "Erneut versuchen" re-inserts the same instance; the tracker is never re-created on retry | P3's spec defines the seam for P4, and its own playback-error rationale relies on the reload's `emptied` reaching P4's tracker, which is only true for the same element; a new element would leave tracker and toast bound to a detached node and stop all reports after a retry. Chosen over a second P3 → P4 re-attach hook because it needs no extra API. | 2026-09-26 |
+| Resume toast also hides on the media `error` event | P3 swaps the `<video>` for an error panel inside the same host; a toast left beside the panel would describe a playback that no longer exists. | 2026-09-26 |
+| `trackPlayback` arms reporting on the first `playing` after the resume seek was issued when `seeked` never arrives | A stalled or rejected seek must not silently disable progress for the whole session; by the time playback runs, `currentTime` is the truth to report. | 2026-09-26 |
+| Accepted consequence of H5 × H6: "×" on an in-progress episode whose predecessor is the series' latest finished row turns it into a "Nächste Folge" card at 0:00 (no "×"); no suppression rule | H5 fixes "×" = reset to `none`, H6/D11 fix that next-up ignores `none` rows and has no "×"; a suppression rule would need stored per-series dismissal state that neither decision provides. The card is truthful (that episode is next), starts at 0:00 and leaves once watched past 30 s. | 2026-09-26 |
+| After a successful "×" the row is not re-fetched; focus target from the pure `nextFocusIndex(count, removedIndex)` | Keeps the removal instant and the focus rule unit-testable; a resulting "Nächste Folge" card appears on the next load, which is when the user returns to the start page anyway. | 2026-09-26 |
+| Lookups return `undefined` for "no row" (`getItemById`, `getProgressRow`), checked as falsy | Matches P1's and P2's repository convention (`node:sqlite` `get()`); a `=== null` check would let unknown ids pass the 404 guard. | 2026-09-26 |
+| P5's `src/db/audio-progress.js` may read `progress` (read-only joins); all writes stay in `src/db/progress.js`; readers bind `START_THRESHOLD_S` as a parameter | P5 owns its audio aggregation queries (its spec); the one threshold constant must not be duplicated as a SQL literal. | 2026-09-26 |
 | Home `/` = P1's `index.html` with P4's replacement `home.js` reproducing P1's structure (H1 "Start", `.home-rows` slot, "Willkommen" empty state hidden while the slot has children) and mounting the row into the slot; no active nav entry | Cross-phase D2 and P1's home contract (owning-phase-replaces rule; P4 never edits `placeholder.js`, `index.html` or `home.css`). P1's copy stays true with or without a row; a failed row request also shows it — progress is an enhancement. | 2026-09-26 |
 | "Weiterschauen" requests `category=movies,series`, max 20, most recent first | D11 (video-only row); P5 owns audio entry points and reuses the endpoint (e.g. `category=music&limit=1`). | 2026-09-26 |
 | Grids get progress through `GET /api/progress?view=all&category=…`, not by joining progress into `/api/library/*` | Architecture: `src/library/` knows nothing about users; library responses stay user-agnostic; no P4 edit of P2's server files. | 2026-09-26 |
-| Decoration hooks: one `decorateProgressFor` call in `movies.js` and `series-detail.js`, one `data-progress-host` attribute in `media-card.js` | The bar must sit on the tile, not below the title; a single attribute is the smallest stable hook into P2's markup. | 2026-09-26 |
+| Decoration hooks: one import + one `decorateProgressFor(root, category)` call in `movies.js` and `series-detail.js`; hosts resolved via P2's `.media-card__tile` / `.episode-row`; no edit of `media-card.js` | P2's DOM contract already provides `[data-item-id]` plus both host classes with `position: relative`, so the earlier `data-progress-host` attribute edit is redundant; `decorateProgressFor` is the fetching wrapper of the `decorateProgress(root, entries)` P2's wording names. | 2026-09-26 |
 | P4 components inject their own stylesheet `<link>` | No P4 edit of HTML files owned by P1/P2/P3; CSP `style-src 'self'` allows linked sheets. | 2026-09-26 |
 | One CSS file and one JS module per UI component; extra icons defined in the P4 module via P1's `createIcon` | Parallel issues (toast, row, badges) never edit the same file; P1's contract: `icons.js` is never edited by later phases. | 2026-09-26 |
 | Two devices playing the same item: last write wins | Prior art (audiobookshelf) — multi-device conflict resolution explicitly AVOIDed. | 2026-09-26 |
@@ -563,7 +622,9 @@ Machine checks (`npm run verify`):
 - [ ] `test/api/progress-next-up.test.js`: finished S01E03 → S01E04; last
       episode of a season → S02E01; finale, started or non-playable successor,
       unnumbered episode, in-progress latest episode → nothing; a newer `none`
-      row does not hide a finished latest episode; `updatedAt` = *L*'s.
+      row does not hide a finished latest episode; `updatedAt` = *L*'s;
+      S01E03 finished + S01E04's row removed (as after "×") → S01E04 as
+      `next_up`.
 - [ ] `test/api/progress.test.js` (via `startTestApp`): every route `401`
       without a session (also covered by P1's route-auth test); malformed and
       unknown ids → `404`; image (incl. a video under `images`) and
@@ -574,10 +635,15 @@ Machine checks (`npm run verify`):
       continue view excludes
       finished, < 30 s, non-playable and vanished items, includes `next_up`
       only when `series` is requested, orders by `updatedAt` desc and honours
-      `limit` after merging; entries carry `item` only in the continue view.
+      `limit` after merging; entries carry `item` only in the continue view;
+      `DELETE` of an in-progress movie drops it from the continue view;
+      `DELETE` of an in-progress episode whose predecessor is finished turns
+      it into its series' `next_up` entry.
 - [ ] `test/public/progress-client.test.js` (fake media element, stubbed
       `fetch`, `mock.timers`): no report before the resume seek lands;
-      `onResume` once; no seek when `resume: false` or position ≥ duration;
+      `onResume` once; a seek without `seeked` arms reporting on the first
+      `playing` (no `onResume`); no seek when `resume: false` or position ≥
+      duration;
       reports every 10 s while playing and on `pause`, `ended`,
       `visibilitychange`→hidden and `pagehide`; < 1 s moves skipped; every
       report is a keepalive `PUT` with a JSON body and no 401 redirect;
@@ -585,7 +651,8 @@ Machine checks (`npm run verify`):
       next trigger; `stop()` flushes and detaches; `formatClock` /
       `formatRemaining` cover < 1 min, < 1 h, ≥ 1 h and whole hours.
 - [ ] `test/public/continue-row.test.js`: `cardMeta` for movie, episode,
-      special, unnumbered episode and `next_up`.
+      special, unnumbered episode and `next_up`; `nextFocusIndex` for first,
+      middle, last and only card.
 
 Human QA (Chromium + Firefox, real sample media per Human prerequisites,
 phone 390 px and desktop 1440 px, compared with the design exports):
@@ -609,9 +676,16 @@ phone 390 px and desktop 1440 px, compared with the design exports):
       within 20 s: "Gesehen" remains.
 - [ ] Movie grid and episode list: started items show the bar, finished items
       "Gesehen", untouched items nothing.
-- [ ] "×" on a card removes it and focus moves to the neighbouring card; after
-      reload it stays removed and the grid card has no bar; removing the last
-      card brings back the "Willkommen" empty state.
+- [ ] "×" on a movie card removes it and focus moves to the neighbouring
+      card; after reload it stays removed and the grid card has no bar;
+      removing the last card brings back the "Willkommen" empty state. "×" on
+      an in-progress S01E04 after S01E03 was finished: the card disappears;
+      after reload S01E04 is back as a "Nächste Folge" card without "×" that
+      starts at 0:00.
+- [ ] Trigger a playback error (e.g. stop the server while the resume toast
+      is visible), then "Erneut versuchen" after restarting it: the toast is
+      gone with the error, and after the retry DevTools shows `PUT` reports
+      again.
 - [ ] Finish S01E03 of a series: "Nächste Folge" S01E04 appears in the row
       without "×"; opening it starts at 0:00.
 - [ ] Log in as a second user: none of the first user's progress is visible.
@@ -629,10 +703,12 @@ phone 390 px and desktop 1440 px, compared with the design exports):
 | Firefox < 133 ignores `keepalive`; mobile browsers skip `pagehide` | The 10 s timer and the `visibilitychange`→hidden report bound the loss to ≤ 10 s. |
 | Early media events overwrite the stored position with 0 | Reporting armed only after the resume seek; covered by a client unit test. |
 | P2/P3 merged names differ from the consumed contract (`getItemById`, `toItemJson`, `getNextEpisode`, `loadItem`/`startPlayback`, `data-item-id`) | Contract fixed in the cross-phase decisions; the consuming issue reads the merged code first and adapts names, never semantics or ownership. |
-| `routes.js` / P2 page scripts edited in parallel | One appended line / one call / one attribute per edit; a rebase resolves the trivial conflict. |
+| `routes.js` / P2 page scripts edited in parallel | One appended line / one import + one call per edit; a rebase resolves the trivial conflict. |
 | Browsers report slightly different durations for the same file | Rules use the duration of the latest write; the thresholds are coarse enough. |
 | SD-card wear on a Pi from frequent writes | One small upsert per active stream every 10 s (WAL) is negligible. |
 | Resume toast hidden while the video is fullscreen | Accepted — resuming still happens; the toast is informational. |
+| P3's retry creates a new `<video>` instead of re-inserting the same one | Contract stated in both specs (same instance); the P4 player-hook issue reads P3's merged `player.js` first and the QA line "reports resume after 'Erneut versuchen'" catches a regression. |
+| A "Nächste Folge" card produced by "×" cannot be dismissed | Accepted H5/H6 consequence; it starts at 0:00 and leaves once the episode is watched past 30 s or 20 newer entries push it out. |
 | A short flash of unstyled content from injected stylesheets | Components render only after their data arrived; the sheet is requested on import, before that. |
 
 ## Decision log
@@ -700,3 +776,26 @@ phone 390 px and desktop 1440 px, compared with the design exports):
   "Gesehen" pill colours and off-token export shades mapped to tokens; toast
   positioned from the video's box; seek skipped when the stored position ≥ duration; retry of
   a seek interrupted by `emptied`.
+- 2026-09-26: cross-phase consolidation — spec-acceptance review follow-up:
+  "×" on an in-progress episode with a finished predecessor becomes a
+  "Nächste Folge" card at 0:00 — accepted as the H5/H6 consequence instead of
+  a suppression rule (H5's reset-to-`none` and D11's "ignore `none` rows" win
+  over a dismissal store); Outcome and QA reworded to "removes the
+  in-progress entry"; next-up and list tests added.
+- 2026-09-26: cross-phase consolidation — contracts aligned with the sibling
+  specs: P2's `getItemById` returns `undefined` (checked falsy; P4's
+  `getProgressRow` follows the same convention); P1's
+  `migrate(db, { dir, log } = {})` options signature.
+- 2026-09-26: cross-phase consolidation — P3/P4 retry seam: one
+  `HTMLVideoElement` instance per player page; P3's error panel detaches it
+  and "Erneut versuchen" re-inserts the same instance (P3's own rationale —
+  `emptied` reaching P4's tracker — requires it); no re-attach hook.
+- 2026-09-26: cross-phase consolidation — grid decoration uses P2's DOM
+  contract (`.media-card__tile` / `.episode-row`, `position: relative`), the
+  `media-card.js` edit and `data-progress-host` are dropped;
+  `decorateProgressFor` is the one call each P2 page adds.
+- 2026-09-26: review follow-up (non-blocking) — toast hides on `error`;
+  `trackPlayback` arms on the first `playing` when `seeked` never comes;
+  "Gesehen" pill named in tokens (`--text-xs`, `--weight-semibold`);
+  pure `nextFocusIndex` extracted and tested; P5's read-only
+  `audio-progress.js` join acknowledged in the repository rule.
