@@ -436,7 +436,9 @@ metadata in their own tables and never rewrite `library_items`.
     apply because the walk never visits skipped directories). An event's
     `filename` is joined to the watched directory's relative path. `gone`
     closes the watch of that directory and all below it; `sweep` closes every
-    watch whose directory was not visited (only after full scans). Each watch
+    watch whose directory was not visited (only after full scans), except
+    `''` (MEDIA_ROOT) itself, which `sweep` never closes since the scanner's
+    walk never visits MEDIA_ROOT and so never lists `''` as visited. Each watch
     handles its own `error`: close it, log `library_watch_error { dir, code }`,
     and `requestPaths([dir])` (the rescan re-adds it). `ENOSPC`/`EMFILE` from
     `fs.watch` → log `library_watch_limit { count }` once, stop adding watches
@@ -991,3 +993,35 @@ and desktop 1440 px, compared with the design exports):
   `null`. This keeps a track type the sniffer doesn't care about (hint,
   timecode, …) from ever downgrading a file to "unknown", while a moov
   literally missing is still treated as `null` per spec.
+- 2026-09-26: change detection (#31) — `MEDIA_ROOT` itself is watched by
+  `watcher.js`'s `start()` calling `dirObserver.seen('')` directly, not by the
+  scanner's walk: the scanner (#33) only calls `seen(relDir)` for category
+  roots and their descendants (readdir(MEDIA_ROOT) enumerates roots but is
+  never itself passed to `syncDirectory`), yet "MEDIA_ROOT and every directory
+  the walk visits get one watch" requires it watched too. `seen('')` is
+  idempotent, so `startLibrary` (#34) needs no special-casing either way.
+- 2026-09-26: change detection (#31) — "the same backoff applies to the
+  Linux MEDIA_ROOT watch" is implemented by having `watcher.js` intercept
+  `dirObserver`'s `onWatchError('')` (the root's entry in the same
+  per-directory watch set, not a second parallel watch) and run it through
+  the identical 5 s→5 min doubling reconnect + "one full scan on recovery"
+  used for the macOS/Windows recursive watch, instead of the generic
+  per-directory `requestPaths([dir])` handling every other directory gets.
+- 2026-09-26: change detection (#31) — `dir-watch.js`'s ENOSPC/EMFILE
+  "stop adding watches" flag is cleared inside `sweep()` (only ever called
+  after a full scan), so watches resume being attempted starting with the
+  next full scan's walk, matching "stops adding watches until the next full
+  scan" without a separate reset signal.
+- 2026-09-26: change detection (#31), review fix — the entry above settled
+  how `''` gets *watched*, but not how it survives `sweep()`: since the
+  scanner's walk never visits MEDIA_ROOT, its `visitedDirs` set never
+  contains `''`, so a `sweep()` that closed every unvisited key like any
+  other directory would close the root watch after the very first full scan,
+  with no code path ever calling `seen('')` again. Fixed by having `sweep()`
+  unconditionally skip the `''` key — its lifecycle stays owned by
+  `start()`/`stop()`, outside the scanner-driven visited set entirely. Covered
+  by a `dir-watch.test.js` case asserting `sweep(new Set(['Filme']))` leaves
+  `''` open. (The matching ENOSPC-on-`''` edge case — `seen('')` itself
+  failing with a limit error before any watch exists — is left for `startLibrary`
+  (#34)/the scanner (#33) to close, since a `sweep()`-side retry would race
+  `watcher.js`'s own root backoff bookkeeping in `rootRetrying`/`attemptRootWatch`.)
