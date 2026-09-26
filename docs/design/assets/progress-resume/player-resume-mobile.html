@@ -1,0 +1,166 @@
+<!DOCTYPE html>
+<html lang="de" class="h-full">
+<head>
+  <meta charset="utf-8">
+  <meta name="viewport" content="width=device-width, initial-scale=1.0">
+  <title>P4 Player Resume Toast – Mobile</title>
+  <script src="https://cdn.tailwindcss.com"></script>
+  <style>
+    :root {
+      --color-background: #0f1115;
+      --color-foreground: #e8eaed;
+      --color-primary: #ff7a1a;
+      --color-secondary: #1c2029;
+      --color-muted: #9aa0aa;
+      --color-border: #2a2f3a;
+    }
+    body {
+      background-color: #0f1115;
+      color: #e8eaed;
+      font-family: system-ui, -apple-system, BlinkMacSystemFont, "Segoe UI", Roboto, "Helvetica Neue", Arial, sans-serif;
+      margin: 0;
+      padding: 0;
+      min-height: 100vh;
+      display: flex;
+      justify-content: center;
+      align-items: flex-start;
+      -webkit-font-smoothing: antialiased;
+    }
+  </style>
+</head>
+<body class="bg-[#0f1115] text-[#e8eaed]">
+  <!-- Centered 390px Mobile Viewport Container -->
+  <main class="w-[390px] min-h-[844px] bg-[#0f1115] flex flex-col px-4 py-4 box-border">
+    
+    <!-- 1) Back Button (Secondary, height 44px, radius 8px, border #2a2f3a, surface #1c2029) -->
+    <div class="mb-4">
+      <button 
+        type="button" 
+        class="inline-flex items-center gap-2 h-[44px] px-3.5 rounded-[8px] bg-[#1c2029] border border-[#2a2f3a] text-[#e8eaed] text-[14px] font-medium hover:bg-[#252a36] active:bg-[#161a22] focus:outline-none focus:ring-2 focus:ring-[#ff7a1a] focus:ring-offset-2 focus:ring-offset-[#0f1115] transition-colors"
+        aria-label="Zurück zur Übersicht"
+      >
+        <svg class="w-4 h-4 text-[#e8eaed]" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2.2" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true">
+          <polyline points="15 18 9 12 15 6"></polyline>
+        </svg>
+        <span>Zurück</span>
+      </button>
+    </div>
+
+    <!-- 2) Title Block -->
+    <header class="mb-3">
+      <div class="text-[13px] font-normal text-[#9aa0aa] leading-tight tracking-wide mb-1">
+        Die Nordküste
+      </div>
+      <h1 class="text-[24px] font-bold text-[#e8eaed] tracking-tight leading-tight">
+        S01E02 · Der Leuchtturm
+      </h1>
+    </header>
+
+    <!-- 3) 16:9 Video Stage (Edge-to-edge relative to gutters, flat very dark placeholder with faint muted play symbol and native-style control strip) -->
+    <div class="relative w-full aspect-video bg-[#07080a] rounded-[8px] overflow-hidden border border-[#2a2f3a]/60 shadow-lg flex flex-col justify-between mb-3 select-none">
+      <!-- Ambient dark texture / subtle stage background -->
+      <div class="absolute inset-0 bg-gradient-to-t from-black/80 via-transparent to-black/20 pointer-events-none"></div>
+
+      <!-- Faint muted central play symbol -->
+      <div class="absolute inset-0 flex items-center justify-center pointer-events-none" aria-hidden="true">
+        <div class="w-14 h-14 rounded-full flex items-center justify-center opacity-30 text-[#9aa0aa]">
+          <svg class="w-10 h-10 ml-1" viewBox="0 0 24 24" fill="currentColor">
+            <polygon points="5 3 19 12 5 21 5 3"></polygon>
+          </svg>
+        </div>
+      </div>
+
+      <!-- Spacer top -->
+      <div class="h-4"></div>
+
+      <!-- Control Strip at bottom of video -->
+      <div class="relative z-10 w-full px-3 py-2.5 bg-gradient-to-t from-black/90 via-black/60 to-transparent flex flex-col gap-1.5">
+        <!-- Scrubber Bar -->
+        <div class="relative w-full h-1 bg-[#2a2f3a] rounded-full overflow-hidden cursor-pointer" role="progressbar" aria-valuenow="26" aria-valuemin="0" aria-valuemax="100">
+          <div class="absolute top-0 left-0 bottom-0 bg-[#ff7a1a] rounded-full" style="width: 26.6%;"></div>
+        </div>
+
+        <!-- Controls Row -->
+        <div class="flex items-center justify-between text-[12px] font-mono text-[#e8eaed] pt-0.5">
+          <div class="flex items-center gap-2">
+            <!-- Pause Icon -->
+            <button type="button" class="w-7 h-7 flex items-center justify-center text-[#e8eaed] hover:text-[#ff7a1a] focus:outline-none focus:ring-1 focus:ring-[#ff7a1a] rounded" aria-label="Wiedergabe pausieren">
+              <svg class="w-4 h-4 fill-current" viewBox="0 0 24 24">
+                <rect x="6" y="4" width="4" height="16" rx="1"></rect>
+                <rect x="14" y="4" width="4" height="16" rx="1"></rect>
+              </svg>
+            </button>
+            <span class="text-[#e8eaed] font-medium tracking-tight">12:34</span>
+          </div>
+
+          <div class="flex items-center gap-2">
+            <span class="text-[#9aa0aa] text-[12px]">47:10</span>
+            <!-- Fullscreen Icon -->
+            <button type="button" class="w-7 h-7 flex items-center justify-center text-[#e8eaed] hover:text-[#ff7a1a] focus:outline-none focus:ring-1 focus:ring-[#ff7a1a] rounded ml-1" aria-label="Vollbildmodus aktivieren">
+              <svg class="w-3.5 h-3.5" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round">
+                <path d="M8 3H5a2 2 0 0 0-2 2v3m18 0V5a2 2 0 0 0-2-2h-3m0 18h3a2 2 0 0 0 2-2v-3M3 16v3a2 2 0 0 0 2 2h3"></path>
+              </svg>
+            </button>
+          </div>
+        </div>
+      </div>
+    </div>
+
+    <!-- 4) Resume Toast: Directly below video, full width, surface #1c2029, border #2a2f3a, radius 8px, padding 12px, shadow -->
+    <section 
+      aria-label="Wiedergabehinweis"
+      class="w-full bg-[#1c2029] border border-[#2a2f3a] rounded-[8px] p-3 mb-3 shadow-[0_8px_24px_rgba(0,0,0,0.5)] flex items-center justify-between gap-2"
+    >
+      <!-- Left side: Circular-arrow SVG in orange & Text -->
+      <div class="flex items-center gap-2.5 min-w-0 pr-1">
+        <!-- Circular arrow icon in orange #ff7a1a -->
+        <div class="w-5 h-5 flex-shrink-0 text-[#ff7a1a] flex items-center justify-center">
+          <svg class="w-5 h-5" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2.2" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true">
+            <path d="M3 12a9 9 0 1 0 9-9 9.75 9.75 0 0 0-6.74 2.74L3 8"></path>
+            <polyline points="3 3 3 8 8 8"></polyline>
+          </svg>
+        </div>
+        <div class="text-[15px] font-medium text-[#e8eaed] leading-tight truncate">
+          Fortgesetzt bei 12:34
+        </div>
+      </div>
+
+      <!-- Right side: Secondary button "Von vorn" + Close icon button "×" -->
+      <div class="flex items-center gap-1.5 flex-shrink-0">
+        <button 
+          type="button" 
+          class="h-[44px] px-3 rounded-[8px] bg-transparent border border-[#2a2f3a] text-[#e8eaed] text-[13px] font-medium hover:bg-[#252a36] active:bg-[#161a22] focus:outline-none focus:ring-2 focus:ring-[#ff7a1a] transition-colors"
+        >
+          Von vorn
+        </button>
+        <button 
+          type="button" 
+          class="w-[44px] h-[44px] flex items-center justify-center rounded-[8px] text-[#9aa0aa] hover:text-[#e8eaed] hover:bg-[#252a36] active:bg-[#161a22] focus:outline-none focus:ring-2 focus:ring-[#ff7a1a] transition-colors"
+          aria-label="Hinweis schließen"
+          title="Hinweis schließen"
+        >
+          <svg class="w-5 h-5" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true">
+            <line x1="18" y1="6" x2="6" y2="18"></line>
+            <line x1="6" y1="6" x2="18" y2="18"></line>
+          </svg>
+        </button>
+      </div>
+    </section>
+
+    <!-- 5) Next Episode Button: Full-width secondary button with skip-forward SVG and text (height 44px+) -->
+    <div class="w-full">
+      <button 
+        type="button" 
+        class="w-full min-h-[44px] h-[48px] px-4 rounded-[8px] bg-[#1c2029] border border-[#2a2f3a] text-[#e8eaed] text-[14px] font-medium flex items-center justify-center gap-2 hover:bg-[#252a36] active:bg-[#161a22] focus:outline-none focus:ring-2 focus:ring-[#ff7a1a] focus:ring-offset-2 focus:ring-offset-[#0f1115] transition-colors"
+      >
+        <svg class="w-4 h-4 text-[#e8eaed] flex-shrink-0" viewBox="0 0 24 24" fill="currentColor" aria-hidden="true">
+          <polygon points="5 4 15 12 5 20 5 4"></polygon>
+          <line x1="19" y1="5" x2="19" y2="19" stroke="currentColor" stroke-width="2" stroke-linecap="round"></line>
+        </svg>
+        <span class="truncate">Nächste Folge: S01E03 · Sturmflut</span>
+      </button>
+    </div>
+
+  </main>
+</body>
+</html>
