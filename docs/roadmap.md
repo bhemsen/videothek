@@ -16,7 +16,7 @@
 | 3 | Video streaming & player — path guard, range streaming (206/416), video player page | [spec-video-streaming](specs/spec-video-streaming.md) | [#3](https://github.com/bhemsen/videothek/milestone/3) |
 | 4 | Progress & resume — progress API, player integration, "continue watching" | [spec-progress-resume](specs/spec-progress-resume.md) | [#4](https://github.com/bhemsen/videothek/milestone/4) |
 | 5 | Music & audiobooks — ID3v2/FLAC tag readers, parsers, audio player with album/book queue and resume | [spec-music-audiobooks](specs/spec-music-audiobooks.md) | [#5](https://github.com/bhemsen/videothek/milestone/5) |
-| 6 | Image gallery — folder gallery, EXIF embedded thumbnails, lightbox | — | — |
+| 6 | Image gallery — folder gallery, EXIF embedded thumbnails, lightbox | [spec-image-gallery](specs/spec-image-gallery.md) | [#6](https://github.com/bhemsen/videothek/milestone/6) |
 
 A phase gets a Spec link once `/plan` drafts it, and a Milestone link once the
 spec is merged. The milestone (open/closed + issue progress) is where status
