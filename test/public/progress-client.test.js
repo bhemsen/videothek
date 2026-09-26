@@ -137,18 +137,20 @@ test('listProgress joins an array category, appends view/limit, and needs no par
   assert.equal(calls[2].url, '/api/progress');
 });
 
-test('formatClock formats M:SS under an hour and H:MM:SS from an hour on', () => {
+test('formatClock formats M:SS under an hour and H:MM:SS from an hour on; a non-finite input is 0', () => {
   assert.equal(formatClock(5), '0:05');
   assert.equal(formatClock(754), '12:34');
   assert.equal(formatClock(3723), '1:02:03');
   assert.equal(formatClock(7200), '2:00:00');
+  assert.equal(formatClock(NaN), '0:00');
 });
 
-test('formatRemaining rounds minutes up (min 1) and combines hours, omitting a zero minute part', () => {
+test('formatRemaining rounds minutes up (min 1) and combines hours, omitting a zero minute part; a non-finite input is 0', () => {
   assert.equal(formatRemaining(1), 'Noch 1 Min.');
   assert.equal(formatRemaining(1439), 'Noch 24 Min.');
   assert.equal(formatRemaining(6720), 'Noch 1 Std. 52 Min.');
   assert.equal(formatRemaining(7200), 'Noch 2 Std.');
+  assert.equal(formatRemaining(NaN), 'Noch 1 Min.');
 });
 
 test('resumes by seeking on metadata, calls onResume once on seeked, then reports', async () => {
@@ -287,8 +289,9 @@ test('fetches the entry via getProgress when omitted; a failed fetch counts as s
     /** @type {unknown} */ (async () => ({ status: 500, headers: { get: () => null }, text: async () => '' }))
   );
   const media = createMedia({ readyState: 1, duration: 1000, currentTime: 0 });
-  const tracker = await trackPlayback(media, 14, {});
+  const tracker = trackPlayback(media, 14, {});
   assert.equal(media.currentTime, 0, 'no resume attempted for a failed fetch');
+  await flush(); // let the entry fetch settle
   const calls = stubFetch();
   media.currentTime = 20;
   await fireOn(media, 'pause');

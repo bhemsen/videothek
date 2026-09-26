@@ -13,7 +13,8 @@ import { request } from './api.js';
 
 /** @typedef {{ entry?: ProgressEntry, onResume?: (position: number) => void, resume?: boolean }} TrackPlaybackOptions */
 
-/** @typedef {{ needsResume: boolean, seekIssued: boolean, resumeSettled: boolean, armed: boolean, onResumeCalled: boolean, lastSent: number, intervalId: ReturnType<typeof setInterval> | null, stopped: boolean, stopPromise: Promise<void> | null }} TrackerState */
+/** `pending`: entry not yet known (omitted `entry` option) — arming/seeking is deferred until it clears.
+ * @typedef {{ entry: ProgressEntry | null, pending: boolean, needsResume: boolean, seekIssued: boolean, resumeSettled: boolean, armed: boolean, onResumeCalled: boolean, lastSent: number, intervalId: ReturnType<typeof setInterval> | null, stopped: boolean, stopPromise: Promise<void> | null }} TrackerState */
 
 /** @typedef {{ metadata: () => void, seeked: () => void, playing: () => void, reportAndStop: () => void, emptied: () => void, stopIntervalOnly: () => void, visibility: () => void, report: () => void }} TrackerHandlers */
 
@@ -72,12 +73,14 @@ export async function listProgress({ category, view, limit } = {}) {
 }
 
 /**
- * Formats seconds as a clock: `12:34` under an hour, `1:02:03` from an hour on.
+ * Formats seconds as a clock: `12:34` under an hour, `1:02:03` from an hour
+ * on. A non-finite input (e.g. `media.duration` before metadata loads) is
+ * treated as 0.
  * @param {number} seconds
  * @returns {string}
  */
 export function formatClock(seconds) {
-  const total = Math.max(0, Math.floor(seconds));
+  const total = Math.max(0, Math.floor(Number.isFinite(seconds) ? seconds : 0));
   const hours = Math.floor(total / 3600);
   const minutes = Math.floor((total % 3600) / 60);
   const secs = String(total % 60).padStart(2, '0');
@@ -87,11 +90,12 @@ export function formatClock(seconds) {
 /**
  * Formats remaining seconds, e.g. "Noch 24 Min." / "Noch 1 Std. 52 Min." /
  * "Noch 2 Std." (minutes rounded up, minimum 1, a zero minute part omitted).
+ * A non-finite input is treated as 0.
  * @param {number} seconds
  * @returns {string}
  */
 export function formatRemaining(seconds) {
-  const totalMinutes = Math.max(1, Math.ceil(seconds / 60));
+  const totalMinutes = Math.max(1, Math.ceil((Number.isFinite(seconds) ? seconds : 0) / 60));
   if (totalMinutes < 60) return `Noch ${totalMinutes} Min.`;
   const hours = Math.floor(totalMinutes / 60);
   const minutes = totalMinutes % 60;
@@ -99,56 +103,24 @@ export function formatRemaining(seconds) {
 }
 
 /**
- * Attaches a resume + periodic-report tracker to a media element. A failed
- * initial fetch (when `entry` is omitted) counts as state `none`.
- * @param {TrackedMedia} media
- * @param {number} itemId
- * @param {TrackPlaybackOptions} [opts]
- * @returns {Promise<{ stop: () => Promise<void> }>}
- */
-export async function trackPlayback(media, itemId, opts = {}) {
-  const { onResume, resume = true } = opts;
-  const entry = opts.entry !== undefined ? opts.entry : await fetchEntryOrNone(itemId);
-  return attachTracker(media, itemId, entry, onResume, resume);
-}
-
-/** @param {number} itemId @returns {Promise<ProgressEntry>} */
-async function fetchEntryOrNone(itemId) {
-  try {
-    return await getProgress(itemId);
-  } catch {
-    return { itemId, position: 0, duration: null, state: 'none', updatedAt: null };
-  }
-}
-
-/** @param {ProgressEntry} entry @param {boolean} resume @returns {TrackerState} */
-function createTrackerState(entry, resume) {
-  const needsResume = resume && entry.state === 'in_progress' && entry.position > 0;
-  return {
-    needsResume,
-    seekIssued: false,
-    resumeSettled: false,
-    armed: false,
-    onResumeCalled: false,
-    lastSent: needsResume ? entry.position : 0,
-    intervalId: null,
-    stopped: false,
-    stopPromise: null,
-  };
-}
-
-/**
- * @param {TrackedMedia} media @param {number} itemId @param {ProgressEntry} entry
- * @param {((position: number) => void) | undefined} onResume @param {boolean} resume
+ * Attaches a resume + periodic-report tracker and returns its `stop` handle
+ * synchronously (listeners attach at once), so a caller (P5's queue) can call
+ * `play()` right after with no intervening `await`. A given `entry` runs the
+ * resume/metadata logic immediately; an omitted one is fetched with
+ * `getProgress` (a failed fetch counts as state `none`) and the same logic
+ * runs once that settles — the tracker stays disarmed until then, and
+ * `stop()` meanwhile is safe and makes the late resolution a no-op.
+ * @param {TrackedMedia} media @param {number} itemId @param {TrackPlaybackOptions} [opts]
  * @returns {{ stop: () => Promise<void> }}
  */
-function attachTracker(media, itemId, entry, onResume, resume) {
-  const state = createTrackerState(entry, resume);
+export function trackPlayback(media, itemId, opts = {}) {
+  const { entry, onResume, resume = true } = opts;
+  const state = createTrackerState(entry ?? null, resume);
   const report = () => sendReport(media, itemId, state);
   /** @type {TrackerHandlers} */
   const handlers = {
-    metadata: () => onMetadata(media, entry, state),
-    seeked: () => onSeeked(entry, onResume, state, () => armIfReady(media, state)),
+    metadata: () => onMetadata(media, state),
+    seeked: () => onSeeked(onResume, state, () => armIfReady(media, state)),
     playing: () => {
       armIfReady(media, state);
       startInterval(state, report);
@@ -166,14 +138,58 @@ function attachTracker(media, itemId, entry, onResume, resume) {
   };
   const listeners = listenerTable(media, handlers);
   for (const [target, type, fn] of listeners) target.addEventListener(type, fn);
-  if (media.readyState >= HAVE_METADATA) handlers.metadata();
+  if (entry !== undefined) {
+    if (media.readyState >= HAVE_METADATA) handlers.metadata();
+  } else {
+    resolveEntryAsync(media, itemId, state, resume, handlers);
+  }
   return { stop: () => stopTracker(listeners, state, report) };
 }
 
-/**
- * @param {TrackedMedia} media @param {TrackerHandlers} h
- * @returns {[Pick<TrackedMedia, 'addEventListener' | 'removeEventListener'>, string, () => void][]}
- */
+/** @param {number} itemId @returns {Promise<ProgressEntry>} */
+async function fetchEntryOrNone(itemId) {
+  try {
+    return await getProgress(itemId);
+  } catch {
+    return { itemId, position: 0, duration: null, state: 'none', updatedAt: null };
+  }
+}
+
+/** Finalises the tracker once the omitted entry resolves (never rejects); `state.stopped` guards against a late resolution after `stop()`.
+ * @param {TrackedMedia} media @param {number} itemId @param {TrackerState} state
+ * @param {boolean} resume @param {TrackerHandlers} handlers @returns {void} */
+function resolveEntryAsync(media, itemId, state, resume, handlers) {
+  fetchEntryOrNone(itemId).then((entry) => {
+    if (state.stopped) return;
+    state.entry = entry;
+    state.needsResume = resume && entry.state === 'in_progress' && entry.position > 0;
+    state.lastSent = state.needsResume ? entry.position : 0;
+    state.pending = false;
+    if (media.readyState >= HAVE_METADATA) handlers.metadata();
+  });
+}
+
+/** `entry` null means it is still pending (fetched by `resolveEntryAsync`), which starts the tracker disarmed.
+ * @param {ProgressEntry | null} entry @param {boolean} resume @returns {TrackerState} */
+function createTrackerState(entry, resume) {
+  const needsResume = entry !== null && resume && entry.state === 'in_progress' && entry.position > 0;
+  return {
+    entry,
+    pending: entry === null,
+    needsResume,
+    seekIssued: false,
+    resumeSettled: false,
+    armed: false,
+    onResumeCalled: false,
+    lastSent: needsResume ? /** @type {ProgressEntry} */ (entry).position : 0,
+    intervalId: null,
+    stopped: false,
+    stopPromise: null,
+  };
+}
+
+/** @param {TrackedMedia} media @param {TrackerHandlers} h
+ * @returns {[Pick<TrackedMedia, 'addEventListener' | 'removeEventListener'>, string, () => void][]} */
 function listenerTable(media, h) {
   return [
     [media, 'loadedmetadata', h.metadata],
@@ -188,31 +204,31 @@ function listenerTable(media, h) {
   ];
 }
 
-/** @param {TrackedMedia} media @param {ProgressEntry} entry @param {TrackerState} state @returns {void} */
-function onMetadata(media, entry, state) {
+/** A no-op while `state.pending`; `resolveEntryAsync` re-runs this same check once it settles.
+ * @param {TrackedMedia} media @param {TrackerState} state @returns {void} */
+function onMetadata(media, state) {
+  if (state.pending) return;
   if (!state.needsResume) {
     armIfReady(media, state);
     return;
   }
   if (state.resumeSettled || state.seekIssued) return;
-  if (entry.position >= media.duration) {
+  if (/** @type {ProgressEntry} */ (state.entry).position >= media.duration) {
     state.needsResume = false;
     armIfReady(media, state);
     return;
   }
   state.seekIssued = true;
-  media.currentTime = entry.position;
+  media.currentTime = /** @type {ProgressEntry} */ (state.entry).position;
 }
 
-/**
- * @param {ProgressEntry} entry @param {((position: number) => void) | undefined} onResume
- * @param {TrackerState} state @param {() => void} maybeArm @returns {void}
- */
-function onSeeked(entry, onResume, state, maybeArm) {
+/** @param {((position: number) => void) | undefined} onResume
+ * @param {TrackerState} state @param {() => void} maybeArm @returns {void} */
+function onSeeked(onResume, state, maybeArm) {
   if (!state.needsResume || !state.seekIssued) return;
   if (!state.onResumeCalled) {
     state.onResumeCalled = true;
-    onResume?.(entry.position);
+    onResume?.(/** @type {ProgressEntry} */ (state.entry).position);
   }
   maybeArm();
 }
@@ -228,6 +244,7 @@ function onEmptied(state) {
 
 /** @param {TrackedMedia} media @param {TrackerState} state @returns {void} */
 function armIfReady(media, state) {
+  if (state.pending) return;
   if (state.armed) return;
   if (state.needsResume && !state.seekIssued) return;
   if (!Number.isFinite(media.duration) || media.duration <= 0) return;
@@ -248,27 +265,28 @@ function stopInterval(state) {
   state.intervalId = null;
 }
 
-// Skips a report when disarmed, the duration is unknown, or the move since
-// the last sent position is under 1 s. A failed report is dropped with a
-// warning and never advances `lastSent`, so the next trigger retries.
+// Skips a report when disarmed, duration is unknown, or the move since the
+// last sent position is under 1 s. `lastSent` is set optimistically before
+// the `await` and restored on failure, so overlapping triggers (e.g. `pause`
+// right before `pagehide`) never double-send and a failed report still retries.
 /** @param {TrackedMedia} media @param {number} itemId @param {TrackerState} state @returns {Promise<void>} */
 async function sendReport(media, itemId, state) {
   if (!state.armed) return;
   if (!Number.isFinite(media.duration) || media.duration <= 0) return;
   const position = media.currentTime;
   if (Math.abs(position - state.lastSent) < 1) return;
+  const previousLastSent = state.lastSent;
+  state.lastSent = position;
   try {
     await saveProgress(itemId, { position, duration: media.duration });
-    state.lastSent = position;
   } catch (err) {
+    state.lastSent = previousLastSent;
     console.warn('progress report failed', err);
   }
 }
 
-/**
- * @param {[Pick<TrackedMedia, 'removeEventListener'>, string, () => void][]} listeners
- * @param {TrackerState} state @param {() => Promise<void>} report @returns {Promise<void>}
- */
+/** @param {[Pick<TrackedMedia, 'removeEventListener'>, string, () => void][]} listeners
+ * @param {TrackerState} state @param {() => Promise<void>} report @returns {Promise<void>} */
 function stopTracker(listeners, state, report) {
   if (state.stopped) return /** @type {Promise<void>} */ (state.stopPromise);
   state.stopped = true;
