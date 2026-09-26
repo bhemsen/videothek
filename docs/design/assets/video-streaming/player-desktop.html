@@ -1,0 +1,388 @@
+<!DOCTYPE html>
+<html lang="de">
+<head>
+  <meta charset="UTF-8">
+  <meta name="viewport" content="width=device-width, initial-scale=1.0">
+  <title>Video Player – Desktop</title>
+  <style>
+    /* Design Tokens strictly per contract */
+    :root {
+      --color-background: #0f1115;
+      --color-foreground: #e8eaed;
+      --color-primary: #f5b301;
+      --color-secondary: #1c2029;
+      --color-accent: #4fb3ff;
+      --color-muted: #9aa0aa;
+      --color-border: #2a2f3a;
+      --color-destructive: #ff5c5c;
+
+      --font-sans: system-ui, -apple-system, 'Segoe UI', Roboto, 'Helvetica Neue', Arial, sans-serif;
+      --font-mono: ui-monospace, 'SFMono-Regular', Consolas, 'Liberation Mono', monospace;
+
+      --radius-sm: 4px;
+      --radius-md: 8px;
+      --radius-lg: 16px;
+      --radius-full: 9999px;
+
+      --shadow-sm: 0 1px 2px rgba(0,0,0,0.4);
+      --shadow-md: 0 8px 24px rgba(0,0,0,0.5);
+    }
+
+    * {
+      box-sizing: border-box;
+      margin: 0;
+      padding: 0;
+    }
+
+    body {
+      background-color: var(--color-background);
+      color: var(--color-foreground);
+      font-family: var(--font-sans);
+      min-height: 100vh;
+      display: flex;
+      flex-direction: column;
+      align-items: center;
+      padding: 32px 24px;
+      -webkit-font-smoothing: antialiased;
+      line-height: 1.5;
+    }
+
+    /* Container: max-width 1280px, centered */
+    .player-container {
+      width: 100%;
+      max-width: 1280px;
+      display: flex;
+      flex-direction: column;
+      gap: 20px;
+    }
+
+    /* 1. Top bar on the page background */
+    .top-bar {
+      display: flex;
+      align-items: center;
+      gap: 24px;
+      width: 100%;
+    }
+
+    /* Secondary button */
+    .btn-secondary {
+      display: inline-flex;
+      align-items: center;
+      justify-content: center;
+      gap: 8px;
+      height: 44px;
+      padding: 0 16px;
+      background-color: var(--color-secondary);
+      border: 1px solid var(--color-border);
+      border-radius: var(--radius-md);
+      color: var(--color-foreground);
+      font-family: var(--font-sans);
+      font-size: 14px;
+      font-weight: 600;
+      text-decoration: none;
+      cursor: pointer;
+      transition: background-color 0.15s ease, border-color 0.15s ease;
+      white-space: nowrap;
+    }
+
+    .btn-secondary:hover {
+      background-color: #242a36;
+      border-color: #3b4252;
+    }
+
+    .btn-secondary:focus-visible {
+      outline: 2px solid var(--color-primary);
+      outline-offset: 2px;
+    }
+
+    .btn-secondary svg {
+      width: 18px;
+      height: 18px;
+      stroke: currentColor;
+      stroke-width: 2;
+      stroke-linecap: round;
+      stroke-linejoin: round;
+      fill: none;
+      flex-shrink: 0;
+    }
+
+    .title-block {
+      display: flex;
+      flex-direction: column;
+      gap: 2px;
+    }
+
+    .overline {
+      font-size: 13px;
+      font-weight: 500;
+      color: var(--color-muted);
+      letter-spacing: 0.02em;
+    }
+
+    .heading {
+      font-size: 24px;
+      font-weight: 600;
+      line-height: 1.2;
+      color: var(--color-foreground);
+    }
+
+    /* 2. Video stage: 16:9, background #0f1115 */
+    .video-stage {
+      position: relative;
+      width: 100%;
+      aspect-ratio: 16 / 9;
+      background-color: var(--color-background);
+      border-radius: var(--radius-md);
+      overflow: hidden;
+      box-shadow: var(--shadow-md);
+      border: 1px solid var(--color-border);
+      display: flex;
+      flex-direction: column;
+      justify-content: flex-end;
+    }
+
+    .video-frame-img {
+      position: absolute;
+      top: 0;
+      left: 0;
+      width: 100%;
+      height: 100%;
+      object-fit: cover;
+      display: block;
+      z-index: 1;
+    }
+
+    /* Plain native browser video controls bar */
+    .native-controls-bar {
+      position: relative;
+      z-index: 2;
+      width: 100%;
+      height: 48px;
+      background: rgba(15, 17, 21, 0.94);
+      display: flex;
+      align-items: center;
+      gap: 16px;
+      padding: 0 16px;
+      backdrop-filter: blur(8px);
+      border-top: 1px solid rgba(42, 47, 58, 0.5);
+    }
+
+    .ctrl-btn {
+      background: none;
+      border: none;
+      color: var(--color-foreground);
+      cursor: pointer;
+      display: flex;
+      align-items: center;
+      justify-content: center;
+      width: 32px;
+      height: 32px;
+      border-radius: var(--radius-sm);
+      padding: 0;
+      transition: color 0.15s ease;
+    }
+
+    .ctrl-btn:hover {
+      color: var(--color-primary);
+    }
+
+    .ctrl-btn:focus-visible {
+      outline: 2px solid var(--color-primary);
+      outline-offset: 1px;
+    }
+
+    .ctrl-btn svg {
+      width: 20px;
+      height: 20px;
+      stroke: currentColor;
+      stroke-width: 2;
+      stroke-linecap: round;
+      stroke-linejoin: round;
+      fill: none;
+    }
+
+    .ctrl-btn.play-btn svg {
+      fill: currentColor;
+      stroke: none;
+    }
+
+    .time-display {
+      font-size: 13px;
+      font-family: var(--font-mono);
+      color: var(--color-muted);
+      user-select: none;
+      white-space: nowrap;
+    }
+
+    .time-current {
+      color: var(--color-foreground);
+    }
+
+    /* Timeline scrubber */
+    .scrubber-container {
+      flex: 1;
+      position: relative;
+      display: flex;
+      align-items: center;
+      height: 24px;
+      cursor: pointer;
+    }
+
+    .scrubber-track {
+      position: relative;
+      width: 100%;
+      height: 4px;
+      background: rgba(255, 255, 255, 0.2);
+      border-radius: var(--radius-full);
+      overflow: hidden;
+    }
+
+    .scrubber-progress {
+      position: absolute;
+      top: 0;
+      left: 0;
+      height: 100%;
+      /* 12:34 / 47:10 ≈ 26.6% */
+      width: 26.6%;
+      background-color: var(--color-primary);
+      border-radius: var(--radius-full);
+    }
+
+    .volume-group {
+      display: flex;
+      align-items: center;
+      gap: 8px;
+    }
+
+    .volume-slider-track {
+      width: 68px;
+      height: 4px;
+      background: rgba(255, 255, 255, 0.2);
+      border-radius: var(--radius-full);
+      position: relative;
+      cursor: pointer;
+    }
+
+    .volume-slider-fill {
+      width: 75%;
+      height: 100%;
+      background: var(--color-foreground);
+      border-radius: var(--radius-full);
+    }
+
+    /* 3. Below stage, right-aligned next episode button */
+    .action-row {
+      display: flex;
+      justify-content: flex-end;
+      width: 100%;
+      margin-top: 4px;
+    }
+
+    /* 4. Keyboard hints line */
+    .hints-row {
+      display: flex;
+      justify-content: flex-start;
+      width: 100%;
+      padding-top: 4px;
+    }
+
+    .hint-text {
+      font-size: 12px;
+      color: var(--color-muted);
+      letter-spacing: 0.01em;
+      line-height: 1.4;
+    }
+  </style>
+</head>
+<body>
+
+  <main class="player-container">
+    <!-- 1. Top bar -->
+    <header class="top-bar">
+      <button type="button" class="btn-secondary" aria-label="Zurück zur Übersicht">
+        <svg viewBox="0 0 24 24" aria-hidden="true">
+          <polyline points="15 18 9 12 15 6"></polyline>
+        </svg>
+        <span>Zurück</span>
+      </button>
+
+      <div class="title-block">
+        <span class="overline">Die Nordküste</span>
+        <h1 class="heading">S01E02 · Der Leuchtturm</h1>
+      </div>
+    </header>
+
+    <!-- 2. Video stage -->
+    <section class="video-stage" aria-label="Videoplayer">
+      <img 
+        src="https://lh3.googleusercontent.com/aida-public/AB6AXuBktflpN6vtd-6nNbxHCg453YIugj8zdTWhYxiN9_KmctKBbSHmvB3bgnZ3740fHiIP-NdYy4E00d6xZxmilW8IA-7cPUuEgmV9K37AoNiICgnl3_MwXNpV6RJbUbY3UhpX3q3qaQcC4TQcKNkXnVraY84sgLzUxbZZAvVsqra5dgfbPOCvTpZqycWIWmsucD2ovZYGtNrncj7DsWm2LZggvu2M8N2pZtbtpW4ato_a8DlbpZ1RL15yN-arkfmj090TL7AgdNa04UDl" 
+        alt="Standbild aus S01E02 Der Leuchtturm: Küstenlandschaft mit Leuchtturm bei Dämmerung" 
+        class="video-frame-img"
+      >
+
+      <!-- Native browser video controls bar simulation -->
+      <div class="native-controls-bar" role="toolbar" aria-label="Videosteuerung">
+        <!-- Play / Pause button -->
+        <button type="button" class="ctrl-btn play-btn" aria-label="Wiedergabe">
+          <svg viewBox="0 0 24 24" aria-hidden="true">
+            <polygon points="6 4 19 12 6 20 6 4"></polygon>
+          </svg>
+        </button>
+
+        <!-- Elapsed time -->
+        <span class="time-display time-current" aria-label="Aktuelle Zeit">12:34</span>
+
+        <!-- Timeline scrubber -->
+        <div class="scrubber-container" role="slider" aria-label="Zeitleiste" aria-valuemin="0" aria-valuemax="2830" aria-valuenow="754" aria-valuetext="12 Minuten 34 Sekunden">
+          <div class="scrubber-track">
+            <div class="scrubber-progress"></div>
+          </div>
+        </div>
+
+        <!-- Total duration -->
+        <span class="time-display" aria-label="Gesamtdauer">47:10</span>
+
+        <!-- Volume controls -->
+        <div class="volume-group">
+          <button type="button" class="ctrl-btn" aria-label="Ton stummschalten">
+            <svg viewBox="0 0 24 24" aria-hidden="true">
+              <polygon points="11 5 6 9 2 9 2 15 6 15 11 19 11 5"></polygon>
+              <path d="M15.54 8.46a5 5 0 0 1 0 7.07"></path>
+              <path d="M19.07 4.93a10 10 0 0 1 0 14.14"></path>
+            </svg>
+          </button>
+          <div class="volume-slider-track" role="slider" aria-label="Lautstärke" aria-valuemin="0" aria-valuemax="100" aria-valuenow="75">
+            <div class="volume-slider-fill"></div>
+          </div>
+        </div>
+
+        <!-- Fullscreen button -->
+        <button type="button" class="ctrl-btn" aria-label="Vollbild">
+          <svg viewBox="0 0 24 24" aria-hidden="true">
+            <path d="M8 3H5a2 2 0 0 0-2 2v3m18 0V5a2 2 0 0 0-2-2h-3m0 18h3a2 2 0 0 0 2-2v-3M3 16v3a2 2 0 0 0 2 2h3"></path>
+          </svg>
+        </button>
+      </div>
+    </section>
+
+    <!-- 3. Below the stage, right-aligned: Next episode button -->
+    <div class="action-row">
+      <button type="button" class="btn-secondary" aria-label="Nächste Folge abspielen: Sturmflut">
+        <svg viewBox="0 0 24 24" aria-hidden="true">
+          <polygon points="5 4 15 12 5 20 5 4"></polygon>
+          <line x1="19" y1="5" x2="19" y2="19"></line>
+        </svg>
+        <span>Nächste Folge: S01E03 · Sturmflut</span>
+      </button>
+    </div>
+
+    <!-- 4. Below that, left-aligned keyboard hints -->
+    <div class="hints-row">
+      <p class="hint-text">
+        Tastatur: Leertaste Wiedergabe/Pause · ←/→ 10 Sekunden · F Vollbild · M Ton aus
+      </p>
+    </div>
+  </main>
+
+</body>
+</html>
