@@ -773,3 +773,27 @@ Chromium and Firefox, mobile ≤ 767 px and desktop ≥ 1024 px viewport):
   login/page redirects) is session-dependent; `readJson` drains an oversized
   body with `req.resume()` instead of `req.destroy()`, so the `413` response
   reaches the client instead of the socket closing first.
+- 2026-09-26 (#16): `src/http/{security,static}.js` implemented.
+  `createStaticHandler`'s returned function renders the actual 404 page
+  itself (streamed `public/404.html`, or the plain German fallback line)
+  for every unmatched `GET`/`HEAD` non-`/api/` case — `*.html` direct
+  requests, `/index`, `/404`, an unknown extension, and any path-safety
+  rejection — always returning `true`; it returns `false` only for a
+  method other than `GET`/`HEAD`, which the app's dispatch never routes
+  here per the server contract, so app.js needs no separate 404-page
+  renderer of its own. Path safety decodes the whole pathname once as a
+  single string (never per segment — decoding only after splitting would
+  miss a `%2F` that reveals a hidden `..` once decoded) and rejects a NUL
+  byte, a literal backslash, or any segment starting with `.`; a
+  containment check (`resolved === root || resolved.startsWith(root +
+  sep)`) after `path.join` + `path.resolve` is the second, independent
+  layer against traversal for extension-matched asset paths. A stream
+  error once headers are already sent (page, asset or the 404 page itself)
+  logs `request_error {method, path, stack}` — the same shape as the
+  app's own top-level dispatch error log, since a failure this late can no
+  longer become a thrown `HttpError` for app.js to catch — and destroys
+  the socket. `isSameOrigin`/`isHttps` take the first value of a
+  comma-separated or array-valued forwarded header; `isSameOrigin`
+  compares `Origin`'s `.host` (scheme-independent, default ports dropped)
+  case-insensitively against the first `X-Forwarded-Host` value, else
+  `Host`.
