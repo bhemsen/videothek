@@ -314,7 +314,9 @@ beyond `dir`; Phases 5/6 add real parsers.
   with `item_id INTEGER NOT NULL REFERENCES library_items(id) ON DELETE CASCADE`
   (deleting an item cleans their rows); they may refine an item's display
   fields through `updateItemDisplay(db, id, { title, year, playable })` from
-  `src/db/library-repo.js` (P2 export; recomputes `sort_title`).
+  `src/library/enrichers.js` (P2 export; computes `sort_title` with `sortKey`
+  and writes through the repository's `updateItemFields`, so `src/db/` never
+  imports parser code).
 - An enricher that throws or rejects is logged (`[library] enricher <name>
   failed: …`) and skipped for that batch; the scan continues. Enrichers run
   inside the serialised scan queue, so they never overlap a scan.
