@@ -1,0 +1,375 @@
+<!DOCTYPE html>
+<html lang="de" class="h-full">
+<head>
+  <meta charset="UTF-8">
+  <meta name="viewport" content="width=device-width, initial-scale=1.0">
+  <title>P6 Bilder Ordneransicht Desktop</title>
+  <script src="https://cdn.tailwindcss.com"></script>
+  <style>
+    :root {
+      --background: #0f1115;
+      --foreground: #e8eaed;
+      --primary: #ff7a1a;
+      --secondary: #1c2029;
+      --accent: #4fb3ff;
+      --muted: #9aa0aa;
+      --border: #2a2f3a;
+      --destructive: #ff5c5c;
+    }
+    body {
+      background-color: var(--background);
+      color: var(--foreground);
+      font-family: system-ui, -apple-system, 'Segoe UI', Roboto, 'Helvetica Neue', Arial, sans-serif;
+      margin: 0;
+      padding: 0;
+      -webkit-font-smoothing: antialiased;
+    }
+    .custom-focus-card {
+      outline: 2px solid var(--primary);
+      outline-offset: 2px;
+    }
+    .card-shadow {
+      box-shadow: 0 1px 2px rgba(0, 0, 0, 0.4);
+    }
+  </style>
+</head>
+<body class="min-h-full flex flex-col bg-[#0f1115] text-[#e8eaed]">
+
+  <!-- Top App Bar -->
+  <header class="w-full bg-[#1c2029] border-b border-[#2a2f3a] sticky top-0 z-30">
+    <div class="max-w-[1440px] mx-auto px-8 h-16 flex items-center justify-between">
+      <!-- Left: App Brand -->
+      <div class="flex items-center gap-3">
+        <svg class="w-6 h-6 text-[#ff7a1a]" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round">
+          <polygon points="5 3 19 12 5 21 5 3" fill="#ff7a1a" stroke="#ff7a1a"></polygon>
+        </svg>
+        <span class="text-xl font-bold tracking-tight text-[#e8eaed]">Videothek</span>
+      </div>
+
+      <!-- Centered Category Nav -->
+      <nav class="flex items-center gap-8">
+        <a href="#" class="text-sm font-medium text-[#9aa0aa] hover:text-[#e8eaed] transition-colors py-5">Filme</a>
+        <a href="#" class="text-sm font-medium text-[#9aa0aa] hover:text-[#e8eaed] transition-colors py-5">Serien</a>
+        <a href="#" class="text-sm font-medium text-[#9aa0aa] hover:text-[#e8eaed] transition-colors py-5">Musik</a>
+        <a href="#" class="text-sm font-medium text-[#9aa0aa] hover:text-[#e8eaed] transition-colors py-5">Hörbücher</a>
+        <a href="#" class="text-sm font-medium text-[#ff7a1a] border-b-2 border-[#ff7a1a] py-5 inline-block">Bilder</a>
+      </nav>
+
+      <!-- Right: Action Button -->
+      <div>
+        <button class="h-10 px-4 bg-[#1c2029] hover:bg-[#252a36] text-[#e8eaed] border border-[#2a2f3a] text-sm font-medium rounded-lg transition-colors flex items-center gap-2 focus:outline-none focus:ring-2 focus:ring-[#ff7a1a] focus:ring-offset-2 focus:ring-offset-[#1c2029]">
+          <svg class="w-4 h-4 text-[#9aa0aa]" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round">
+            <path d="M9 21H5a2 2 0 0 1-2-2V5a2 2 0 0 1 2-2h4"></path>
+            <polyline points="16 17 21 12 16 7"></polyline>
+            <line x1="21" y1="12" x2="9" y2="12"></line>
+          </svg>
+          <span>Abmelden</span>
+        </button>
+      </div>
+    </div>
+  </header>
+
+  <!-- Main Content Area -->
+  <main class="w-full max-w-[1280px] mx-auto p-8 flex-1">
+    
+    <!-- Breadcrumb & Page Header -->
+    <div class="mb-8">
+      <nav class="flex items-center gap-2 text-sm text-[#9aa0aa] mb-3">
+        <a href="#" class="text-[#4fb3ff] hover:underline">Bilder</a>
+        <span class="text-[#9aa0aa]">›</span>
+        <a href="#" class="text-[#4fb3ff] hover:underline">Urlaub 2024</a>
+        <span class="text-[#9aa0aa]">›</span>
+        <span class="text-[#e8eaed] font-medium">Italien</span>
+      </nav>
+      <div class="flex items-baseline gap-4">
+        <h1 class="text-[32px] font-bold tracking-tight text-[#e8eaed] leading-tight">Italien</h1>
+        <span class="text-sm text-[#9aa0aa] font-normal">3 Ordner · 14 Dateien</span>
+      </div>
+    </div>
+
+    <!-- Section 1: Ordner -->
+    <section class="mb-8">
+      <h2 class="text-[20px] font-semibold text-[#e8eaed] mb-4">Ordner</h2>
+      <div class="grid grid-cols-2 sm:grid-cols-3 md:grid-cols-4 lg:grid-cols-6 gap-4">
+        
+        <!-- Folder 1: Rom -->
+        <div class="group cursor-pointer">
+          <div class="relative aspect-square w-full rounded-lg overflow-hidden bg-[#1c2029] border border-[#2a2f3a] card-shadow mb-2">
+            <svg class="w-full h-full object-cover" viewBox="0 0 200 200" xmlns="http://www.w3.org/2000/svg">
+              <rect width="200" height="200" fill="#1c2029"/>
+              <!-- Stylized Colosseum Architecture silhouette representation -->
+              <path d="M20 160 L180 160 L180 100 Q180 80 140 75 L140 60 Q140 50 100 50 Q60 50 60 60 L60 75 Q20 80 20 100 Z" fill="#2a2f3a"/>
+              <ellipse cx="100" cy="115" rx="14" ry="24" fill="#0f1115"/>
+              <ellipse cx="65" cy="118" rx="12" ry="20" fill="#0f1115"/>
+              <ellipse cx="135" cy="118" rx="12" ry="20" fill="#0f1115"/>
+              <circle cx="150" cy="40" r="14" fill="#ff7a1a" opacity="0.15"/>
+            </svg>
+            <!-- Folder Icon Badge -->
+            <div class="absolute bottom-2 left-2 p-1.5 rounded bg-[#1c2029]/90 border border-[#2a2f3a] text-[#ff7a1a]">
+              <svg class="w-4 h-4" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round">
+                <path d="M22 19a2 2 0 0 1-2 2H4a2 2 0 0 1-2-2V5a2 2 0 0 1 2-2h5l2 3h9a2 2 0 0 1 2 2z"></path>
+              </svg>
+            </div>
+          </div>
+          <div class="text-sm font-medium text-[#e8eaed] truncate group-hover:text-[#4fb3ff] transition-colors">Tag 1 – Rom</div>
+          <div class="text-xs text-[#9aa0aa]">48 Bilder</div>
+        </div>
+
+        <!-- Folder 2: Florenz -->
+        <div class="group cursor-pointer">
+          <div class="relative aspect-square w-full rounded-lg overflow-hidden bg-[#1c2029] border border-[#2a2f3a] card-shadow mb-2">
+            <svg class="w-full h-full object-cover" viewBox="0 0 200 200" xmlns="http://www.w3.org/2000/svg">
+              <rect width="200" height="200" fill="#1c2029"/>
+              <!-- Stylized Florence Duomo dome silhouette -->
+              <path d="M30 160 L170 160 L160 115 L140 115 Q140 70 100 55 Q60 70 60 115 L40 115 Z" fill="#2a2f3a"/>
+              <path d="M96 55 L104 55 L104 42 L96 42 Z" fill="#ff7a1a" opacity="0.4"/>
+              <ellipse cx="100" cy="110" rx="10" ry="18" fill="#0f1115"/>
+            </svg>
+            <!-- Folder Icon Badge -->
+            <div class="absolute bottom-2 left-2 p-1.5 rounded bg-[#1c2029]/90 border border-[#2a2f3a] text-[#ff7a1a]">
+              <svg class="w-4 h-4" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round">
+                <path d="M22 19a2 2 0 0 1-2 2H4a2 2 0 0 1-2-2V5a2 2 0 0 1 2-2h5l2 3h9a2 2 0 0 1 2 2z"></path>
+              </svg>
+            </div>
+          </div>
+          <div class="text-sm font-medium text-[#e8eaed] truncate group-hover:text-[#4fb3ff] transition-colors">Tag 2 – Florenz</div>
+          <div class="text-xs text-[#9aa0aa]">52 Bilder</div>
+        </div>
+
+        <!-- Folder 3: Venedig -->
+        <div class="group cursor-pointer">
+          <div class="relative aspect-square w-full rounded-lg overflow-hidden bg-[#1c2029] border border-[#2a2f3a] card-shadow mb-2">
+            <svg class="w-full h-full object-cover" viewBox="0 0 200 200" xmlns="http://www.w3.org/2000/svg">
+              <rect width="200" height="200" fill="#1c2029"/>
+              <!-- Gondola & bridge canal silhouette -->
+              <path d="M10 135 Q100 110 190 135 L190 145 Q100 120 10 145 Z" fill="#2a2f3a"/>
+              <path d="M40 155 Q80 158 130 152 Q150 145 160 138 Q140 150 110 153 Q60 155 35 142 Z" fill="#2a2f3a"/>
+              <circle cx="50" cy="50" r="16" fill="#ff7a1a" opacity="0.12"/>
+            </svg>
+            <!-- Folder Icon Badge -->
+            <div class="absolute bottom-2 left-2 p-1.5 rounded bg-[#1c2029]/90 border border-[#2a2f3a] text-[#ff7a1a]">
+              <svg class="w-4 h-4" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round">
+                <path d="M22 19a2 2 0 0 1-2 2H4a2 2 0 0 1-2-2V5a2 2 0 0 1 2-2h5l2 3h9a2 2 0 0 1 2 2z"></path>
+              </svg>
+            </div>
+          </div>
+          <div class="text-sm font-medium text-[#e8eaed] truncate group-hover:text-[#4fb3ff] transition-colors">Tag 3 – Venedig</div>
+          <div class="text-xs text-[#9aa0aa]">44 Bilder</div>
+        </div>
+
+      </div>
+    </section>
+
+    <!-- Section 2: Bilder -->
+    <section>
+      <h2 class="text-[20px] font-semibold text-[#e8eaed] mb-4">Bilder</h2>
+      <div class="grid grid-cols-2 sm:grid-cols-3 md:grid-cols-4 lg:grid-cols-6 gap-4">
+        
+        <!-- Card 1: IMG_0412.JPG -->
+        <div class="group cursor-pointer">
+          <div class="aspect-square w-full rounded-lg overflow-hidden bg-[#1c2029] border border-[#2a2f3a] card-shadow mb-2">
+            <svg class="w-full h-full object-cover" viewBox="0 0 200 200" xmlns="http://www.w3.org/2000/svg">
+              <rect width="200" height="200" fill="#1c2029"/>
+              <!-- Landscape: Tuscan Rolling Hills & Cypress -->
+              <path d="M0 130 Q50 110 100 135 T200 120 L200 200 L0 200 Z" fill="#2a2f3a"/>
+              <path d="M0 150 Q70 130 140 160 L200 150 L200 200 L0 200 Z" fill="#0f1115" opacity="0.6"/>
+              <!-- Cypress Trees -->
+              <path d="M60 135 Q56 100 60 70 Q64 100 60 135 Z" fill="#2a2f3a"/>
+              <path d="M72 140 Q69 110 72 85 Q75 110 72 140 Z" fill="#2a2f3a"/>
+            </svg>
+          </div>
+          <div class="text-sm font-medium text-[#e8eaed] truncate group-hover:text-[#4fb3ff] transition-colors">IMG_0412.JPG</div>
+          <div class="text-xs text-[#9aa0aa]">14.07.2024, 09:14</div>
+        </div>
+
+        <!-- Card 2: IMG_0415.JPG — Focused State (2px primary outline with 2px offset) -->
+        <div class="group cursor-pointer">
+          <div class="aspect-square w-full rounded-lg overflow-hidden bg-[#1c2029] border border-[#2a2f3a] card-shadow custom-focus-card mb-2">
+            <svg class="w-full h-full object-cover" viewBox="0 0 200 200" xmlns="http://www.w3.org/2000/svg">
+              <rect width="200" height="200" fill="#1c2029"/>
+              <!-- Italian Espresso & Pastry -->
+              <circle cx="95" cy="115" r="42" fill="#2a2f3a"/>
+              <circle cx="95" cy="115" r="30" fill="#0f1115"/>
+              <ellipse cx="95" cy="115" rx="20" ry="20" fill="#1c2029"/>
+              <!-- Cup handle -->
+              <path d="M125 110 Q145 115 125 125" stroke="#2a2f3a" stroke-width="5" fill="none"/>
+              <!-- Croissant outline -->
+              <path d="M130 65 Q165 75 155 100 Q140 90 130 65 Z" fill="#2a2f3a"/>
+            </svg>
+          </div>
+          <div class="text-sm font-medium text-[#ff7a1a] truncate">IMG_0415.JPG</div>
+          <div class="text-xs text-[#9aa0aa]">14.07.2024, 10:28</div>
+        </div>
+
+        <!-- Card 3: IMG_0419.JPG -->
+        <div class="group cursor-pointer">
+          <div class="aspect-square w-full rounded-lg overflow-hidden bg-[#1c2029] border border-[#2a2f3a] card-shadow mb-2">
+            <svg class="w-full h-full object-cover" viewBox="0 0 200 200" xmlns="http://www.w3.org/2000/svg">
+              <rect width="200" height="200" fill="#1c2029"/>
+              <!-- Ancient Archway / Roman ruins -->
+              <path d="M40 180 L40 90 Q40 50 100 50 Q160 50 160 90 L160 180 L130 180 L130 95 Q130 75 100 75 Q70 75 70 95 L70 180 Z" fill="#2a2f3a"/>
+              <rect x="30" y="170" width="140" height="12" fill="#2a2f3a"/>
+            </svg>
+          </div>
+          <div class="text-sm font-medium text-[#e8eaed] truncate group-hover:text-[#4fb3ff] transition-colors">IMG_0419.JPG</div>
+          <div class="text-xs text-[#9aa0aa]">14.07.2024, 11:45</div>
+        </div>
+
+        <!-- Card 4: IMG_0424.JPG -->
+        <div class="group cursor-pointer">
+          <div class="aspect-square w-full rounded-lg overflow-hidden bg-[#1c2029] border border-[#2a2f3a] card-shadow mb-2">
+            <svg class="w-full h-full object-cover" viewBox="0 0 200 200" xmlns="http://www.w3.org/2000/svg">
+              <rect width="200" height="200" fill="#1c2029"/>
+              <!-- Neapolitan Pizza / Plate -->
+              <circle cx="100" cy="100" r="58" fill="#2a2f3a"/>
+              <circle cx="100" cy="100" r="48" fill="#0f1115"/>
+              <circle cx="85" cy="85" r="7" fill="#2a2f3a"/>
+              <circle cx="115" cy="88" r="8" fill="#2a2f3a"/>
+              <circle cx="98" cy="118" r="9" fill="#2a2f3a"/>
+              <circle cx="120" cy="115" r="6" fill="#2a2f3a"/>
+            </svg>
+          </div>
+          <div class="text-sm font-medium text-[#e8eaed] truncate group-hover:text-[#4fb3ff] transition-colors">IMG_0424.JPG</div>
+          <div class="text-xs text-[#9aa0aa]">14.07.2024, 13:12</div>
+        </div>
+
+        <!-- Card 5: IMG_0431.HEIC — Cannot be displayed (image-off SVG, "Nicht anzeigbar" badge) -->
+        <div class="group cursor-pointer">
+          <div class="relative aspect-square w-full rounded-lg overflow-hidden bg-[#1c2029] border border-[#2a2f3a] card-shadow flex flex-col items-center justify-center p-4 mb-2">
+            <!-- Muted image-off SVG icon -->
+            <svg class="w-10 h-10 text-[#9aa0aa] mb-2" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.75" stroke-linecap="round" stroke-linejoin="round">
+              <line x1="2" y1="2" x2="22" y2="22"></line>
+              <path d="M10.41 10.41a2 2 0 1 0 2.83 2.83"></path>
+              <line x1="13.5" y1="13.5" x2="6" y2="21"></line>
+              <line x1="18" y1="12" x2="21" y2="15"></line>
+              <path d="M3.59 3.59A1.99 1.99 0 0 0 3 5v14a2 2 0 0 0 2 2h14c.55 0 1.05-.22 1.41-.59"></path>
+              <path d="M21 15V5a2 2 0 0 0-2-2H9"></path>
+            </svg>
+            <!-- Badge: destructive text on secondary surface with 1px red border -->
+            <span class="inline-flex items-center px-2 py-0.5 rounded text-[11px] font-medium text-[#ff5c5c] bg-[#1c2029] border border-[#ff5c5c]">
+              Nicht anzeigbar
+            </span>
+          </div>
+          <div class="text-sm font-medium text-[#e8eaed] truncate group-hover:text-[#4fb3ff] transition-colors">IMG_0431.HEIC</div>
+          <div class="text-xs text-[#9aa0aa]">14.07.2024, 14:05</div>
+        </div>
+
+        <!-- Card 6: IMG_0432.JPG -->
+        <div class="group cursor-pointer">
+          <div class="aspect-square w-full rounded-lg overflow-hidden bg-[#1c2029] border border-[#2a2f3a] card-shadow mb-2">
+            <svg class="w-full h-full object-cover" viewBox="0 0 200 200" xmlns="http://www.w3.org/2000/svg">
+              <rect width="200" height="200" fill="#1c2029"/>
+              <!-- Coastal cliffs of Amalfi -->
+              <path d="M0 80 Q60 90 90 120 L130 160 L0 160 Z" fill="#2a2f3a"/>
+              <path d="M0 160 L200 160 L200 200 L0 200 Z" fill="#0f1115"/>
+              <line x1="20" y1="175" x2="60" y2="175" stroke="#2a2f3a" stroke-width="2"/>
+              <line x1="80" y1="185" x2="140" y2="185" stroke="#2a2f3a" stroke-width="2"/>
+            </svg>
+          </div>
+          <div class="text-sm font-medium text-[#e8eaed] truncate group-hover:text-[#4fb3ff] transition-colors">IMG_0432.JPG</div>
+          <div class="text-xs text-[#9aa0aa]">14.07.2024, 15:30</div>
+        </div>
+
+        <!-- Card 7: VID_0433.MP4 — Video tile with large circular play icon -->
+        <div class="group cursor-pointer">
+          <div class="relative aspect-square w-full rounded-lg overflow-hidden bg-[#1c2029] border border-[#2a2f3a] card-shadow flex items-center justify-center mb-2">
+            <!-- Large circular play icon -->
+            <div class="w-14 h-14 rounded-full bg-[#1c2029] border border-[#2a2f3a] flex items-center justify-center text-[#e8eaed] group-hover:text-[#ff7a1a] group-hover:border-[#ff7a1a] transition-all">
+              <svg class="w-7 h-7 ml-1" viewBox="0 0 24 24" fill="currentColor">
+                <polygon points="6 3 20 12 6 21 6 3"></polygon>
+              </svg>
+            </div>
+          </div>
+          <div class="text-sm font-medium text-[#e8eaed] truncate group-hover:text-[#4fb3ff] transition-colors">VID_0433.MP4</div>
+          <div class="text-xs text-[#9aa0aa]">Video</div>
+        </div>
+
+        <!-- Card 8: IMG_0438.JPG -->
+        <div class="group cursor-pointer">
+          <div class="aspect-square w-full rounded-lg overflow-hidden bg-[#1c2029] border border-[#2a2f3a] card-shadow mb-2">
+            <svg class="w-full h-full object-cover" viewBox="0 0 200 200" xmlns="http://www.w3.org/2000/svg">
+              <rect width="200" height="200" fill="#1c2029"/>
+              <!-- Venetian Bridge / Ponte Vecchio -->
+              <path d="M20 120 L180 120 L180 150 Q100 100 20 150 Z" fill="#2a2f3a"/>
+              <rect x="50" y="90" width="24" height="30" fill="#0f1115"/>
+              <rect x="90" y="85" width="24" height="35" fill="#0f1115"/>
+              <rect x="130" y="90" width="24" height="30" fill="#0f1115"/>
+            </svg>
+          </div>
+          <div class="text-sm font-medium text-[#e8eaed] truncate group-hover:text-[#4fb3ff] transition-colors">IMG_0438.JPG</div>
+          <div class="text-xs text-[#9aa0aa]">14.07.2024, 16:42</div>
+        </div>
+
+        <!-- Card 9: IMG_0442.JPG -->
+        <div class="group cursor-pointer">
+          <div class="aspect-square w-full rounded-lg overflow-hidden bg-[#1c2029] border border-[#2a2f3a] card-shadow mb-2">
+            <svg class="w-full h-full object-cover" viewBox="0 0 200 200" xmlns="http://www.w3.org/2000/svg">
+              <rect width="200" height="200" fill="#1c2029"/>
+              <!-- Gelato Cup & spoon -->
+              <path d="M60 110 L140 110 L125 170 L75 170 Z" fill="#2a2f3a"/>
+              <circle cx="85" cy="95" r="22" fill="#0f1115"/>
+              <circle cx="115" cy="95" r="22" fill="#0f1115"/>
+              <circle cx="100" cy="80" r="20" fill="#2a2f3a"/>
+            </svg>
+          </div>
+          <div class="text-sm font-medium text-[#e8eaed] truncate group-hover:text-[#4fb3ff] transition-colors">IMG_0442.JPG</div>
+          <div class="text-xs text-[#9aa0aa]">14.07.2024, 17:15</div>
+        </div>
+
+        <!-- Card 10: IMG_0449.JPG -->
+        <div class="group cursor-pointer">
+          <div class="aspect-square w-full rounded-lg overflow-hidden bg-[#1c2029] border border-[#2a2f3a] card-shadow mb-2">
+            <svg class="w-full h-full object-cover" viewBox="0 0 200 200" xmlns="http://www.w3.org/2000/svg">
+              <rect width="200" height="200" fill="#1c2029"/>
+              <!-- Italian narrow street alley with balconies -->
+              <polygon points="20 0 70 0 60 200 20 200" fill="#2a2f3a"/>
+              <polygon points="180 0 130 0 140 200 180 200" fill="#2a2f3a"/>
+              <rect x="70" y="60" width="15" height="18" fill="#0f1115"/>
+              <rect x="115" y="80" width="15" height="18" fill="#0f1115"/>
+              <!-- Cobblestones -->
+              <circle cx="100" cy="180" r="4" fill="#2a2f3a"/>
+            </svg>
+          </div>
+          <div class="text-sm font-medium text-[#e8eaed] truncate group-hover:text-[#4fb3ff] transition-colors">IMG_0449.JPG</div>
+          <div class="text-xs text-[#9aa0aa]">14.07.2024, 17:58</div>
+        </div>
+
+        <!-- Card 11: IMG_0455.JPG -->
+        <div class="group cursor-pointer">
+          <div class="aspect-square w-full rounded-lg overflow-hidden bg-[#1c2029] border border-[#2a2f3a] card-shadow mb-2">
+            <svg class="w-full h-full object-cover" viewBox="0 0 200 200" xmlns="http://www.w3.org/2000/svg">
+              <rect width="200" height="200" fill="#1c2029"/>
+              <!-- Mediterranean Olive Grove & Stone Wall -->
+              <rect x="0" y="145" width="200" height="55" fill="#2a2f3a"/>
+              <line x1="0" y1="165" x2="200" y2="165" stroke="#0f1115" stroke-width="1.5"/>
+              <!-- Gnarled tree trunk & foliage -->
+              <path d="M100 145 Q90 115 105 95 Q115 80 110 60" stroke="#0f1115" stroke-width="8" stroke-linecap="round" fill="none"/>
+              <circle cx="115" cy="55" r="28" fill="#2a2f3a"/>
+            </svg>
+          </div>
+          <div class="text-sm font-medium text-[#e8eaed] truncate group-hover:text-[#4fb3ff] transition-colors">IMG_0455.JPG</div>
+          <div class="text-xs text-[#9aa0aa]">14.07.2024, 18:22</div>
+        </div>
+
+        <!-- Card 12: IMG_0461.JPG -->
+        <div class="group cursor-pointer">
+          <div class="aspect-square w-full rounded-lg overflow-hidden bg-[#1c2029] border border-[#2a2f3a] card-shadow mb-2">
+            <svg class="w-full h-full object-cover" viewBox="0 0 200 200" xmlns="http://www.w3.org/2000/svg">
+              <rect width="200" height="200" fill="#1c2029"/>
+              <!-- Sunset over Tuscan hills -->
+              <circle cx="100" cy="90" r="24" fill="#ff7a1a" opacity="0.2"/>
+              <path d="M0 110 Q70 125 130 95 L200 115 L200 200 L0 200 Z" fill="#2a2f3a"/>
+              <path d="M0 145 Q80 120 160 150 L200 140 L200 200 L0 200 Z" fill="#0f1115" opacity="0.7"/>
+            </svg>
+          </div>
+          <div class="text-sm font-medium text-[#e8eaed] truncate group-hover:text-[#4fb3ff] transition-colors">IMG_0461.JPG</div>
+          <div class="text-xs text-[#9aa0aa]">14.07.2024, 19:40</div>
+        </div>
+
+      </div>
+    </section>
+
+  </main>
+
+</body>
+</html>

@@ -1,0 +1,98 @@
+<!DOCTYPE html>
+
+<html class="h-full" lang="de"><head>
+<meta charset="utf-8"/>
+<meta content="width=device-width, initial-scale=1.0, maximum-scale=1.0, user-scalable=no" name="viewport"/>
+<title>P6 Lightbox Mobile</title>
+<script src="https://cdn.tailwindcss.com?plugins=forms,container-queries"></script>
+<script>
+    tailwind.config = {
+      theme: {
+        extend: {
+          colors: {
+            bg: '#0f1115',
+            fg: '#e8eaed',
+            primary: '#ff7a1a',
+            secondary: '#1c2029',
+            muted: '#9aa0aa',
+            border: '#2a2f3a',
+          }
+        }
+      }
+    };
+  </script>
+<style>
+    * {
+      box-sizing: border-box;
+      -webkit-tap-highlight-color: transparent;
+    }
+    body {
+      margin: 0;
+      padding: 0;
+      background-color: #0f1115;
+      color: #e8eaed;
+      font-family: system-ui, -apple-system, 'Segoe UI', Roboto, 'Helvetica Neue', Arial, sans-serif;
+      min-height: 100vh;
+      display: flex;
+      items-center: center;
+      justify-content: center;
+      user-select: none;
+    }
+    button:focus-visible {
+      outline: 2px solid #ff7a1a;
+      outline-offset: 2px;
+    }
+  </style>
+</head>
+<body class="bg-bg text-fg min-h-screen w-full flex items-center justify-center p-0 md:p-6 overflow-hidden">
+<!-- 390px x 844px Mobile Viewport Container -->
+<div class="w-[390px] h-[844px] max-w-full max-h-screen bg-[#0f1115] border border-border sm:rounded-3xl shadow-2xl relative flex flex-col justify-between p-4 box-border overflow-hidden">
+<!-- Top Bar -->
+<header class="w-full flex items-center justify-between shrink-0 z-10">
+<!-- Position counter -->
+<div class="text-[14px] leading-none text-muted font-normal tracking-wide">
+        12 / 148
+      </div>
+<!-- Close button 44x44 circular -->
+<button aria-label="Schließen" class="w-[44px] h-[44px] rounded-full bg-secondary border border-border flex items-center justify-center text-fg hover:bg-[#252a36] hover:text-white active:bg-[#161a22] transition-colors cursor-pointer shrink-0" type="button">
+<svg class="w-5 h-5 stroke-current" fill="none" stroke-linecap="round" stroke-linejoin="round" stroke-width="2" viewbox="0 0 24 24">
+<line x1="18" x2="6" y1="6" y2="18"></line>
+<line x1="6" x2="18" y1="6" y2="18"></line>
+</svg>
+</button>
+</header>
+<!-- Main Content Area: Centred portrait travel photo fitted without cropping -->
+<main class="flex-1 w-full flex flex-col items-center justify-center my-auto min-h-0 overflow-hidden py-2">
+<div class="w-full h-full flex items-center justify-center">
+<img alt="Schmale historische Straße in Florenz" class="w-full h-full max-h-full max-w-full object-contain pointer-events-none rounded-lg" src="https://lh3.googleusercontent.com/aida/AEtjO1V8W7k2uO8VosRUnKLvTfxaU7_Fw3j2U1kFmt8lm3pnhyveKgKqz5K0iv9tk3dEoGydN8OyasBGZIhBo7UUv64piQwkenMVhW0QF2GSAOLykEf3C3rBLWzR4nIzPnwt9xBDGojuq7c2EuHMe92HEThMY6z4zPyDpwY1Hvb73lqtl1JQiecGZRwYOYksdh2yJfFjZRxglHrZ-YowxKK0cGunW8SxyQ_ANVzm3SIwC8r7Ca_QPBctc8DAVH0"/>
+</div>
+</main>
+<!-- Info & Bottom Row Area -->
+<footer class="w-full shrink-0 flex flex-col gap-3.5 z-10 pb-1">
+<!-- Meta info -->
+<div class="flex flex-col gap-0.5">
+<span class="text-[16px] font-semibold text-fg leading-tight tracking-tight">IMG_0418.JPG</span>
+<span class="text-[13px] text-muted leading-tight font-normal">15.07.2024, 10:22</span>
+</div>
+<!-- Navigation & Hint Row -->
+<div class="w-full flex items-center justify-between pt-0.5">
+<!-- Previous button -->
+<button aria-label="Vorheriges Bild" class="w-[44px] h-[44px] rounded-full bg-secondary border border-border flex items-center justify-center text-fg hover:bg-[#252a36] hover:text-white active:bg-[#161a22] transition-colors cursor-pointer shrink-0" title="Vorheriges Bild" type="button">
+<svg class="w-5 h-5 stroke-current" fill="none" stroke-linecap="round" stroke-linejoin="round" stroke-width="2" viewbox="0 0 24 24">
+<polyline points="15 18 9 12 15 6"></polyline>
+</svg>
+</button>
+<!-- Center swipe hint -->
+<div class="text-[13px] text-muted font-normal text-center select-none px-2">
+          Wischen zum Blättern
+        </div>
+<!-- Next button -->
+<button aria-label="Nächstes Bild" class="w-[44px] h-[44px] rounded-full bg-secondary border border-border flex items-center justify-center text-fg hover:bg-[#252a36] hover:text-white active:bg-[#161a22] transition-colors cursor-pointer shrink-0" title="Nächstes Bild" type="button">
+<svg class="w-5 h-5 stroke-current" fill="none" stroke-linecap="round" stroke-linejoin="round" stroke-width="2" viewbox="0 0 24 24">
+<polyline points="9 18 15 12 9 6"></polyline>
+</svg>
+</button>
+</div>
+</footer>
+</div>
+</body></html>
