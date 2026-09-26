@@ -773,6 +773,33 @@ Chromium and Firefox, mobile ≤ 767 px and desktop ≥ 1024 px viewport):
   login/page redirects) is session-dependent; `readJson` drains an oversized
   body with `req.resume()` instead of `req.destroy()`, so the `413` response
   reaches the client instead of the socket closing first.
+- 2026-09-26 (#12): `src/db/{users,sessions}.js` implemented. `UserRow`
+  mirrors the raw `users` row verbatim, incl. the snake_case
+  `password_hash`/`created_at` keys (no camelCase mapping in the repository
+  layer — that is `src/api/users.js`'s job); `getSessionWithUser` does map to
+  camelCase (`expiresAt`, nested `user: { id, username, role }`) since it is
+  already a joined, computed shape with no single backing row. `node:sqlite`'s
+  `StatementSync.get()`/`.all()` type as `Record<string, SQLOutputValue>`
+  (a union of `null | number | bigint | string | Uint8Array`), so every column
+  read is narrowed to its concrete field type with a per-field JSDoc `@type`
+  cast rather than one whole-row cast, to stay correct regardless of
+  `Record`-to-named-type assignability in a given TypeScript version.
+  `setRoleGuarded`/`deleteUserGuarded` share a `countOtherAdmins(db, id)`
+  helper and guard only the case that actually removes the last admin (current
+  role `admin`, target role/`DELETE` non-admin, zero *other* admins) — a
+  same-role update (incl. the sole admin re-confirming `admin`) is therefore
+  never refused, matching the API's "same role = no-op 200". Both guards
+  follow `migrate.js`'s rollback shape: `BEGIN IMMEDIATE` inside the `try`, a
+  nested `try/catch` around `ROLLBACK` so a failed `BEGIN` itself cannot mask
+  the original error. `deleteExpiredSessions` treats `expires_at <= now` as
+  expired (inclusive) — a session expiring at exactly `now` is purged rather
+  than kept for one more tick. "Last-admin refusal incl. concurrent demotion"
+  is tested by driving the guard from two separate `DatabaseSync` connections
+  opened on the same `DATA_DIR` (one demotes/deletes and commits, the other
+  then attempts the same on the last remaining admin) — real thread-level
+  interleaving is not exercisable against a synchronous `node:sqlite` handle
+  in a single-threaded test process; the two-connection form still proves the
+  guard reads committed DB state rather than an in-process cache.
 - 2026-09-26: Issue #23 (app shell, nav, home, category placeholders, 404)
   implementation notes: the empty state on placeholder pages ships without
   the exports' icon-in-circle graphic — `createEmptyState({ title, text })`
