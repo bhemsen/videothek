@@ -965,3 +965,17 @@ and desktop 1440 px, compared with the design exports):
   `null`. This keeps a track type the sniffer doesn't care about (hint,
   timecode, …) from ever downgrading a file to "unknown", while a moov
   literally missing is still treated as `null` per spec.
+- 2026-09-26 (#36): `library-format.js` exports one generic
+  `pluralize(n, singular, plural)` (covers Titel/Titel, Serie/Serien,
+  Staffel/Staffeln, Folge/Folgen) instead of one function per word, and
+  `formatFileSize(bytes)` for the 1024-based B/KB/MB/GB rule;
+  `episodeNumber`/`episodeCode`/`episodeLabel` all take the same
+  `{ season, episode, episodeEnd }` shape `LibraryItem` already carries, plus
+  `title` for `episodeLabel`. `media-card.js` exports
+  `createPosterTile`/`createUnplayableBadge`/`createMovieCard`/
+  `createSeriesCard`/`createEpisodeRow`: series cards are always links (the
+  badge shows only when `playableCount` is 0), movie cards and episode rows
+  become a non-interactive `<div>` with the German title attribute when
+  unplayable. `library-api.js`'s `getCategory`/`getSeries` return the parsed
+  JSON typed via JSDoc (`CategoryItemsResponse | CategorySeriesResponse`,
+  `SeriesDetail`) for later phases to consume directly.
