@@ -140,9 +140,9 @@ copied verbatim, see `docs/design.md`):
 Exported HTML sits next to each PNG (it loads a CSS CDN and is never served or
 copied). Working reference only: Stitch project `videothek`, screens titled
 `P5 …`. The designs show the recommended options of OPEN-1 (music
-"Weiterhören" card) and OPEN-2 (bar shared by both sections). Most exports
-predate the switch of the `primary` token and show the old accent colour; the
-colour always comes from `public/css/tokens.css`. Where a PNG and this spec
+"Weiterhören" card) and OPEN-2 (bar shared by both sections). The exports use
+the current `primary` token (orange); the colour always comes from
+`public/css/tokens.css`. Where a PNG and this spec
 disagree, the spec wins — known gaps: the Hörbücher grid exports lack the
 "Weiterhören" row, the desktop audiobook bars show a volume control (out of
 scope), and exact bar controls per mode follow the Bar controls row.
