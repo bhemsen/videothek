@@ -70,6 +70,20 @@ const numbers = (str) => [...str.matchAll(/\d+(?:\.\d+)?/g)].map((m) => m[0]);
 const norm = (s) => s.replace(/\s+/g, '').toLowerCase();
 
 /**
+ * Strips `/* … *\/`, `//` line and `<!-- … -->` comments so a banned-API scan
+ * does not flag a mention inside a doc comment describing what the code
+ * deliberately avoids.
+ * @param {string} content
+ * @returns {string}
+ */
+function stripComments(content) {
+  return content
+    .replace(/\/\*[\s\S]*?\*\//g, '')
+    .replace(/<!--[\s\S]*?-->/g, '')
+    .replace(/\/\/.*$/gm, '');
+}
+
+/**
  * Extracts a `--name: value;` declaration's value from CSS text.
  * @param {string} css
  * @param {string} name
@@ -247,7 +261,7 @@ test('no innerHTML/outerHTML/insertAdjacentHTML/document.write', () => {
   const files = walk(publicDir, ['.js', '.html']);
   const violations = [];
   for (const file of files) {
-    const content = fs.readFileSync(file, 'utf8');
+    const content = stripComments(fs.readFileSync(file, 'utf8'));
     for (const m of content.matchAll(/\b(?:innerHTML|outerHTML|insertAdjacentHTML|document\.write)\b/g)) {
       violations.push(`${path.relative(repoRoot, file)}: ${m[0]}`);
     }
