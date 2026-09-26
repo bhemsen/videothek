@@ -27,7 +27,9 @@ export async function readId3v2(readAt) {
   if (version !== 3 && version !== 4) return null;
   const flags = header[5];
   const tagSize = decodeSynchsafe32(header, 6);
-  const tagEnd = 10 + tagSize;
+  const hasFooter = version === 4 && (flags & 0x10) !== 0;
+  const frameAreaEnd = 10 + tagSize;
+  const tagEnd = frameAreaEnd + (hasFooter ? 10 : 0);
   /** @type {Record<string, string>} */
   const fields = {};
   /** @type {WalkState} */
@@ -44,7 +46,7 @@ export async function readId3v2(readAt) {
     if (skipped === null) return { version, fields, picture: null, tagEnd };
     pos = skipped;
   }
-  await walkFrames(readAt, pos, tagEnd, version, fields, state);
+  await walkFrames(readAt, pos, frameAreaEnd, version, fields, state);
   return { version, fields, picture: state.type3Candidate ?? state.pictureCandidate, tagEnd };
 }
 

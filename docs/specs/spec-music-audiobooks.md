@@ -652,3 +652,33 @@ compared with the exports):
   `buildMpegFrame`, `withXingHeader`, `withVbriHeader`, `makeReadAt`,
   `instrumentReadAt`) is not fixed by this spec; it is designed for reuse by
   the FLAC, tag-mapping and audio-meta-pass test issues.
+- 2026-09-26: issue #59 review resolutions (blocking) — `mpeg.js`'s frame
+  scan no longer accepts a candidate on its own 4-byte header: it now also
+  requires a second, matching header (same MPEG version and sample rate) at
+  the offset the first header's own frame length implies, still inside the
+  64 KiB scan window, before returning it. This closes the false-positive
+  gap where random/non-MPEG bytes were read as a fabricated CBR duration;
+  `test/library/tags/mpeg.test.js` gained a `randomBytes`-fuzz case (many
+  seeds) asserting `null`, never a throw.
+- 2026-09-26: issue #59 review resolutions (non-blocking) — `readId3v2`
+  returns `null`, never an object with `tagEnd: 0`, when no `ID3` header is
+  present (the declared `Id3v2Tag | null` return type is authoritative); #64
+  (`src/library/tags/index.js`) must read the result as `tag?.tagEnd ?? 0`,
+  not assume an object. A Xing/Info header whose `frames` count is 0 is now
+  treated as absent (`tryXingFrames` returns `null`), falling through to the
+  VBRI/CBR estimate instead of a fabricated 0 ms duration. The v2.4 footer
+  flag (`0x10`) now adds 10 bytes to the returned `tagEnd`/audio-start value
+  while the frame walk itself still stops at the frame-area end
+  (`10 + tagSize`, footer excluded) — `tagEnd` and the walk boundary are
+  tracked as two separate values internally to keep the v2.4 "plausible next
+  frame" check (D-issue-#59's iTunes-bug guard) comparing against the frame
+  area, not the footer. Left as documented deviations rather than fixed in
+  this pass: the v2.4 tag-level-unsynchronisation path reuses the v2.3
+  whole-tag `readUnsyncedTag`/`synchDecode` codec verbatim, which is exact
+  for v2.3 but can misplace frame boundaries for a v2.4 tag whose frame
+  sizes themselves count already-unsynchronised bytes (rare in practice,
+  never throws, only the affected tag's later fields are lost); `walkFrames`
+  issues one `readAt` per frame header (plus a 4-byte v2.4 lookahead and one
+  body read) rather than the informal "64 KiB chunks" phrasing, since the
+  256 KiB total budget is unaffected and #64's `readAt` is expected to be
+  cheap in-process buffering, not one syscall per call.
