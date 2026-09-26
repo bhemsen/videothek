@@ -77,7 +77,12 @@ function buildRequestInit(method, json, keepalive) {
  */
 async function parseBody(response) {
   const text = await response.text();
-  return text ? JSON.parse(text) : null;
+  if (!text) return null;
+  try {
+    return JSON.parse(text);
+  } catch {
+    return null;
+  }
 }
 
 /**
@@ -136,6 +141,6 @@ export function toLogin() {
 export function safeNext(value) {
   if (typeof value !== 'string' || value.length > 2048) return '/';
   if (!value.startsWith('/') || value.startsWith('//') || value.startsWith('/\\')) return '/';
-  if (/[\x00-\x1f\\]/.test(value)) return '/';
+  if (/[\x00-\x1f\x7f\\]/.test(value)) return '/';
   return value;
 }

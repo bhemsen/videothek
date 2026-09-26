@@ -42,12 +42,16 @@ export function el(tag, attrs = {}, ...children) {
  */
 function applyAttrs(element, attrs) {
   for (const [key, value] of Object.entries(attrs)) {
+    if (value === null || value === undefined || value === false) continue;
     if (key === 'class') {
       applyClass(element, value);
     } else if (key === 'dataset') {
       applyDataset(element, /** @type {Dataset} */ (value));
     } else if (key.startsWith('on') && typeof value === 'function') {
       element.addEventListener(key.slice(2).toLowerCase(), /** @type {EventListener} */ (value));
+    } else if (key.startsWith('on')) {
+      // Never emit inline event-handler attributes for non-function `on*` values.
+      continue;
     } else {
       applyAttr(element, key, value);
     }

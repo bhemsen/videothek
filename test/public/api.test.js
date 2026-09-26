@@ -67,6 +67,32 @@ test('request resolves 204 with null data', async () => {
   assert.deepEqual(result, { status: 204, data: null });
 });
 
+test('request resolves a 2xx response with a non-JSON body as null data', async () => {
+  globalThis.fetch = /** @type {typeof fetch} */ (
+    /** @type {unknown} */ (
+      async () => ({
+        status: 200,
+        headers: { get: () => null },
+        text: async () => '<html>',
+      })
+    )
+  );
+  const result = await request('GET', '/api/me');
+  assert.deepEqual(result, { status: 200, data: null });
+});
+
+test('request sends credentials, JSON content-type/body and keepalive', async () => {
+  const { calls } = stubFetch({ status: 200, body: { ok: true } });
+  await request('POST', '/api/progress', { json: { position: 12 }, keepalive: true });
+  const [input, init] = calls[0];
+  assert.equal(input, '/api/progress');
+  assert.equal(/** @type {RequestInit} */ (init).method, 'POST');
+  assert.equal(/** @type {RequestInit} */ (init).credentials, 'same-origin');
+  assert.equal(/** @type {RequestInit} */ (init).keepalive, true);
+  assert.deepEqual(/** @type {RequestInit} */ (init).headers, { 'Content-Type': 'application/json' });
+  assert.equal(/** @type {RequestInit} */ (init).body, JSON.stringify({ position: 12 }));
+});
+
 test('request throws ApiError with the body error code on a non-2xx response', async () => {
   stubFetch({ status: 409, body: { error: 'username_taken' } });
   await assert.rejects(
@@ -213,6 +239,7 @@ test('safeNext rejects a backslash-based target', () => {
 
 test('safeNext rejects a target with a control character', () => {
   assert.equal(safeNext('/a\nb'), '/');
+  assert.equal(safeNext('/a\x7fb'), '/');
 });
 
 test('safeNext rejects a non-absolute or non-string value', () => {
