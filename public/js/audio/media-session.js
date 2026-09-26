@@ -8,23 +8,31 @@
 
 /**
  * @param {AudioPlayer} player
+ * @param {HTMLAudioElement} audio
  * @returns {void}
  */
-export function bindMediaSession(player) {
+export function bindMediaSession(player, audio) {
   if (!('mediaSession' in navigator)) return;
-  attachHandlers(player);
+  attachHandlers(player, audio);
   player.onChange(() => updateMetadata(player));
+  const updatePosition = () => setPositionState(audio);
+  audio.addEventListener('durationchange', updatePosition);
+  audio.addEventListener('seeked', updatePosition);
+  audio.addEventListener('play', updatePosition);
+  audio.addEventListener('pause', updatePosition);
   updateMetadata(player);
+  updatePosition();
 }
 
 /**
  * @param {AudioPlayer} player
+ * @param {HTMLAudioElement} audio
  * @returns {void}
  */
-function attachHandlers(player) {
+function attachHandlers(player, audio) {
   const session = navigator.mediaSession;
-  session.setActionHandler('play', () => player.toggle());
-  session.setActionHandler('pause', () => player.toggle());
+  session.setActionHandler('play', () => { if (audio.paused) player.toggle(); });
+  session.setActionHandler('pause', () => { if (!audio.paused) player.toggle(); });
   session.setActionHandler('previoustrack', () => player.previous());
   session.setActionHandler('nexttrack', () => player.next());
   session.setActionHandler('seekbackward', () => player.seekBy(-15));
@@ -35,8 +43,7 @@ function attachHandlers(player) {
 }
 
 /**
- * Sets metadata and `setPositionState` from the current item; a no-op while
- * nothing is queued yet.
+ * Sets metadata from the current item; a no-op while nothing is queued yet.
  * @param {AudioPlayer} player
  * @returns {void}
  */
@@ -51,4 +58,24 @@ function updateMetadata(player) {
     album: item.groupTitle ?? '',
     artwork: item.coverId === null ? [] : [{ src: `/media/${item.coverId}/cover` }],
   });
+}
+
+/**
+ * Reports current position/duration to the OS media UI so its scrubber (and
+ * the `seekto` handler above) has something to drive; skipped while the
+ * duration is not yet known (`NaN` before the first `durationchange`).
+ * @param {HTMLAudioElement} audio
+ * @returns {void}
+ */
+function setPositionState(audio) {
+  if (!Number.isFinite(audio.duration)) return;
+  try {
+    navigator.mediaSession.setPositionState({
+      duration: audio.duration,
+      playbackRate: audio.playbackRate,
+      position: audio.currentTime,
+    });
+  } catch {
+    // Some browsers throw when position momentarily exceeds duration; ignore.
+  }
 }

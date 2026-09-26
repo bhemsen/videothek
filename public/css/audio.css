@@ -113,6 +113,10 @@
   cursor: pointer;
 }
 
+.audio-bar__controls button[hidden] {
+  display: none;
+}
+
 .audio-bar__toggle {
   color: var(--color-primary);
 }

@@ -39,21 +39,37 @@ const player = createAudioPlayer({ audio });
 const { bar, spacer } = createPlayerBar({ player, audio });
 main.append(spacer);
 document.body.append(audio, bar);
-bindMediaSession(player);
+bindMediaSession(player, audio);
 
 /** @type {{ dispose?: () => void } | null} */
 let currentView = null;
+/** Bumped on every navigation; a render whose token has gone stale by the
+ * time its view promise settles was superseded by a later navigation and is
+ * dropped instead of overwriting the newer view. */
+let navToken = 0;
 
 /**
+ * Renders `route` into a detached target element, and only swaps it into the
+ * live `container` if no later navigation started while the view's own
+ * (possibly awaited) work was in flight. A superseded view never touches
+ * `container`, `currentView` or `document.title` — its `dispose` runs
+ * instead, so cleanup still happens even though it never became current.
  * @param {AudioRoute} route
  * @returns {Promise<void>}
  */
 async function renderRoute(route) {
+  const token = ++navToken;
   currentView?.dispose?.();
   currentView = null;
   const view = VIEWS[route.section][route.view];
-  const result = await view({ container, id: route.id, player, navigate });
+  const target = el('div');
+  const result = await view({ container: target, id: route.id, player, navigate });
+  if (token !== navToken) {
+    result.dispose?.();
+    return;
+  }
   currentView = result;
+  container.replaceChildren(target);
   document.title = `${result.title} · Videothek`;
   setActive(route.section);
   window.scrollTo(0, 0);
@@ -100,9 +116,7 @@ function onClick(event) {
   if (url.origin !== location.origin) return;
   if (url.pathname !== '/music' && url.pathname !== '/audiobooks') return;
   event.preventDefault();
-  const path = url.pathname + url.search;
-  if (path !== location.pathname + location.search) history.pushState(null, '', path);
-  renderRoute(parseAudioUrl(url.pathname, url.search));
+  navigate(parseAudioUrl(url.pathname, url.search));
 }
 
 document.addEventListener('click', onClick);

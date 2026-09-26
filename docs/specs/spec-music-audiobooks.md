@@ -343,7 +343,7 @@ QA-only, optional:
 | **Rows:** playable track/file rows are full-width `<button type="button">` (≥ `--row-min`, number `font-mono` muted, title, duration right); the playing row gets `aria-current="true"`, `primary` text and an equaliser glyph instead of the number. Track click → album queue from that track at 0; file click → book queue from that file at its start rule. Non-playable rows are non-focusable `<div>`s with `muted` text and the `destructive` "Nicht abspielbar" badge. | design.md: ≥ 48 px rows, keyboard reachable; no opacity dimming (AA). | 2026-09-26 |
 | **Grid (H3):** album and book grids use `grid-template-columns: repeat(auto-fill, minmax(min(var(--grid-min), calc(50% - var(--space-2))), 1fr))`, gap `var(--space-4)`. | Human decision at spec-acceptance gate (H3) — always ≥ 2 columns on phones; `--space-2` (8 px) replaces H3's literal. | 2026-09-26 |
 | **Bar layout (`public/js/audio/player-bar.js` + `audio.css`):** `<section class="audio-bar" aria-label="Audioplayer">` on `secondary`, fixed at the bottom, `hidden` until the first `playQueue`. Contents: cover (48 px token-sized square via `--space-12`), title + subtitle (one line, ellipsis; music: artist, audiobook: "book · author"), controls, seek `<input type="range" aria-label="Position">` with elapsed/total (`formatClock`, `–:–`). Music mode: previous, play/pause, next. Audiobook mode: previous, "15 s zurück", play/pause, "30 s vor", next — below 768 px only 15 s zurück / play-pause / 30 s vor (previous/next file stay reachable via the file list). All controls are `<button>`s ≥ `--tap-min` with German `aria-label`s: "Wiedergabe"/"Pause", "Vorheriger Titel", "Nächster Titel", "15 Sekunden zurück", "30 Sekunden vor". Below 768 px the bar sits directly above Phase 1's bottom nav at `bottom: calc(var(--bar-height-mobile) + env(safe-area-inset-bottom))` — the same sum Phase 1 pads `main` with, since the nav occupies the inset — and needs no inset padding of its own; ≥ 768 px (no bottom nav) at `bottom: 0` with `padding-bottom: env(safe-area-inset-bottom)`. A spacer element after the view container gets the bar's measured height via `ResizeObserver` → `el.style.setProperty('height', …)`, so the last row is never hidden. No page-level keyboard shortcuts. | design.md: persistent bottom bar on `secondary`, ≥ 44 px targets; D5 (CSSOM for dynamic values, only 768/1024 breakpoint literals — replaces the draft's 600 px). | 2026-09-26 |
-| **Media Session (`public/js/audio/media-session.js`, `bindMediaSession(player)`, no-op without `navigator.mediaSession`):** metadata title, artist (music: track artist; audiobook: author ?? book title), album (album/book title), artwork `[{ src: '/media/<coverId>/cover' }]`; handlers play, pause, previoustrack, nexttrack, seekbackward (15 s), seekforward (30 s), seekto; `setPositionState` on `durationchange`, `seeked`, `play`, `pause` (inside `try`, skipped for non-finite durations). The artwork URL is always set (every group has a `coverId`); when it 404s the browser shows its own default artwork — lock screens have no broken-image state, so no placeholder is generated for Media Session. | Built-in API giving lock-screen and hardware-key control. | 2026-09-26 |
+| **Media Session (`public/js/audio/media-session.js`, `bindMediaSession(player, audio)`, no-op without `navigator.mediaSession`):** metadata title, artist (music: track artist; audiobook: author ?? book title), album (album/book title), artwork `[{ src: '/media/<coverId>/cover' }]`; handlers play, pause, previoustrack, nexttrack, seekbackward (15 s), seekforward (30 s), seekto; `setPositionState` on `durationchange`, `seeked`, `play`, `pause` (inside `try`, skipped for non-finite durations). The artwork URL is always set (every group has a `coverId`); when it 404s the browser shows its own default artwork — lock screens have no broken-image state, so no placeholder is generated for Media Session. | Built-in API giving lock-screen and hardware-key control. | 2026-09-26 |
 | **Cover images (`public/js/audio/cover-img.js`, `coverImg({ coverId, kind: 'album' \| 'book', alt = '', lazy = false }) → HTMLElement`):** returns a square wrapper holding `<img src="/media/<coverId>/cover" alt decoding="async">` (`loading="lazy"` when `lazy`). On the image's `error` event (a 404 or any load failure) — or immediately when `coverId` is null — the `<img>` is removed and replaced by a placeholder: `surface` background with a centred `muted` glyph from `icons.js` (music note for `album`, book for `book`, as in the exports), `aria-hidden="true"` (the title next to it names the item). A broken-image icon is never shown. Used by album/book cards, the album/book detail header, the Musik "Weiterhören" card and the bar cover (the bar re-creates it on every item change). | Outcome "items without any cover show the placeholder, never a broken-image icon"; one module so every cover surface behaves the same (review). | 2026-09-26 |
 | **German formatting (`public/js/audio/format.js`):** `formatDuration(s)` = P4's `formatClock` or `–:–` for null; `formatTotal(s)` → `48 Min.` / `7 Std. 12 Min.` / `7 Std.` (minutes rounded, minimum `1 Min.`), `–:–` for null; `formatPercent(f)` → `34 %` (floored, `Math.floor(f * 100)`). | Consistent German copy; reuses Phase 4's clock format. | 2026-09-26 |
 | **States and copy:** loading shows only the heading; empty Musik "Keine Musik gefunden." + "Lege Musik im Ordner „Musik“ ab, z. B. „Musik/Interpret/Album/01 Titel.mp3“."; empty Hörbücher "Keine Hörbücher gefunden." + "Lege Hörbücher im Ordner „Hörbücher“ ab, z. B. „Hörbücher/Autor/Titel/01.mp3“."; request error "Die Bibliothek konnte nicht geladen werden." + button "Erneut versuchen"; API 404 "Album nicht gefunden." / "Hörbuch nicht gefunden." + link back to the section. No first-scan state: lists fill as the pass writes rows. `401` → Phase 1's `request` redirects to login. | Mirrors Phase 2's copy; the audio API does not expose scan status. | 2026-09-26 |
@@ -731,3 +731,38 @@ compared with the exports):
   checks) is green, and the Chromium/Firefox walk (bar persists across
   Musik ↔ Hörbücher, no CSP violation) is deferred to the milestone QA gate
   once #17 and the other Phase 5 view/API issues have landed.
+- 2026-09-27: PR #132 review resolutions (issue #72) — blocking:
+  `bindMediaSession`'s signature changes to `bindMediaSession(player, audio)`
+  (the "Media Session" row updated to match), since `setPositionState` needs
+  the raw `<audio>` element's `duration`/`currentTime`/`playbackRate` and
+  `createAudioPlayer`'s `state()` exposes none of them (same reason
+  `player-bar.js` already takes `audio` directly); it is called on
+  `durationchange`, `seeked`, `play` and `pause`, wrapped in `try` and
+  skipped while `audio.duration` is not finite. `audio.css` gained
+  `.audio-bar__controls button[hidden] { display: none; }` — the class rule's
+  `display: flex` otherwise beat the UA `[hidden]` default, so
+  `rewind.hidden`/`forward.hidden` had no visible effect and both buttons
+  showed in music mode. `app.js`'s `renderRoute` now renders each view into a
+  detached element and only swaps it into the live `container` (via
+  `replaceChildren`) if a monotonic `navToken` shows no later navigation
+  started while the view's own work was in flight; a superseded view's
+  result never touches `container`/`currentView`/`document.title` and gets
+  `dispose`d instead — this holds regardless of what a view does internally
+  (e.g. the stubs' unconditional `container.append`), since the swap only
+  ever reads the winning render's own detached element. Non-blocking, also
+  applied: `onClick` now calls `navigate(parseAudioUrl(...))` instead of
+  pushing the raw clicked URL, so an in-section link with a non-canonical
+  query is cleaned the same way `syncFromLocation` cleans one; Media
+  Session's `play`/`pause` handlers check `audio.paused` before calling
+  `player.toggle()`, since a stale OS action firing while already in that
+  state would otherwise flip it the wrong way; `player-bar.js`'s seek slider
+  also clears `dragging` on `pointerup`/`pointercancel` (some browsers fire
+  no `change` when a drag ends back on the starting value); the audiobook
+  subtitle joins only the non-null `groupTitle`/`subtitle` parts, so a null
+  author no longer leaves a trailing " · "; `observeHeight` reads
+  `borderBoxSize[0].blockSize` (falling back to `contentRect.height`) so the
+  spacer accounts for the bar's own padding/border. Deferred, per the
+  findings' own alternatives: the artwork-always-set wording deviation
+  (harmless given the nullable `coverId` type) and a catch/fallback for a
+  rejected view promise (needs a per-section default-route decision beyond
+  this fix's scope; every view must handle its own errors until then).

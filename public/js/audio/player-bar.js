@@ -118,6 +118,8 @@ function wireSeek(player, audio, parts, isDragging, setDragging) {
     setDragging(false);
     player.seekTo(Number(parts.seek.value));
   });
+  parts.seek.addEventListener('pointerup', () => setDragging(false));
+  parts.seek.addEventListener('pointercancel', () => setDragging(false));
   audio.addEventListener('timeupdate', () => {
     if (isDragging()) return;
     parts.seek.value = String(audio.currentTime);
@@ -136,10 +138,21 @@ function wireSeek(player, audio, parts, isDragging, setDragging) {
  */
 function observeHeight(bar, spacer) {
   const observer = new ResizeObserver((entries) => {
-    const height = entries[0] ? entries[0].contentRect.height : 0;
+    const height = entries[0] ? borderBoxHeight(entries[0]) : 0;
     spacer.style.setProperty('height', `${height}px`);
   });
   observer.observe(bar);
+}
+
+/**
+ * The border-box block size (includes padding/border, unlike `contentRect`);
+ * falls back to `contentRect.height` for engines without `borderBoxSize`.
+ * @param {ResizeObserverEntry} entry
+ * @returns {number}
+ */
+function borderBoxHeight(entry) {
+  const box = entry.borderBoxSize && entry.borderBoxSize[0];
+  return box ? box.blockSize : entry.contentRect.height;
 }
 
 /**
@@ -159,7 +172,8 @@ function applyState(state, parts, itemChanged) {
     parts.cover.replaceChildren(coverImg({ coverId: item.coverId, kind: mode === 'music' ? 'album' : 'book' }));
   }
   parts.title.textContent = item.title;
-  parts.subtitle.textContent = mode === 'music' ? (item.subtitle ?? '') : `${item.groupTitle ?? ''} ${MIDDLE_DOT} ${item.subtitle ?? ''}`;
+  parts.subtitle.textContent =
+    mode === 'music' ? (item.subtitle ?? '') : [item.groupTitle, item.subtitle].filter((part) => part != null).join(` ${MIDDLE_DOT} `);
   parts.status.hidden = error === null;
   parts.status.textContent = error ?? '';
 }
