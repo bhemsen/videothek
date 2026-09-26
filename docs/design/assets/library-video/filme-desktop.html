@@ -1,0 +1,641 @@
+<!DOCTYPE html>
+<html lang="de">
+<head>
+  <meta charset="UTF-8">
+  <meta name="viewport" content="width=1440, initial-scale=1.0">
+  <title>P2 Filme – Desktop v3</title>
+  <style>
+    *, *::before, *::after {
+      box-sizing: border-box;
+      margin: 0;
+      padding: 0;
+    }
+
+    body {
+      background-color: #0f1115;
+      color: #e8eaed;
+      font-family: system-ui, -apple-system, 'Segoe UI', Roboto, 'Helvetica Neue', Arial, sans-serif;
+      min-width: 1440px;
+      width: 100%;
+      min-height: 100vh;
+      -webkit-font-smoothing: antialiased;
+      -moz-osx-font-smoothing: grayscale;
+    }
+
+    /* Top bar */
+    .topbar {
+      width: 100%;
+      height: 64px;
+      border-bottom: 1px solid #2a2f3a;
+      display: flex;
+      align-items: center;
+      justify-content: space-between;
+      padding: 0 40px;
+      background-color: #0f1115;
+    }
+
+    .topbar-left {
+      display: flex;
+      align-items: center;
+      gap: 48px;
+      height: 100%;
+    }
+
+    .brand {
+      display: flex;
+      align-items: center;
+      gap: 10px;
+      text-decoration: none;
+      color: #e8eaed;
+      font-size: 18px;
+      font-weight: 700;
+      letter-spacing: -0.01em;
+    }
+
+    .brand-icon {
+      width: 22px;
+      height: 22px;
+      fill: #ff7a1a;
+      flex-shrink: 0;
+    }
+
+    .nav {
+      display: flex;
+      align-items: center;
+      gap: 32px;
+      height: 100%;
+    }
+
+    .nav-item {
+      display: flex;
+      align-items: center;
+      height: 100%;
+      color: #9aa0aa;
+      font-size: 15px;
+      font-weight: 500;
+      text-decoration: none;
+      position: relative;
+      transition: color 0.15s ease;
+    }
+
+    .nav-item:hover {
+      color: #e8eaed;
+    }
+
+    .nav-item.active {
+      color: #ff7a1a;
+      font-weight: 600;
+    }
+
+    .nav-item.active::after {
+      content: '';
+      position: absolute;
+      bottom: 0;
+      left: 0;
+      right: 0;
+      height: 2px;
+      background-color: #ff7a1a;
+    }
+
+    .topbar-right {
+      display: flex;
+      align-items: center;
+    }
+
+    .logout-btn {
+      display: inline-flex;
+      align-items: center;
+      gap: 8px;
+      background: none;
+      border: none;
+      color: #9aa0aa;
+      font-size: 14px;
+      font-weight: 500;
+      font-family: inherit;
+      cursor: pointer;
+      padding: 8px 12px;
+      border-radius: 6px;
+      transition: color 0.15s ease;
+    }
+
+    .logout-btn:hover {
+      color: #e8eaed;
+    }
+
+    .logout-icon {
+      width: 16px;
+      height: 16px;
+      stroke: currentColor;
+      stroke-width: 2;
+      fill: none;
+      stroke-linecap: round;
+      stroke-linejoin: round;
+    }
+
+    /* Main container */
+    .main-content {
+      max-width: 1440px;
+      margin: 0 auto;
+      padding: 40px 40px 64px 40px;
+    }
+
+    /* Page Header */
+    .header-row {
+      display: flex;
+      align-items: flex-end;
+      justify-content: space-between;
+      margin-bottom: 32px;
+    }
+
+    .title-group {
+      display: flex;
+      align-items: baseline;
+      gap: 16px;
+    }
+
+    h1 {
+      font-size: 32px;
+      font-weight: 700;
+      letter-spacing: -0.02em;
+      line-height: 1.2;
+      color: #e8eaed;
+    }
+
+    .count-badge {
+      font-size: 15px;
+      color: #9aa0aa;
+      font-weight: 400;
+    }
+
+    /* Segmented sort control */
+    .sort-control {
+      display: flex;
+      align-items: center;
+      height: 44px;
+      background-color: #1c2029;
+      border: 1px solid #2a2f3a;
+      border-radius: 8px;
+      padding: 3px;
+      gap: 2px;
+    }
+
+    .sort-btn {
+      height: 36px;
+      padding: 0 16px;
+      border-radius: 6px;
+      font-size: 14px;
+      font-weight: 500;
+      font-family: inherit;
+      cursor: pointer;
+      display: inline-flex;
+      align-items: center;
+      justify-content: center;
+      border: 1px solid transparent;
+      background: transparent;
+      color: #9aa0aa;
+      transition: all 0.15s ease;
+      white-space: nowrap;
+    }
+
+    .sort-btn:hover:not(.selected) {
+      color: #e8eaed;
+    }
+
+    .sort-btn.selected {
+      color: #4fb3ff;
+      border-color: #4fb3ff;
+      background-color: #0f1115;
+      font-weight: 600;
+    }
+
+    /* 7-column Movie Grid */
+    .movie-grid {
+      display: grid;
+      grid-template-columns: repeat(7, minmax(0, 1fr));
+      gap: 16px;
+    }
+
+    .movie-card {
+      display: flex;
+      flex-direction: column;
+      text-decoration: none;
+      color: inherit;
+      outline: none;
+    }
+
+    .movie-card:focus-visible .poster-tile {
+      outline: 2px solid #ff7a1a;
+      outline-offset: 2px;
+    }
+
+    /* 2:3 Aspect ratio poster tile */
+    .poster-tile {
+      position: relative;
+      width: 100%;
+      aspect-ratio: 2 / 3;
+      background-color: #1c2029;
+      border: 1px solid #2a2f3a;
+      border-radius: 8px;
+      display: flex;
+      align-items: center;
+      justify-content: center;
+      overflow: hidden;
+      transition: border-color 0.15s ease, transform 0.15s ease;
+    }
+
+    .movie-card:hover .poster-tile {
+      border-color: #3b4252;
+    }
+
+    /* Film strip icon top-left */
+    .film-strip-icon {
+      position: absolute;
+      top: 10px;
+      left: 10px;
+      width: 16px;
+      height: 16px;
+      color: #9aa0aa;
+      stroke: currentColor;
+      stroke-width: 1.75;
+      fill: none;
+      stroke-linecap: round;
+      stroke-linejoin: round;
+    }
+
+    /* Pill badge "Nicht abspielbar" top-right */
+    .badge-unplayable {
+      position: absolute;
+      top: 9px;
+      right: 9px;
+      height: 22px;
+      padding: 0 7px;
+      display: inline-flex;
+      align-items: center;
+      gap: 4px;
+      background-color: #0f1115;
+      border: 1px solid #ff5c5c;
+      border-radius: 9999px;
+      color: #ff5c5c;
+      font-size: 11px;
+      font-weight: 600;
+      letter-spacing: 0.01em;
+      white-space: nowrap;
+      line-height: 1;
+    }
+
+    .badge-icon {
+      width: 11px;
+      height: 11px;
+      stroke: currentColor;
+      stroke-width: 2;
+      fill: none;
+      flex-shrink: 0;
+    }
+
+    /* Center Monogram Initials */
+    .initials {
+      font-size: 32px;
+      font-weight: 700;
+      color: #9aa0aa;
+      letter-spacing: -0.02em;
+      user-select: none;
+    }
+
+    /* Card meta info below tile */
+    .card-info {
+      margin-top: 10px;
+      display: flex;
+      flex-direction: column;
+      gap: 3px;
+    }
+
+    .card-title {
+      font-size: 15px;
+      font-weight: 600;
+      line-height: 1.3;
+      color: #e8eaed;
+      white-space: nowrap;
+      overflow: hidden;
+      text-overflow: ellipsis;
+    }
+
+    .card-meta {
+      font-size: 13px;
+      color: #9aa0aa;
+      line-height: 1.3;
+    }
+  </style>
+</head>
+<body>
+
+  <!-- Top bar -->
+  <header class="topbar">
+    <div class="topbar-left">
+      <a href="#" class="brand">
+        <!-- SVG Play Logo -->
+        <svg class="brand-icon" viewBox="0 0 24 24">
+          <path d="M6 4.5v15a1 1 0 0 0 1.52.85l12-7.5a1 1 0 0 0 0-1.7l-12-7.5A1 1 0 0 0 6 4.5z"/>
+        </svg>
+        <span>Videothek</span>
+      </a>
+      <nav class="nav">
+        <a href="#" class="nav-item active">Filme</a>
+        <a href="#" class="nav-item">Serien</a>
+        <a href="#" class="nav-item">Musik</a>
+        <a href="#" class="nav-item">Hörbücher</a>
+        <a href="#" class="nav-item">Bilder</a>
+      </nav>
+    </div>
+    <div class="topbar-right">
+      <button class="logout-btn" type="button">
+        <svg class="logout-icon" viewBox="0 0 24 24">
+          <path d="M9 21H5a2 2 0 0 1-2-2V5a2 2 0 0 1 2-2h4"></path>
+          <polyline points="16 17 21 12 16 7"></polyline>
+          <line x1="21" y1="12" x2="9" y2="12"></line>
+        </svg>
+        <span>Abmelden</span>
+      </button>
+    </div>
+  </header>
+
+  <!-- Main Content -->
+  <main class="main-content">
+    <!-- Header with title and sort segmented control -->
+    <div class="header-row">
+      <div class="title-group">
+        <h1>Filme</h1>
+        <span class="count-badge">12 Titel</span>
+      </div>
+      <div class="sort-control">
+        <button class="sort-btn selected" type="button">A–Z</button>
+        <button class="sort-btn" type="button">Neu hinzugefügt</button>
+      </div>
+    </div>
+
+    <!-- 7-column Grid -->
+    <div class="movie-grid">
+      <!-- 1. Arrival -->
+      <a href="#" class="movie-card">
+        <div class="poster-tile">
+          <svg class="film-strip-icon" viewBox="0 0 24 24">
+            <rect x="2" y="2" width="20" height="20" rx="3"></rect>
+            <line x1="7" y1="2" x2="7" y2="22"></line>
+            <line x1="17" y1="2" x2="17" y2="22"></line>
+            <line x1="2" y1="8" x2="7" y2="8"></line>
+            <line x1="2" y1="16" x2="7" y2="16"></line>
+            <line x1="17" y1="8" x2="22" y2="8"></line>
+            <line x1="17" y1="16" x2="22" y2="16"></line>
+          </svg>
+          <div class="initials">A</div>
+        </div>
+        <div class="card-info">
+          <div class="card-title" title="Arrival">Arrival</div>
+          <div class="card-meta">2016 · MP4</div>
+        </div>
+      </a>
+
+      <!-- 2. Blade Runner 2049 -->
+      <a href="#" class="movie-card">
+        <div class="poster-tile">
+          <svg class="film-strip-icon" viewBox="0 0 24 24">
+            <rect x="2" y="2" width="20" height="20" rx="3"></rect>
+            <line x1="7" y1="2" x2="7" y2="22"></line>
+            <line x1="17" y1="2" x2="17" y2="22"></line>
+            <line x1="2" y1="8" x2="7" y2="8"></line>
+            <line x1="2" y1="16" x2="7" y2="16"></line>
+            <line x1="17" y1="8" x2="22" y2="8"></line>
+            <line x1="17" y1="16" x2="22" y2="16"></line>
+          </svg>
+          <div class="initials">BR</div>
+        </div>
+        <div class="card-info">
+          <div class="card-title" title="Blade Runner 2049">Blade Runner 2049</div>
+          <div class="card-meta">2017 · MP4</div>
+        </div>
+      </a>
+
+      <!-- 3. Das Boot (Nicht abspielbar) -->
+      <a href="#" class="movie-card">
+        <div class="poster-tile">
+          <svg class="film-strip-icon" viewBox="0 0 24 24">
+            <rect x="2" y="2" width="20" height="20" rx="3"></rect>
+            <line x1="7" y1="2" x2="7" y2="22"></line>
+            <line x1="17" y1="2" x2="17" y2="22"></line>
+            <line x1="2" y1="8" x2="7" y2="8"></line>
+            <line x1="2" y1="16" x2="7" y2="16"></line>
+            <line x1="17" y1="8" x2="22" y2="8"></line>
+            <line x1="17" y1="16" x2="22" y2="16"></line>
+          </svg>
+          <div class="badge-unplayable">
+            <svg class="badge-icon" viewBox="0 0 24 24">
+              <circle cx="12" cy="12" r="10"></circle>
+              <line x1="4.93" y1="4.93" x2="19.07" y2="19.07"></line>
+            </svg>
+            <span>Nicht abspielbar</span>
+          </div>
+          <div class="initials">DB</div>
+        </div>
+        <div class="card-info">
+          <div class="card-title" title="Das Boot">Das Boot</div>
+          <div class="card-meta">1981 · MKV</div>
+        </div>
+      </a>
+
+      <!-- 4. Das Leben der Anderen -->
+      <a href="#" class="movie-card">
+        <div class="poster-tile">
+          <svg class="film-strip-icon" viewBox="0 0 24 24">
+            <rect x="2" y="2" width="20" height="20" rx="3"></rect>
+            <line x1="7" y1="2" x2="7" y2="22"></line>
+            <line x1="17" y1="2" x2="17" y2="22"></line>
+            <line x1="2" y1="8" x2="7" y2="8"></line>
+            <line x1="2" y1="16" x2="7" y2="16"></line>
+            <line x1="17" y1="8" x2="22" y2="8"></line>
+            <line x1="17" y1="16" x2="22" y2="16"></line>
+          </svg>
+          <div class="initials">DA</div>
+        </div>
+        <div class="card-info">
+          <div class="card-title" title="Das Leben der Anderen">Das Leben der Anderen</div>
+          <div class="card-meta">2006 · WEBM</div>
+        </div>
+      </a>
+
+      <!-- 5. Inception -->
+      <a href="#" class="movie-card">
+        <div class="poster-tile">
+          <svg class="film-strip-icon" viewBox="0 0 24 24">
+            <rect x="2" y="2" width="20" height="20" rx="3"></rect>
+            <line x1="7" y1="2" x2="7" y2="22"></line>
+            <line x1="17" y1="2" x2="17" y2="22"></line>
+            <line x1="2" y1="8" x2="7" y2="8"></line>
+            <line x1="2" y1="16" x2="7" y2="16"></line>
+            <line x1="17" y1="8" x2="22" y2="8"></line>
+            <line x1="17" y1="16" x2="22" y2="16"></line>
+          </svg>
+          <div class="initials">I</div>
+        </div>
+        <div class="card-info">
+          <div class="card-title" title="Inception">Inception</div>
+          <div class="card-meta">2010 · MP4</div>
+        </div>
+      </a>
+
+      <!-- 6. Interstellar -->
+      <a href="#" class="movie-card">
+        <div class="poster-tile">
+          <svg class="film-strip-icon" viewBox="0 0 24 24">
+            <rect x="2" y="2" width="20" height="20" rx="3"></rect>
+            <line x1="7" y1="2" x2="7" y2="22"></line>
+            <line x1="17" y1="2" x2="17" y2="22"></line>
+            <line x1="2" y1="8" x2="7" y2="8"></line>
+            <line x1="2" y1="16" x2="7" y2="16"></line>
+            <line x1="17" y1="8" x2="22" y2="8"></line>
+            <line x1="17" y1="16" x2="22" y2="16"></line>
+          </svg>
+          <div class="initials">I</div>
+        </div>
+        <div class="card-info">
+          <div class="card-title" title="Interstellar">Interstellar</div>
+          <div class="card-meta">2014 · MP4</div>
+        </div>
+      </a>
+
+      <!-- 7. Metropolis -->
+      <a href="#" class="movie-card">
+        <div class="poster-tile">
+          <svg class="film-strip-icon" viewBox="0 0 24 24">
+            <rect x="2" y="2" width="20" height="20" rx="3"></rect>
+            <line x1="7" y1="2" x2="7" y2="22"></line>
+            <line x1="17" y1="2" x2="17" y2="22"></line>
+            <line x1="2" y1="8" x2="7" y2="8"></line>
+            <line x1="2" y1="16" x2="7" y2="16"></line>
+            <line x1="17" y1="8" x2="22" y2="8"></line>
+            <line x1="17" y1="16" x2="22" y2="16"></line>
+          </svg>
+          <div class="initials">M</div>
+        </div>
+        <div class="card-info">
+          <div class="card-title" title="Metropolis">Metropolis</div>
+          <div class="card-meta">1927 · MP4</div>
+        </div>
+      </a>
+
+      <!-- 8. Paprika (Nicht abspielbar) -->
+      <a href="#" class="movie-card">
+        <div class="poster-tile">
+          <svg class="film-strip-icon" viewBox="0 0 24 24">
+            <rect x="2" y="2" width="20" height="20" rx="3"></rect>
+            <line x1="7" y1="2" x2="7" y2="22"></line>
+            <line x1="17" y1="2" x2="17" y2="22"></line>
+            <line x1="2" y1="8" x2="7" y2="8"></line>
+            <line x1="2" y1="16" x2="7" y2="16"></line>
+            <line x1="17" y1="8" x2="22" y2="8"></line>
+            <line x1="17" y1="16" x2="22" y2="16"></line>
+          </svg>
+          <div class="badge-unplayable">
+            <svg class="badge-icon" viewBox="0 0 24 24">
+              <circle cx="12" cy="12" r="10"></circle>
+              <line x1="4.93" y1="4.93" x2="19.07" y2="19.07"></line>
+            </svg>
+            <span>Nicht abspielbar</span>
+          </div>
+          <div class="initials">P</div>
+        </div>
+        <div class="card-info">
+          <div class="card-title" title="Paprika">Paprika</div>
+          <div class="card-meta">2006 · AVI</div>
+        </div>
+      </a>
+
+      <!-- 9. Parasite -->
+      <a href="#" class="movie-card">
+        <div class="poster-tile">
+          <svg class="film-strip-icon" viewBox="0 0 24 24">
+            <rect x="2" y="2" width="20" height="20" rx="3"></rect>
+            <line x1="7" y1="2" x2="7" y2="22"></line>
+            <line x1="17" y1="2" x2="17" y2="22"></line>
+            <line x1="2" y1="8" x2="7" y2="8"></line>
+            <line x1="2" y1="16" x2="7" y2="16"></line>
+            <line x1="17" y1="8" x2="22" y2="8"></line>
+            <line x1="17" y1="16" x2="22" y2="16"></line>
+          </svg>
+          <div class="initials">P</div>
+        </div>
+        <div class="card-info">
+          <div class="card-title" title="Parasite">Parasite</div>
+          <div class="card-meta">2019 · MP4</div>
+        </div>
+      </a>
+
+      <!-- 10. Soul -->
+      <a href="#" class="movie-card">
+        <div class="poster-tile">
+          <svg class="film-strip-icon" viewBox="0 0 24 24">
+            <rect x="2" y="2" width="20" height="20" rx="3"></rect>
+            <line x1="7" y1="2" x2="7" y2="22"></line>
+            <line x1="17" y1="2" x2="17" y2="22"></line>
+            <line x1="2" y1="8" x2="7" y2="8"></line>
+            <line x1="2" y1="16" x2="7" y2="16"></line>
+            <line x1="17" y1="8" x2="22" y2="8"></line>
+            <line x1="17" y1="16" x2="22" y2="16"></line>
+          </svg>
+          <div class="initials">S</div>
+        </div>
+        <div class="card-info">
+          <div class="card-title" title="Soul">Soul</div>
+          <div class="card-meta">2020 · MP4</div>
+        </div>
+      </a>
+
+      <!-- 11. Toni Erdmann -->
+      <a href="#" class="movie-card">
+        <div class="poster-tile">
+          <svg class="film-strip-icon" viewBox="0 0 24 24">
+            <rect x="2" y="2" width="20" height="20" rx="3"></rect>
+            <line x1="7" y1="2" x2="7" y2="22"></line>
+            <line x1="17" y1="2" x2="17" y2="22"></line>
+            <line x1="2" y1="8" x2="7" y2="8"></line>
+            <line x1="2" y1="16" x2="7" y2="16"></line>
+            <line x1="17" y1="8" x2="22" y2="8"></line>
+            <line x1="17" y1="16" x2="22" y2="16"></line>
+          </svg>
+          <div class="initials">TE</div>
+        </div>
+        <div class="card-info">
+          <div class="card-title" title="Toni Erdmann">Toni Erdmann</div>
+          <div class="card-meta">2016 · MP4</div>
+        </div>
+      </a>
+
+      <!-- 12. Victoria (Nicht abspielbar) -->
+      <a href="#" class="movie-card">
+        <div class="poster-tile">
+          <svg class="film-strip-icon" viewBox="0 0 24 24">
+            <rect x="2" y="2" width="20" height="20" rx="3"></rect>
+            <line x1="7" y1="2" x2="7" y2="22"></line>
+            <line x1="17" y1="2" x2="17" y2="22"></line>
+            <line x1="2" y1="8" x2="7" y2="8"></line>
+            <line x1="2" y1="16" x2="7" y2="16"></line>
+            <line x1="17" y1="8" x2="22" y2="8"></line>
+            <line x1="17" y1="16" x2="22" y2="16"></line>
+          </svg>
+          <div class="badge-unplayable">
+            <svg class="badge-icon" viewBox="0 0 24 24">
+              <circle cx="12" cy="12" r="10"></circle>
+              <line x1="4.93" y1="4.93" x2="19.07" y2="19.07"></line>
+            </svg>
+            <span>Nicht abspielbar</span>
+          </div>
+          <div class="initials">V</div>
+        </div>
+        <div class="card-info">
+          <div class="card-title" title="Victoria">Victoria</div>
+          <div class="card-meta">2015 · MKV</div>
+        </div>
+      </a>
+    </div>
+  </main>
+
+</body>
+</html>
