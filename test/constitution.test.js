@@ -7,10 +7,11 @@ import { fileURLToPath } from 'node:url';
 // Machine-checked constitution/frontend rules (docs/constitution.md). Plain
 // string/regex scans only — TypeScript 7 ships no compiler API to lint with.
 // Every check must pass on an empty src/ (nothing built there yet).
-// The scans below are intentionally conservative: they also match inside
-// comments and string literals (e.g. a JSDoc line mentioning `console.log`
-// trips the console.* rule), trading occasional false positives for a
-// dependency-free check.
+// The pattern scans strip comments first (see stripComments) so a JSDoc line
+// documenting a rule (e.g. "no `console.*` in `src/`") does not trip the
+// rule it documents. They stay intentionally conservative about string
+// literals though: a rule name inside a string literal still trips a scan,
+// trading that occasional false positive for a dependency-free check.
 
 const rootDir = path.resolve(fileURLToPath(new URL('.', import.meta.url)), '..');
 const srcDir = path.join(rootDir, 'src');
@@ -46,6 +47,68 @@ function countLines(content) {
 }
 
 /**
+ * Strips `//` line comments and `/* *\/` block comments from JS source text
+ * so the pattern scans below don't trip on a rule name mentioned in a
+ * comment. String and template literals are copied through untouched
+ * (including any `//` or `/* *\/`-like text inside them), so a match inside
+ * a string literal still trips a scan — see the module comment above.
+ * @param {string} content
+ * @returns {string} content with comments removed, strings left intact
+ */
+function stripComments(content) {
+  let out = '';
+  let i = 0;
+  const n = content.length;
+  while (i < n) {
+    const ch = content[i];
+    if (ch === '"' || ch === "'" || ch === '`') {
+      out += ch;
+      i++;
+      while (i < n && content[i] !== ch) {
+        if (content[i] === '\\') {
+          out += content[i] + (content[i + 1] ?? '');
+          i += 2;
+          continue;
+        }
+        out += content[i];
+        i++;
+      }
+      if (i < n) {
+        out += content[i];
+        i++;
+      }
+      continue;
+    }
+    const two = content.slice(i, i + 2);
+    if (two === '//') {
+      while (i < n && content[i] !== '\n') i++;
+      continue;
+    }
+    if (two === '/*') {
+      i += 2;
+      while (i < n && content.slice(i, i + 2) !== '*/') {
+        if (content[i] === '\n') out += '\n';
+        i++;
+      }
+      i += 2;
+      continue;
+    }
+    out += ch;
+    i++;
+  }
+  return out;
+}
+
+/**
+ * Reads a source file with comments stripped, for the rule scans below.
+ * @param {string} file absolute path
+ * @returns {string} the file's content, comment-free
+ */
+function readSourceForScan(file) {
+  return stripComments(readFileSync(file, 'utf8'));
+}
+
+/**
  * Extracts static/dynamic import and require specifiers from source text.
  * @param {string} content
  * @returns {string[]} the quoted module specifiers found
@@ -74,7 +137,7 @@ test('process.env is read only in src/config.js', () => {
   const offenders = [];
   for (const file of listFiles(srcDir).filter((f) => f.endsWith('.js'))) {
     if (path.relative(srcDir, file) === 'config.js') continue;
-    if (/\bprocess\.env\b/.test(readFileSync(file, 'utf8'))) {
+    if (/\bprocess\.env\b/.test(readSourceForScan(file))) {
       offenders.push(path.relative(rootDir, file));
     }
   }
@@ -84,7 +147,7 @@ test('process.env is read only in src/config.js', () => {
 test('src/ never calls console.*', () => {
   const offenders = [];
   for (const file of listFiles(srcDir).filter((f) => f.endsWith('.js'))) {
-    if (/\bconsole\./.test(readFileSync(file, 'utf8'))) {
+    if (/\bconsole\./.test(readSourceForScan(file))) {
       offenders.push(path.relative(rootDir, file));
     }
   }
@@ -95,12 +158,12 @@ test('src/ and public/ never use child_process, eval() or new Function()', () =>
   const forbidden = [
     { name: 'child_process', re: /child_process/ },
     { name: 'eval(', re: /\beval\s*\(/ },
-    { name: 'new Function(', re: /new\s+Function\s*\(/ },
+    { name: 'new Function', re: /\bnew\s+Function\b/ },
   ];
   const offenders = [];
   const files = [...listFiles(srcDir), ...listFiles(publicDir)].filter((f) => f.endsWith('.js'));
   for (const file of files) {
-    const content = readFileSync(file, 'utf8');
+    const content = readSourceForScan(file);
     for (const { name, re } of forbidden) {
       if (re.test(content)) offenders.push(`${path.relative(rootDir, file)}: ${name}`);
     }
@@ -111,12 +174,12 @@ test('src/ and public/ never use child_process, eval() or new Function()', () =>
 test('src/ and public/ never import from one another', () => {
   const offenders = [];
   for (const file of listFiles(srcDir).filter((f) => f.endsWith('.js'))) {
-    for (const spec of extractImportSpecifiers(readFileSync(file, 'utf8'))) {
+    for (const spec of extractImportSpecifiers(readSourceForScan(file))) {
       if (/(^|\/)public(\/|$)/.test(spec)) offenders.push(`${path.relative(rootDir, file)} -> ${spec}`);
     }
   }
   for (const file of listFiles(publicDir).filter((f) => f.endsWith('.js'))) {
-    for (const spec of extractImportSpecifiers(readFileSync(file, 'utf8'))) {
+    for (const spec of extractImportSpecifiers(readSourceForScan(file))) {
       if (/(^|\/)src(\/|$)/.test(spec)) offenders.push(`${path.relative(rootDir, file)} -> ${spec}`);
     }
   }
@@ -150,4 +213,25 @@ test('countLines does not count a trailing newline as an extra line', () => {
   const exactly301 = `${Array(301).fill('x').join('\n')}\n`;
   assert.equal(countLines(exactly300), 300);
   assert.equal(countLines(exactly301), 301);
+});
+
+test('stripComments removes // and /* */ comments but leaves string literals intact', () => {
+  const source = [
+    '/**',
+    ' * mentions console.* only in a comment, like this file documents.',
+    ' */',
+    "const a = 1; // also mentions process.env in a line comment",
+    'console.log(a);',
+    'const url = "https://example.com"; // not a comment despite the //',
+    "const note = 'contains /* not a real block comment */ inside a string';",
+  ].join('\n');
+  const stripped = stripComments(source);
+  assert.equal(/\bconsole\./.test(stripped), true, 'the real console.log call must survive stripping');
+  assert.equal(/\bprocess\.env\b/.test(stripped), false, 'the comment-only mention must be gone');
+  assert.equal(stripped.includes('https://example.com'), true, 'string literals must survive stripping');
+  assert.equal(
+    stripped.includes('contains /* not a real block comment */ inside a string'),
+    true,
+    'comment-like text inside a string literal must survive stripping',
+  );
 });
