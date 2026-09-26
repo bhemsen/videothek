@@ -116,7 +116,10 @@ as a committed file at the location above, not as a link.
   title + back action above; audio player as a persistent bottom bar on
   `secondary` surface.
 - **Grid / list** — media cards in a responsive grid (min column 160 px, gap
-  16 px); episodes and tracks as list rows (≥ 48 px height).
+  16 px); phones always get at least two columns:
+  `grid-template-columns: repeat(auto-fill, minmax(min(var(--grid-min), calc(50% - 8px)), 1fr))`
+  (8 px = half the gap, written `calc(50% - var(--space-2))` in CSS;
+  `--grid-min` = 160 px); episodes and tracks as list rows (≥ 48 px height).
 
 ## Do's and Don'ts
 
