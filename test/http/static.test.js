@@ -3,7 +3,7 @@ import assert from 'node:assert/strict';
 import http from 'node:http';
 import path from 'node:path';
 import { fileURLToPath } from 'node:url';
-import { createStaticHandler } from '../../src/http/static.js';
+import { createStaticHandler, sendNotFoundPage } from '../../src/http/static.js';
 
 const PUBLIC_DIR = path.join(path.dirname(fileURLToPath(import.meta.url)), 'fixtures/public');
 
@@ -11,21 +11,25 @@ const PUBLIC_DIR = path.join(path.dirname(fileURLToPath(import.meta.url)), 'fixt
  * Starts a throwaway server wrapping the static handler under test. A
  * request may set `X-Test-Role: admin|user` to simulate an authenticated
  * session — the static handler never resolves sessions itself, that is
- * app.js's job, so the test stands in for it.
+ * app.js's job, so the test stands in for it. It also stands in for the
+ * app's dispatch "other -> 404 page" branch: `false` (nothing served) from
+ * the handler falls through to the same `sendNotFoundPage` app.js reuses,
+ * since this suite has no router of its own to produce an `allow` list.
  * @returns {Promise<{ port: number, close: () => Promise<void> }>}
  */
 async function startServer() {
   const log = { error: () => {} };
   const handler = createStaticHandler({ publicDir: PUBLIC_DIR, log });
 
-  const server = http.createServer((req, res) => {
+  const server = http.createServer(async (req, res) => {
     const url = new URL(req.url ?? '/', 'http://localhost');
     const role = req.headers['x-test-role'];
     /** @type {{ id: number, username: string, role: 'admin' | 'user' } | null} */
     const user =
       role === 'admin' || role === 'user' ? { id: 1, username: 'test', role } : null;
     const ctx = { user, params: {}, url, sessionId: user ? 's1' : null };
-    handler(req, res, ctx);
+    const served = await handler(req, res, ctx);
+    if (!served) await sendNotFoundPage(req, res, PUBLIC_DIR, log, url.pathname);
   });
 
   await new Promise((resolve) => server.listen(0, '127.0.0.1', () => resolve(undefined)));
@@ -222,7 +226,10 @@ test('a repeated request with If-Modified-Since answers 304', async () => {
 // only appears after this module's own single decodeURIComponent pass),
 // the encoded-backslash chain and the NUL byte are not covered by that
 // URL-level normalization and specifically exercise `isUnsafePath` /
-// `decodePathname` in static.js itself.
+// `decodePathname` in static.js itself. `/%E0%A4%A` is malformed
+// percent-encoding (an incomplete escape), exercising `decodePathname`'s
+// `decodeURIComponent` failure path; `/movies/x` is a multi-segment page
+// path, which never matches `PAGE_NAME_PATTERN` or an asset extension.
 for (const target of [
   '/../package.json',
   '/%2e%2e/package.json',
@@ -234,6 +241,8 @@ for (const target of [
   '/index',
   '/404',
   '/data.bin',
+  '/%E0%A4%A',
+  '/movies/x',
 ]) {
   test(`${target} -> 404`, async () => {
     const server = await startServer();
@@ -246,6 +255,34 @@ for (const target of [
     }
   });
 }
+
+test('the handler resolves false for a missing page, without writing a response', async () => {
+  const log = { error: () => {} };
+  const handler = createStaticHandler({ publicDir: PUBLIC_DIR, log });
+  const req = /** @type {import('node:http').IncomingMessage} */ (/** @type {unknown} */ ({ method: 'GET' }));
+  let wrote = false;
+  const res = /** @type {import('node:http').ServerResponse} */ (/** @type {unknown} */ ({
+    writeHead: () => {
+      wrote = true;
+    },
+    end: () => {
+      wrote = true;
+    },
+  }));
+  const ctx = {
+    user: /** @type {{ id: number, username: string, role: 'admin' }} */ ({
+      id: 1,
+      username: 'test',
+      role: 'admin',
+    }),
+    params: {},
+    url: new URL('http://localhost/does-not-exist'),
+    sessionId: 's1',
+  };
+  const served = await handler(req, res, ctx);
+  assert.equal(served, false);
+  assert.equal(wrote, false);
+});
 
 test('HEAD / with a session sends headers only, no body', async () => {
   const server = await startServer();

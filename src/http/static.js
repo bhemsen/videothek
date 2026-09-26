@@ -1,5 +1,6 @@
 import { createReadStream } from 'node:fs';
 import { stat } from 'node:fs/promises';
+import { pipeline } from 'node:stream/promises';
 import path from 'node:path';
 import { redirect } from './respond.js';
 import { safeNext } from './security.js';
@@ -82,10 +83,13 @@ async function statFile(filePath) {
  * Writes `headers` plus `status`, then, for `GET`, streams `filePath` as the
  * body; a `HEAD` request gets headers only (Node also drops any body it did
  * see for HEAD, but skipping the read here avoids opening the file at all).
- * A stream error once headers are already sent can no longer become a
- * thrown `HttpError`, so it is logged here — matching the app's own
- * `request_error {method, path, stack}` shape — and the socket is destroyed
- * instead of trying to send another response.
+ * Uses `pipeline` (not `.pipe()`) so a client aborting mid-transfer — or any
+ * other stream error — destroys the source `fs.ReadStream` and its fd
+ * instead of leaking it, and so this promise always settles. A stream error
+ * once headers are already sent can no longer become a thrown `HttpError`,
+ * so it is logged here — matching the app's own `request_error {method,
+ * path, stack}` shape — and the socket is destroyed instead of trying to
+ * send another response.
  * @param {import('node:http').IncomingMessage} req
  * @param {import('node:http').ServerResponse} res
  * @param {string} filePath
@@ -95,26 +99,30 @@ async function statFile(filePath) {
  * @param {string} urlPath
  * @returns {Promise<void>}
  */
-function sendFile(req, res, filePath, status, headers, log, urlPath) {
+async function sendFile(req, res, filePath, status, headers, log, urlPath) {
   res.writeHead(status, headers);
   if (req.method === 'HEAD') {
     res.end();
-    return Promise.resolve();
+    return;
   }
-  return new Promise((resolve) => {
-    const source = createReadStream(filePath);
-    source.once('error', (err) => {
-      log.error('request_error', { method: req.method, path: urlPath, stack: err.stack });
-      res.destroy();
+  try {
+    await pipeline(createReadStream(filePath), res);
+  } catch (err) {
+    log.error('request_error', {
+      method: req.method,
+      path: urlPath,
+      stack: /** @type {Error} */ (err).stack,
     });
-    source.once('close', resolve);
-    source.pipe(res);
-  });
+    res.destroy();
+  }
 }
 
 /**
  * Sends the 404 response: the real `public/404.html` when present (streamed
- * like any other page), otherwise a plain German fallback line.
+ * like any other page), otherwise a plain German fallback line. Exported so
+ * `app.js`'s dispatch can reuse it for the "other -> 404 page" branch once
+ * the static handler below reports `false` (nothing served) — `static.js`
+ * itself no longer calls this for its own unmatched cases.
  * @param {import('node:http').IncomingMessage} req
  * @param {import('node:http').ServerResponse} res
  * @param {string} root
@@ -122,7 +130,7 @@ function sendFile(req, res, filePath, status, headers, log, urlPath) {
  * @param {string} urlPath
  * @returns {Promise<void>}
  */
-async function sendNotFoundPage(req, res, root, log, urlPath) {
+export async function sendNotFoundPage(req, res, root, log, urlPath) {
   const filePath = path.join(root, '404.html');
   const info = await statFile(filePath);
   if (!info) {
@@ -165,6 +173,9 @@ function resolveRedirect(name, ctx) {
  * Serves `/` (`name === null`) or a single-segment `/<name>` page: applies
  * the page's session/admin rule, then streams the file with
  * `Cache-Control: no-store` (pages are session-dependent and never cached).
+ * Resolves `false` when no matching page file exists, so the caller's
+ * "nothing served" contract holds and the app's dispatch renders the 404
+ * page (or, for a mismatched method on a registered route, `405`) instead.
  * @param {import('node:http').IncomingMessage} req
  * @param {import('node:http').ServerResponse} res
  * @param {RequestContext} ctx
@@ -176,10 +187,7 @@ function resolveRedirect(name, ctx) {
 async function servePage(req, res, ctx, root, log, name) {
   const filePath = path.join(root, `${name ?? 'index'}.html`);
   const info = await statFile(filePath);
-  if (!info) {
-    await sendNotFoundPage(req, res, root, log, ctx.url.pathname);
-    return true;
-  }
+  if (!info) return false;
   const location = resolveRedirect(name, ctx);
   if (location) {
     redirect(res, location);
@@ -211,22 +219,22 @@ function isNotModified(req, mtimeMs) {
 /**
  * Serves a static asset by extension allowlist: containment-checked path,
  * `Cache-Control: no-cache` with `Last-Modified`, and a conditional `304`.
- * No session is required — assets are public.
+ * No session is required — assets are public. Resolves `false` when
+ * `decoded` does not resolve to a file inside `root`, so the caller's
+ * "nothing served" contract holds.
  * @param {import('node:http').IncomingMessage} req
  * @param {import('node:http').ServerResponse} res
  * @param {string} root
  * @param {StaticLog} log
  * @param {string} decoded
  * @param {string} contentType
+ * @param {string} urlPath
  * @returns {Promise<boolean>}
  */
-async function serveAsset(req, res, root, log, decoded, contentType) {
+async function serveAsset(req, res, root, log, decoded, contentType, urlPath) {
   const resolved = resolveInsideRoot(root, decoded);
   const info = resolved ? await statFile(resolved) : null;
-  if (!resolved || !info) {
-    await sendNotFoundPage(req, res, root, log, decoded);
-    return true;
-  }
+  if (!resolved || !info) return false;
   const lastModified = new Date(Math.floor(info.mtimeMs / 1000) * 1000).toUTCString();
   if (isNotModified(req, info.mtimeMs)) {
     res.writeHead(304, { 'Cache-Control': 'no-cache', 'Last-Modified': lastModified });
@@ -239,19 +247,22 @@ async function serveAsset(req, res, root, log, decoded, contentType) {
     'Last-Modified': lastModified,
     'Content-Length': String(info.size),
   };
-  await sendFile(req, res, resolved, 200, headers, log, decoded);
+  await sendFile(req, res, resolved, 200, headers, log, urlPath);
   return true;
 }
 
 /**
  * Creates the static/page handler. Serves `/` and single-segment `/<name>`
- * pages (session/admin/login rules, `Cache-Control: no-store`), static
+ * pages (session/admin/login rules, `Cache-Control: no-store`) and static
  * assets by extension allowlist (containment-checked, cached with
- * `Last-Modified`/`304`), and the 404 page for everything else — `*.html`
- * direct requests, `/index`, `/404`, unknown extensions, and any path
- * traversal or unsafe segment. Returns `false` only for a method other than
- * `GET`/`HEAD`, which the app never routes here (server contract dispatch
- * order: static is tried only for `GET`/`HEAD` on a non-`/api/` path).
+ * `Last-Modified`/`304`). Matches the module table's exact contract:
+ * resolves `false` — nothing served — for a method other than `GET`/`HEAD`,
+ * a decode failure or unsafe path, a well-formed `/<name>` with no matching
+ * page file, `*.html`/`/index`/`/404`/an unknown extension, or an asset
+ * that does not exist inside `publicDir`; `true` only once it has written a
+ * response (200, 304 or a redirect). The app's own dispatch decides every
+ * `false` case (`allow` -> `405`; else `/api/*` -> `404` JSON, other ->
+ * `404` page via the exported `sendNotFoundPage`).
  * @param {{ publicDir: string, log: StaticLog }} options
  * @returns {(
  *   req: import('node:http').IncomingMessage,
@@ -265,10 +276,7 @@ export function createStaticHandler({ publicDir, log }) {
     if (req.method !== 'GET' && req.method !== 'HEAD') return false;
 
     const decoded = decodePathname(ctx.url.pathname);
-    if (decoded === null || isUnsafePath(decoded)) {
-      await sendNotFoundPage(req, res, root, log, ctx.url.pathname);
-      return true;
-    }
+    if (decoded === null || isUnsafePath(decoded)) return false;
     if (decoded === '/') return servePage(req, res, ctx, root, log, null);
 
     const name = decoded.slice(1);
@@ -277,10 +285,7 @@ export function createStaticHandler({ publicDir, log }) {
     }
 
     const contentType = ASSET_CONTENT_TYPES[path.extname(name).toLowerCase()];
-    if (!contentType) {
-      await sendNotFoundPage(req, res, root, log, ctx.url.pathname);
-      return true;
-    }
-    return serveAsset(req, res, root, log, decoded, contentType);
+    if (!contentType) return false;
+    return serveAsset(req, res, root, log, decoded, contentType, ctx.url.pathname);
   };
 }
