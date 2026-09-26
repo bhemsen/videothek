@@ -106,12 +106,14 @@ function tryXingFrames(probe, header) {
   return frames === 0 ? null : frames;
 }
 
-/** Reads the VBRI frame count from the probe buffer, when a VBRI header is present.
+/** Reads the VBRI frame count from the probe buffer, when a VBRI header is present and
+ * its frame count is non-zero (0 is treated as absent, same as Xing/Info).
  * VBRI always sits at a fixed offset, independent of the side info size.
  * @param {Buffer} probe @returns {number | null} */
 function tryVbriFrames(probe) {
   const vbriOffset = 4 + 32;
   if (probe.length < vbriOffset + 18) return null;
   if (probe.toString('latin1', vbriOffset, vbriOffset + 4) !== 'VBRI') return null;
-  return probe.readUInt32BE(vbriOffset + 14);
+  const frames = probe.readUInt32BE(vbriOffset + 14);
+  return frames === 0 ? null : frames;
 }

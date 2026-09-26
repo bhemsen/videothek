@@ -171,7 +171,7 @@ async function handleTextFrame(readAt, bodyStart, size, id, state, fields) {
   fields[id] = decodeTextFrame(body);
 }
 
-/** Skips compressed/encrypted frames; reads known text frames and APIC; ignores the rest.
+/** Skips compressed/encrypted frames and a v2.4 unsync/DLI-flagged APIC; reads known text frames and APIC; ignores the rest.
  * @param {ReadAt} readAt @param {string} id @param {number} flagsByte2 @param {number} version
  * @param {number} bodyStart @param {number} size @param {Record<string, string>} fields @param {WalkState} state
  * @returns {Promise<void>} */
@@ -179,7 +179,10 @@ async function processFrame(readAt, id, flagsByte2, version, bodyStart, size, fi
   const compressedMask = version === 4 ? 0x08 : 0x80;
   const encryptedMask = version === 4 ? 0x04 : 0x40;
   if ((flagsByte2 & compressedMask) !== 0 || (flagsByte2 & encryptedMask) !== 0) return;
-  if (id === 'APIC') return handleApic(readAt, bodyStart, size, state);
+  if (id === 'APIC') {
+    if (version === 4 && (flagsByte2 & 0x03) !== 0) return; // v2.4 unsync/DLI: ignore (robustness row)
+    return handleApic(readAt, bodyStart, size, state);
+  }
   if (KNOWN_TEXT_IDS.has(id) && size > 0 && size <= CHUNK_SIZE && !(id in fields)) {
     await handleTextFrame(readAt, bodyStart, size, id, state, fields);
   }

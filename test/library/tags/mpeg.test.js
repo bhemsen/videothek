@@ -32,6 +32,14 @@ test('VBRI frame count wins over the CBR byte estimate', async () => {
   assert.equal(durationMs, (500 * SAMPLES_PER_FRAME / SAMPLE_RATE) * 1000);
 });
 
+test('VBRI frame count of 0 is treated as absent, falling back to the CBR estimate', async () => {
+  const first = withVbriHeader(buildMpegFrame(), { frames: 0 });
+  const file = Buffer.concat([first, buildMpegFrame()]);
+  const durationMs = await readMpegDurationMs(makeReadAt(file), 0, file.length);
+  const expectedMs = Math.round((file.length * 8 / (32 * 1000)) * 1000);
+  assert.equal(durationMs, expectedMs);
+});
+
 test('garbage after the tag (no valid sync) yields null, never throws', async () => {
   const tag = buildId3v2Tag({ frames: [] });
   const file = Buffer.concat([tag, Buffer.alloc(4096, 0x20)]);

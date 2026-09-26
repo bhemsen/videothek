@@ -41,6 +41,30 @@ test('extended header is skipped, the frame after it is still found', async () =
   assert.equal(result?.fields.TALB, 'Album');
 });
 
+test('v2.3 extended header (plain size excluding itself) is skipped, the frame after it is still found', async () => {
+  const frame = buildFrame({ id: 'TALB', version: 3, body: textFrameBody(ENCODING.UTF8, 'Album') });
+  const tag = buildId3v2Tag({ version: 3, extendedHeader: true, frames: [frame] });
+  const result = await read(makeReadAt(tag));
+  assert.equal(result?.fields.TALB, 'Album');
+});
+
+test('v2.4 APIC with frame-level unsynchronisation is ignored (picture stays null)', async () => {
+  // Body bytes 0xFF 0x00 0xD8 ... would decode wrong if de-unsynced naively; the point here
+  // is that the frame is skipped entirely rather than producing a PictureRef into raw bytes.
+  const data = Buffer.from([0xff, 0x00, 0xd8, 0xff, 0x00, 0xe0]);
+  const apic = buildFrame({ id: 'APIC', version: 4, flags: 0x0002, body: apicFrameBody({ data }) });
+  const tag = buildId3v2Tag({ version: 4, frames: [apic] });
+  const result = await read(makeReadAt(tag));
+  assert.equal(result?.picture, null);
+});
+
+test('v2.4 APIC with a data-length indicator is ignored (picture stays null)', async () => {
+  const apic = buildFrame({ id: 'APIC', version: 4, flags: 0x0001, body: apicFrameBody({ data: Buffer.from('cover') }) });
+  const tag = buildId3v2Tag({ version: 4, frames: [apic] });
+  const result = await read(makeReadAt(tag));
+  assert.equal(result?.picture, null);
+});
+
 test('v2.3 whole-tag unsynchronisation is reversed and pictures are ignored', async () => {
   const title = buildFrame({ id: 'TIT2', body: textFrameBody(ENCODING.LATIN1, 'Fuÿball'), version: 3 });
   const apic = buildFrame({ id: 'APIC', body: apicFrameBody({ data: Buffer.from('cover') }), version: 3 });
