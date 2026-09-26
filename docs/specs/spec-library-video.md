@@ -955,3 +955,13 @@ and desktop 1440 px, compared with the design exports):
   `onScanComplete` not fired for aborted runs; `sort` default and invalid
   URL values; file-size format; "Folgen 1–2" label; season-less series meta;
   README section "Medienordner".
+- 2026-09-26 (#29): `sniffMp4Codecs(absPath)` is async (`Promise<SniffedCodecs
+  | null>`) — the spec's arrow notation left this implicit; callers (P2's
+  item builder) must `await` it. Within one `trak`, a missing `mdia`, `hdlr`,
+  `minf`, `stbl`, `stsd`, or an empty `stsd` skips only that track (it
+  contributes nothing to `video`/`audio`) rather than aborting the whole
+  file — only an actual guard violation (box count/depth/size-fits-parent/
+  64 KiB read budget) or a real I/O truncation aborts the walk and yields
+  `null`. This keeps a track type the sniffer doesn't care about (hint,
+  timecode, …) from ever downgrading a file to "unknown", while a moov
+  literally missing is still treated as `null` per spec.

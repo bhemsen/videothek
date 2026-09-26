@@ -618,3 +618,23 @@ compared with the exports):
   chosen among playable files only; bar offset below 768 px includes
   `env(safe-area-inset-bottom)` like Phase 1's `main` padding; upper-case
   cover extensions rely on Phase 3's lower-casing `mediaTypeFor`.
+- 2026-09-26: issue #61 implementation — `parseMusicPath`/`parseAudiobookPath`
+  are fully self-contained (each duplicates its own small `cleanFileName` /
+  `discFolderNumber` helpers rather than importing a shared module), since the
+  issue's Files list fixes exactly the parser + test file pairs and no shared
+  helper file is listed; the category folder segment (`relPath.split('/')[0]`)
+  is never matched by name, so alias handling (`Musik`/`Music`,
+  `Hörbücher`/`Hoerbuecher`) needs no special-casing in the parsers. The
+  "empty result → the raw stem" filename-cleaning rule is reachable only via a
+  numbered stem whose captured title is pure whitespace (e.g. `"12  .mp3"`,
+  covered by a test) — genuine empty captures cannot occur because
+  `(.+)` requires at least one character.
+- 2026-09-26: `src/library/audio-groups.js` (#62) — the "Group assembly" row
+  names no total-duration field, so `buildAlbums`/`buildBooks` add
+  `durationMs` to each group object (sum of known member `durationMs`, `null`
+  when none is known) alongside `{ id, coverId, groupKey, title, artist/
+  author, members }`, since #68/#69 need one summed total and this module is
+  "one implementation ... for both APIs". Pseudo-albums (`groupTitle` null)
+  also get `year: null` — "ignore tags for group display" is read to cover
+  the tag-derived year like it covers title/artist, not just the two fields
+  the row names explicitly.
