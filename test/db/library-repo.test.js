@@ -229,7 +229,7 @@ test('002-library.sql applies after 001 and re-running migrate is a no-op', () =
   const db = new DatabaseSync(':memory:');
   try {
     const firstRun = migrate(db);
-    assert.deepEqual(firstRun, [1, 2, 3]);
+    assert.deepEqual(firstRun, [1, 2, 3, 4]);
     assert.equal(
       db.prepare("SELECT name FROM sqlite_master WHERE name = 'library_items'").get()?.name,
       'library_items'
