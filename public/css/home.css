@@ -1,0 +1,11 @@
+/*
+ * Home page layout: the rows slot a later phase (P4) fills stacks any rows
+ * with a gap. The "Willkommen" empty state reuses base.css's .empty-state
+ * unchanged.
+ */
+
+.home-rows {
+  display: flex;
+  flex-direction: column;
+  gap: var(--space-6);
+}

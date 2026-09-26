@@ -559,3 +559,12 @@ Firefox, desktop and a 390 px phone viewport):
   check (both groups empty, e.g. `bytes=-` or `bytes=`, falls through to
   `none` alongside non-digit specs like `bytes=abc`), so no separate
   digits-only validation was needed.
+- 2026-09-26: implementation (#40, `src/http/media-types.js`) — `mediaTypeFor`
+  strips one leading dot (if present) before lower-casing, so it accepts both
+  a bare extension (`'mp4'`) and `path.extname()`'s raw `'.mp4'` — required
+  for the documented default `mediaTypeFor(extname(path))` in `sendMedia`
+  (`src/http/stream.js`, #41) to resolve correctly. Reuses P2's
+  `mimeForExtension(ext)` (already `EXTENSIONS[ext]?.mime ?? null`) rather than
+  reading `EXTENSIONS` directly, applying only the fallback to
+  `'application/octet-stream'` on top — keeps this module a one-line lookup
+  with no extension-table knowledge of its own.

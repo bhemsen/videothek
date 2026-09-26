@@ -799,3 +799,11 @@ phone 390 px and desktop 1440 px, compared with the design exports):
   "Gesehen" pill named in tokens (`--text-xs`, `--weight-semibold`);
   pure `nextFocusIndex` extracted and tested; P5's read-only
   `audio-progress.js` join acknowledged in the repository rule.
+- 2026-09-26: `public/js/lib/progress.js` implementation (#55) — a stored
+  `position` that is `>=` the media's `duration` (with `resume: true`) is
+  treated the same as "nothing to resume": reporting arms directly on the
+  next metadata, no seek is attempted, and no further resume is retried for
+  that playback. Once a resume seek has landed once (via `seeked` or the
+  `playing` fallback), a later `emptied` never re-issues it — only P3's own
+  reload seek moves `currentTime` after that point, so `trackPlayback` never
+  fights it.
