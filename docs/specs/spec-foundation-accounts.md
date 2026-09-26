@@ -690,3 +690,17 @@ Chromium and Firefox, mobile ≤ 767 px and desktop ≥ 1024 px viewport):
   scan scoped to css/js/html with a token-colour check for `favicon.svg`;
   401 guarantee worded for registered routes; prior session revoked only after
   a successful login; missing exports for home/404/dialogs noted.
+- 2026-09-26: Issue #22 (`public/js/lib/{dom,icons,api}.js`) implementation
+  choices not fixed elsewhere: `el()` treats `null`/`undefined`/`false` attribute
+  values as omitted and `true` as a boolean attribute (`setAttribute(key, '')`);
+  `class` additionally accepts a `string[]` (falsy entries filtered, joined with
+  a space) for conditional classes; children that are `null`/`undefined`/`false`
+  are silently skipped so callers can write `cond && el(...)`. Icon path data
+  (`icons.js`) is self-authored, minimal, single/double-`<path>` glyphs on the
+  24x24 grid colored via `fill="currentColor"` (no stroke icons), since the
+  Stitch exports show icons only at thumbnail size with no vector handoff;
+  visual fit is confirmed at milestone UI QA once a page mounts them. `api.js`
+  treats any body text that fails `JSON.parse` (2xx or error) as `null` /
+  `'unknown'` respectively rather than throwing, and `Retry-After` is accepted
+  only as a non-negative-integer digit string (`^\d+$`) per the spec's
+  "never sends the HTTP-date form" note.
