@@ -102,8 +102,9 @@ as a committed file at the location above, not as a link.
   secondary surface); height ≥ 44 px, radius `md`; states: hover lightens 8 %,
   active darkens 8 %, disabled 40 % opacity, focus = 2 px `primary` outline with
   2 px offset.
-- **Input** — secondary surface, 1 px `border`, radius `md`, 16 px text (avoids
-  iOS zoom); focus = `primary` outline; error = `destructive` border + message
+- **Input** — `background` fill (inputs and selects sit on `secondary` cards,
+  where a secondary fill would be invisible), 1 px `border`, radius `md`,
+  16 px text (avoids iOS zoom); focus = `primary` outline; error = `destructive` border + message
   below.
 - **Media card** — thumbnail (16:9 video, 1:1 audio/image, 2:3 poster
   fallback), title (1 line, ellipsis), meta in `muted`; radius `md`, `shadow-sm`;
