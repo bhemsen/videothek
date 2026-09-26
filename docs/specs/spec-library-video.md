@@ -932,6 +932,17 @@ and desktop 1440 px, compared with the design exports):
   extension/MIME table with `{ kind, playable, sniff, mime }`; added `jfif`,
   `jxl`, `weba`; `svg` indexed, never playable; `SCAN_VERSION` moved into
   `compat.js` (D9, D6; review BLOCKING 4).
+- 2026-09-26: `scan-queue.js` — `drainPathsBetweenDirs()` is a nested-call
+  contract: it assumes it is only ever invoked from within the currently
+  running `runFull`, so it neither toggles the queue's own in-flight state
+  nor triggers chaining itself; only the top-level dispatch (`startNext`)
+  owns those. This keeps "at most one run in flight" correct without a
+  re-entrancy flag. A thrown/rejected `onComplete` at this internal
+  scan-queue seam (between `scan-queue.js` and `scanner.js`, before
+  `scanner.js` dispatches to its own public `onScanComplete` listeners) is
+  logged as `library_scan_queue_oncomplete_failed`, distinct from
+  `library_listener_failed` (D6's event name for a public listener's own
+  failure) so the two are told apart in logs.
 - 2026-09-26: cross-phase consolidation — `next`/`subtitles` only in the
   single-item response, added by Phase 3 (D10, H4).
 - 2026-09-26: cross-phase consolidation — migration 002 `STRICT` +
