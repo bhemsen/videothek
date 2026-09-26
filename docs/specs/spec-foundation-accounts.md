@@ -690,3 +690,18 @@ Chromium and Firefox, mobile ≤ 767 px and desktop ≥ 1024 px viewport):
   scan scoped to css/js/html with a token-colour check for `favicon.svg`;
   401 guarantee worded for registered routes; prior session revoked only after
   a successful login; missing exports for home/404/dialogs noted.
+- 2026-09-26 (#13): `src/auth/{password,validation,rate-limit}.js`
+  implemented. `deriveKey` wraps `crypto.scrypt` in a plain `Promise`
+  executor instead of `util.promisify` — the promisified overload with an
+  options object did not type-check under `tsc --noEmit --strict` (picked the
+  3-arg, no-options overload). `DUMMY_HASH` is a hardcoded precomputed
+  literal (fixed salt) rather than computed via top-level `await
+  hashPassword(...)`, so importing the module carries no scrypt cost and the
+  constant is deterministic across runs. `createLoginLimiter`'s LRU eviction
+  keys off `Map` iteration order: `fail(key)` deletes-then-re-sets the key to
+  move it to the end (most-recently-failed), so `failures.keys().next()`
+  yields the least-recently-failed key to evict once `maxKeys` is exceeded;
+  `check`/window-pruning never reorder a key so they cannot mask eviction
+  order. `check()` returns `retryAfterSec: null` when `allowed` is `true`,
+  matching the `number | null` convention used elsewhere in this spec
+  (`ApiError.retryAfterSec`).
