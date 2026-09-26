@@ -1,6 +1,26 @@
 import { test } from 'node:test';
 import assert from 'node:assert/strict';
 import { computeNextUp } from '../../src/api/progress-next-up.js';
+import { getNextEpisode } from '../../src/db/episodes.js';
+
+/**
+ * Type-only check, never invoked at runtime: confirms the real caller from
+ * the spec's decision log — `computeNextUp(listSeriesProgressRows(db,
+ * userId), { getNext: (row) => getNextEpisode(db, row), getState })` — type-
+ * checks under this project's strict `checkJs`. `ProgressItemRow`'s
+ * `series_id` is optional (inherited from `LibraryItemRow`), so
+ * `SeriesProgressRow`'s must be too, or this fails `tsc --strict` with
+ * TS2345 ("undefined is not assignable to number | null").
+ * @param {import('node:sqlite').DatabaseSync} db
+ * @param {import('../../src/db/progress.js').ProgressItemRow[]} rows
+ * @returns {void}
+ */
+function assertRealProgressItemRowsAreAssignable(db, rows) {
+  computeNextUp(rows, {
+    getNext: (row) => getNextEpisode(db, row),
+    getState: () => 'none',
+  });
+}
 
 /**
  * @param {{ id: number, seriesId: number, position: number, finished: boolean, updatedAt: number }} input

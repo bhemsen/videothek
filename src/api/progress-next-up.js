@@ -5,7 +5,7 @@ import { deriveProgressState } from './progress-rules.js';
 /**
  * @typedef {{
  *   id: number,
- *   series_id: number | null,
+ *   series_id?: number | null,
  *   position_seconds: number,
  *   finished: 0 | 1,
  *   updated_at: number,
@@ -13,7 +13,11 @@ import { deriveProgressState } from './progress-rules.js';
  *   `rows` (`src/db/progress.js`'s `listSeriesProgressRows(db, userId)`); the
  *   real row also carries the full joined `library_items` columns
  *   (`season`, `episode`, `episode_end`, `sort_title`, `rel_path`, …) that
- *   `getNext` needs, passed through untouched.
+ *   `getNext` needs, passed through untouched. `series_id` is optional
+ *   because the real row's (`ProgressItemRow`, via `LibraryItemRow`) is
+ *   optional too — a plain `number | null` here would make the real caller
+ *   (`computeNextUp(listSeriesProgressRows(db, userId), { getNext: (row) =>
+ *   getNextEpisode(db, row), ... })`) fail `tsc --strict` with TS2345.
  * @typedef {{ id: number, rel_path: string, playable: number | boolean }} NextEpisodeRow
  *   - the shape `getNext` resolves to: P3's `getNextEpisode(db, row)` result.
  */
@@ -47,12 +51,16 @@ function findLatest(seriesRows) {
 
 /**
  * Groups `rows` by `series_id`, preserving each group's first-seen order.
+ * Rows with a nullish `series_id` (`null` or `undefined`) all land in one
+ * bucket; harmless in practice because `getNext` returns `null` for them
+ * (no `series_id` to look up a successor by), same as any other row with no
+ * next episode.
  * @template {SeriesProgressRow} T
  * @param {T[]} rows
- * @returns {Map<number | null, T[]>}
+ * @returns {Map<number | null | undefined, T[]>}
  */
 function groupBySeries(rows) {
-  /** @type {Map<number | null, T[]>} */
+  /** @type {Map<number | null | undefined, T[]>} */
   const bySeries = new Map();
   for (const row of rows) {
     const list = bySeries.get(row.series_id);

@@ -850,3 +850,14 @@ phone 390 px and desktop 1440 px, compared with the design exports):
   `progress-rules.js` (per #52's decision log, the same function the state
   view and player use) to filter `none` rows and derive `in_progress` vs.
   `finished`, rather than re-deriving the write-rule thresholds here.
+- 2026-09-27: review fix (#53/PR #130) — `SeriesProgressRow.series_id` widened
+  to `number | null | undefined` (optional), and `groupBySeries`'s `Map` key
+  type widened to match: the real caller's row type, `ProgressItemRow`
+  (`src/db/progress.js`, via `LibraryItemRow`), has `series_id` optional, so
+  the stricter `number | null` made `computeNextUp(listSeriesProgressRows(db,
+  userId), { getNext: (row) => getNextEpisode(db, row), ... })` fail `tsc
+  --strict` with TS2345 — the exact real integration this module's generic
+  design exists to type-check. A type-only guard function (never invoked,
+  same pattern as `test/public/player-stage.test.js`) was added to
+  `test/api/progress-next-up.test.js` to keep that call site checked going
+  forward.
