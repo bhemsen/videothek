@@ -836,3 +836,28 @@ phone 390 px and desktop 1440 px, compared with the design exports):
   `null` on any violation (caller maps it to `400 invalid_query`); the
   `category`/`limit` defaults and the valid category set are derived from
   P2's `CATEGORIES` at module load, never re-hardcoded.
+- 2026-09-27: implementation (#53) — `computeNextUp(rows, { getNext,
+  getState })` is generic over two independent row shapes (the `rows`
+  element type and `getNext`'s return type) rather than one shared type,
+  because the real caller's `getNext` is P3's `getNextEpisode(db, row)`,
+  which returns a plain `LibraryItemRow`, not the `progress`-joined row shape
+  `rows` carries — forcing one shared type would mistype the real
+  integration. Series are grouped with a `Map` keyed by `series_id`,
+  preserving first-seen order; the spec does not fix an order across
+  multiple series' `next_up` entries, so `src/api/progress.js` (a later
+  issue) is free to merge/sort them with the continue-view rows before
+  applying `limit`. *L* is found by reusing `deriveProgressState` from
+  `progress-rules.js` (per #52's decision log, the same function the state
+  view and player use) to filter `none` rows and derive `in_progress` vs.
+  `finished`, rather than re-deriving the write-rule thresholds here.
+- 2026-09-27: review fix (#53/PR #130) — `SeriesProgressRow.series_id` widened
+  to `number | null | undefined` (optional), and `groupBySeries`'s `Map` key
+  type widened to match: the real caller's row type, `ProgressItemRow`
+  (`src/db/progress.js`, via `LibraryItemRow`), has `series_id` optional, so
+  the stricter `number | null` made `computeNextUp(listSeriesProgressRows(db,
+  userId), { getNext: (row) => getNextEpisode(db, row), ... })` fail `tsc
+  --strict` with TS2345 — the exact real integration this module's generic
+  design exists to type-check. A type-only guard function (never invoked,
+  same pattern as `test/public/player-stage.test.js`) was added to
+  `test/api/progress-next-up.test.js` to keep that call site checked going
+  forward.
