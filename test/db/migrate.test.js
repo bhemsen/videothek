@@ -1,6 +1,6 @@
 import { test } from 'node:test';
 import assert from 'node:assert/strict';
-import { mkdtempSync, rmSync, writeFileSync } from 'node:fs';
+import { mkdtempSync, rmSync, writeFileSync, copyFileSync } from 'node:fs';
 import { tmpdir } from 'node:os';
 import { join } from 'node:path';
 import { DatabaseSync } from 'node:sqlite';
@@ -147,6 +147,42 @@ test('broken SQL rolls back its own transaction (incl. its schema_migrations row
   } finally {
     db.close();
     rmSync(dir, { recursive: true, force: true });
+  }
+});
+
+test('003-progress.sql applies whether or not 002 was applied first (references only users)', () => {
+  const dir = makeMigrationsDir();
+  copyFileSync('src/db/migrations/001-users-sessions.sql', join(dir, '001-users-sessions.sql'));
+  copyFileSync('src/db/migrations/003-progress.sql', join(dir, '003-progress.sql'));
+  const db = new DatabaseSync(':memory:');
+  try {
+    assert.deepEqual(migrate(db, { dir }), [1, 3]);
+    assert.equal(
+      db.prepare("SELECT name FROM sqlite_master WHERE name = 'progress'").get()?.name,
+      'progress'
+    );
+  } finally {
+    db.close();
+    rmSync(dir, { recursive: true, force: true });
+  }
+});
+
+test('003 still applies after a higher version is already recorded (gap); re-run is a no-op', () => {
+  const db = new DatabaseSync(':memory:');
+  try {
+    db.exec(
+      `CREATE TABLE schema_migrations (version INTEGER PRIMARY KEY, name TEXT NOT NULL, applied_at INTEGER NOT NULL) STRICT`
+    );
+    db.prepare('INSERT INTO schema_migrations (version, name, applied_at) VALUES (5, ?, 0)').run('future');
+
+    assert.deepEqual(migrate(db), [1, 2, 3, 4], 'gap below the already-recorded version 5 is filled');
+    assert.equal(
+      db.prepare("SELECT name FROM sqlite_master WHERE name = 'progress'").get()?.name,
+      'progress'
+    );
+    assert.deepEqual(migrate(db), [], 're-running migrate applies nothing');
+  } finally {
+    db.close();
   }
 });
 
