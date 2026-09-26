@@ -796,4 +796,9 @@ Chromium and Firefox, mobile ≤ 767 px and desktop ≥ 1024 px viewport):
   comma-separated or array-valued forwarded header; `isSameOrigin`
   compares `Origin`'s `.host` (scheme-independent, default ports dropped)
   case-insensitively against the first `X-Forwarded-Host` value, else
-  `Host`.
+  `Host`. Review finding fixed: `URL.host` only drops a default port
+  (80/443) for its *own* scheme, so a proxy forwarding `X-Forwarded-Host`/
+  `Host` with an explicit default port (a real nginx/Traefik/Caddy config
+  shape) fell through as a false origin mismatch (`403 forbidden_origin`
+  on every mutation); both sides now strip a trailing `:80`/`:443` the
+  same way before comparing.

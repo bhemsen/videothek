@@ -53,12 +53,34 @@ export function isHttps(req) {
   return forwardedProto?.toLowerCase() === 'https';
 }
 
+const DEFAULT_PORTS = new Set(['80', '443']);
+
+/**
+ * Strips a trailing `:80` or `:443` from a `host[:port]` string. `URL.host`
+ * already does this for the origin side, but only for *its own* scheme
+ * (`https://x:443` -> `x`, but `https://x:80` keeps `:80` since 80 is not
+ * https's default); the comparison target (`Host`/`X-Forwarded-Host`) is a
+ * bare string with no scheme to consult. Since the scheme is deliberately
+ * ignored for this check (a proxy may terminate TLS without saying so),
+ * both well-known default ports are treated as default on either side —
+ * applying it to an already-stripped host is a harmless no-op.
+ * @param {string} host
+ * @returns {string}
+ */
+function stripDefaultPort(host) {
+  const separatorIndex = host.lastIndexOf(':');
+  if (separatorIndex === -1) return host;
+  return DEFAULT_PORTS.has(host.slice(separatorIndex + 1)) ? host.slice(0, separatorIndex) : host;
+}
+
 /**
  * Host-only same-origin check for the mutation guard. An absent `Origin` is
  * allowed (curl, CLI — `true`); `Origin: null`, an unparseable value, or a
  * host mismatch against the first `X-Forwarded-Host` (else `Host`) header is
  * rejected (`false`). The scheme is ignored, so a TLS-terminating proxy that
- * does not forward it still passes.
+ * does not forward it still passes; a default port (80/443) forwarded
+ * explicitly on either side (some proxy configs do this) is normalized away
+ * on both, so it never causes a false mismatch.
  * @param {import('node:http').IncomingMessage} req
  * @returns {boolean}
  */
@@ -69,13 +91,13 @@ export function isSameOrigin(req) {
 
   let originHost;
   try {
-    originHost = new URL(origin).host.toLowerCase();
+    originHost = stripDefaultPort(new URL(origin).host.toLowerCase());
   } catch {
     return false;
   }
   const expectedHost =
     firstHeaderValue(req.headers['x-forwarded-host']) ?? firstHeaderValue(req.headers.host);
-  return expectedHost !== undefined && originHost === expectedHost.toLowerCase();
+  return expectedHost !== undefined && originHost === stripDefaultPort(expectedHost.toLowerCase());
 }
 
 /**

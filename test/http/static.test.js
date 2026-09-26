@@ -39,10 +39,10 @@ async function startServer() {
 
 /**
  * Issues a raw HTTP request with `targetPath` sent verbatim as the request
- * line's target — unlike `fetch`, which would parse it as a URL first and
- * silently collapse a `..` segment before the request ever leaves this
- * process, defeating the traversal tests below. Redirects are never
- * followed.
+ * line's target — `fetch` would parse it as a URL first, which for a
+ * `%2F`/`%5c`-style encoded segment matters (see the comment above the
+ * traversal test cases below); using the same low-level path everywhere
+ * keeps this suite's requests uniform. Redirects are never followed.
  * @param {number} port
  * @param {string} targetPath
  * @param {{ method?: string, headers?: Record<string, string> }} [options]
@@ -210,6 +210,19 @@ test('a repeated request with If-Modified-Since answers 304', async () => {
   }
 });
 
+// The Server contract builds `ctx.url` via `new URL(req.url, base)` (as
+// this suite's own startServer() does above), and the WHATWG URL spec
+// defines a literal `..` *and* a bare `%2e`/`%2e%2e` segment as a
+// "double-dot path segment" that path parsing removes unconditionally —
+// so `/../package.json` and `/%2e%2e/package.json` never reach static.js
+// as anything but `/package.json`; they still prove the traversal attempt
+// never resolves to the real fixtures/package.json sentinel one level
+// above the served root (they 404 on "no such file inside publicDir",
+// not via `isUnsafePath`). `/%2F..` (an encoded slash hiding a `..` that
+// only appears after this module's own single decodeURIComponent pass),
+// the encoded-backslash chain and the NUL byte are not covered by that
+// URL-level normalization and specifically exercise `isUnsafePath` /
+// `decodePathname` in static.js itself.
 for (const target of [
   '/../package.json',
   '/%2e%2e/package.json',

@@ -100,6 +100,29 @@ test('isSameOrigin ignores scheme, comparing host only', () => {
   );
 });
 
+test('isSameOrigin matches when a proxy forwards the https default port explicitly', () => {
+  assert.equal(
+    isSameOrigin(
+      makeReq({ origin: 'https://videothek.example', 'x-forwarded-host': 'videothek.example:443' }),
+    ),
+    true,
+  );
+});
+
+test('isSameOrigin matches when a proxy forwards the http default port explicitly', () => {
+  assert.equal(
+    isSameOrigin(makeReq({ origin: 'http://videothek.example', host: 'videothek.example:80' })),
+    true,
+  );
+});
+
+test('isSameOrigin matches when the Origin itself carries an explicit default port', () => {
+  assert.equal(
+    isSameOrigin(makeReq({ origin: 'https://videothek.example:443', host: 'videothek.example' })),
+    true,
+  );
+});
+
 test('safeNext accepts a plain absolute path', () => {
   assert.equal(safeNext('/movies'), '/movies');
 });
