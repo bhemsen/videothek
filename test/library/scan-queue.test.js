@@ -148,6 +148,88 @@ test('onComplete fires exactly once per finished run with its kind and stats', a
   ]);
 });
 
+test('a paths run that escalates schedules one follow-up full run', async () => {
+  /** @type {string[]} */
+  const runs = [];
+  const queue = createScanQueue({
+    async runFull(kind) {
+      runs.push(`full:${kind}`);
+      return { kind };
+    },
+    async runPaths(paths) {
+      runs.push(`paths:${paths.join(',')}`);
+      return { stats: { updated: paths.length }, escalate: true };
+    },
+  });
+
+  queue.requestPaths(['Filme']);
+  await queue.idle();
+
+  assert.deepEqual(runs, ['paths:Filme', 'full:full']);
+});
+
+test('requestFull keeps a pending "initial" even if a later requestFull() arrives', async () => {
+  /** @type {string[]} */
+  const fullCalls = [];
+  const queue = createScanQueue({
+    async runFull(kind) {
+      fullCalls.push(kind);
+      await tick();
+      return {};
+    },
+    async runPaths() {
+      return {};
+    },
+  });
+
+  queue.requestFull('initial'); // starts running immediately
+  queue.requestFull('initial'); // queued behind the in-flight run
+  queue.requestFull(); // a concurrent timer/watcher call must not downgrade it
+  await queue.idle();
+
+  assert.deepEqual(fullCalls, ['initial', 'initial']);
+});
+
+test('requestPaths union-coalesces several calls into one follow-up run', async () => {
+  /** @type {string[][]} */
+  const pathsCalls = [];
+  const queue = createScanQueue({
+    runFull: async () => ({}),
+    async runPaths(paths) {
+      pathsCalls.push(paths);
+      await tick();
+      return { paths };
+    },
+  });
+
+  queue.requestPaths(['a']); // starts running immediately
+  queue.requestPaths(['a']); // arrives while in flight -> queued
+  queue.requestPaths(['b', 'a']); // unions into the same pending set
+  await queue.idle();
+
+  assert.deepEqual(pathsCalls, [['a'], ['a', 'b']]);
+});
+
+test('a rejecting onComplete is caught and logged like a synchronous throw', async () => {
+  /** @type {{ event: string }[]} */
+  const errors = [];
+  const queue = createScanQueue({
+    runFull: async () => ({}),
+    runPaths: async () => ({}),
+    onComplete: () => Promise.reject(new Error('async listener boom')),
+    log: { error: (event) => errors.push({ event }) },
+  });
+
+  queue.requestFull('initial');
+  await queue.idle();
+  await tick(); // flush the rejection's `.then` handler
+
+  assert.deepEqual(
+    errors.map((e) => e.event),
+    ['library_scan_queue_oncomplete_failed'],
+  );
+});
+
 test('a thrown run is logged and does not block later runs; a throwing onComplete is tolerated', async () => {
   /** @type {string[]} */
   const fullCalls = [];

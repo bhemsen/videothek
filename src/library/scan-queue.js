@@ -26,11 +26,16 @@
  * @property {(kind: FullScanKind) => Promise<unknown>} runFull Runs a full
  *   scan; called with the requested kind ('initial' the first time, 'full'
  *   for every later one). May call `drainPathsBetweenDirs()` (the object
- *   `createScanQueue` returns) between directories.
+ *   `createScanQueue` returns) between directories. Must reject/throw if
+ *   `stop()` cuts it short — a run that resolves normally always reports a
+ *   completion, even one racing a `stop()` call.
  * @property {(relPaths: string[]) => Promise<unknown>} runPaths Reconciles
- *   the given media-root-relative paths.
- * @property {(payload: ScanCompletePayload) => void} [onComplete] Called once
- *   per finished run, after it resolves.
+ *   the given media-root-relative paths. A resolved value shaped
+ *   `{ escalate: true, ... }` (per `reconcile.js`'s `{ stats, escalate }`)
+ *   makes the queue schedule one follow-up full run.
+ * @property {(payload: ScanCompletePayload) => void | Promise<void>} [onComplete]
+ *   Called once per finished run, after it resolves. A rejected promise is
+ *   caught and logged the same as a synchronous throw.
  * @property {ScanQueueLogger} [log]
  */
 
@@ -73,27 +78,66 @@ export function createScanQueue({ runFull, runPaths, onComplete, log }) {
   let idleWaiters = [];
 
   /**
-   * Reports a finished run, tolerating a throwing `onComplete` so it never
-   * breaks the queue.
+   * Logs an `onComplete` failure, whether it threw synchronously or its
+   * returned promise rejected.
+   * @param {ScanRunKind} kind
+   * @param {unknown} err
+   * @returns {void}
+   */
+  function logOnCompleteFailed(kind, err) {
+    log?.error('library_scan_queue_oncomplete_failed', {
+      kind,
+      error: err instanceof Error ? err.message : String(err),
+    });
+  }
+
+  /**
+   * Reports a finished run, tolerating a throwing or rejecting `onComplete`
+   * so it never breaks the queue (an unhandled rejection would otherwise
+   * terminate the process).
    * @param {ScanRunKind} kind
    * @param {unknown} stats
    * @returns {void}
    */
   function complete(kind, stats) {
     try {
-      onComplete?.({ kind, stats });
+      const result = onComplete?.({ kind, stats });
+      if (result instanceof Promise) {
+        result.then(undefined, (err) => logOnCompleteFailed(kind, err));
+      }
     } catch (err) {
-      log?.error('library_scan_queue_oncomplete_failed', {
-        kind,
-        error: err instanceof Error ? err.message : String(err),
-      });
+      logOnCompleteFailed(kind, err);
     }
+  }
+
+  /**
+   * @param {unknown} result A resolved `runPaths` value.
+   * @returns {boolean} Whether it asks the queue to escalate to a full scan.
+   */
+  function isEscalating(result) {
+    if (typeof result !== 'object' || result === null) return false;
+    return /** @type {{ escalate?: unknown }} */ (result).escalate === true;
+  }
+
+  /**
+   * Sets the pending full-scan kind, never downgrading an already-pending
+   * `'initial'` to `'full'`, and drops pending paths (the follow-up full
+   * walk will cover them).
+   * @param {FullScanKind} kind
+   * @returns {void}
+   */
+  function setPendingFull(kind) {
+    pendingFullKind = pendingFullKind === 'initial' ? 'initial' : kind;
+    pendingPaths = null;
   }
 
   /**
    * Executes one run and reports its completion. A thrown/rejected `fn` is
    * logged and swallowed (no completion is reported for it) so the queue
-   * keeps serving requests afterward.
+   * keeps serving requests afterward. A finished `'paths'` run (whether the
+   * top-level job or one run inline via `drainPathsBetweenDirs()`) whose
+   * result escalates schedules one follow-up full run, per the
+   * path-reconcile rules.
    * @param {ScanRunKind} kind
    * @param {() => Promise<unknown>} fn
    * @returns {Promise<void>}
@@ -101,6 +145,7 @@ export function createScanQueue({ runFull, runPaths, onComplete, log }) {
   async function executeRun(kind, fn) {
     try {
       const stats = await fn();
+      if (kind === 'paths' && !stopped && isEscalating(stats)) setPendingFull('full');
       complete(kind, stats);
     } catch (err) {
       log?.error('library_scan_run_failed', {
@@ -150,21 +195,23 @@ export function createScanQueue({ runFull, runPaths, onComplete, log }) {
   /**
    * Requests a full scan. Coalesces with any run already in flight or
    * pending: several calls collapse into one follow-up run, and it drops
-   * any pending paths (the follow-up full walk will cover them).
+   * any pending paths (the follow-up full walk will cover them). A pending
+   * `'initial'` is never downgraded to `'full'` by a later call.
    * @param {FullScanKind} [kind]
    * @returns {void}
    */
   function requestFull(kind = 'full') {
     if (stopped) return;
-    pendingFullKind = kind;
-    pendingPaths = null;
+    setPendingFull(kind);
     if (!inFlight) void startNext();
   }
 
   /**
    * Requests a reconcile of the given relative paths, unioning them into
-   * any already-pending set. Dropped when a full scan is pending or in
-   * flight — it will cover them instead.
+   * any already-pending set. Dropped only when a full scan is pending (not
+   * merely in flight) — a pending full scan will cover them instead; while
+   * one is only in flight, paths still queue so `drainPathsBetweenDirs()`
+   * can run them inline.
    * @param {string[]} relPaths
    * @returns {void}
    */
