@@ -629,3 +629,26 @@ compared with the exports):
   numbered stem whose captured title is pure whitespace (e.g. `"12  .mp3"`,
   covered by a test) — genuine empty captures cannot occur because
   `(.+)` requires at least one character.
+- 2026-09-26: issue #59 implementation — `readId3v2`'s `fields` stay the raw,
+  encoding-decoded string per frame id (only the `\0`-multi-value first-token
+  rule is applied here); `"n/total"` splitting, non-numeric → null and
+  "year = first four digits" are left to the tag→field mapping issue
+  (`src/library/tags/index.js`), matching the Reader interfaces row's
+  `Record<string, string>` return type. Whole-tag v2.3 unsynchronisation uses
+  the simplified, standard codec (insert `$00` after every `$FF`, strip every
+  `$FF $00` pair) and is handled as a separate one-shot-read, in-memory walk
+  (budgeted, no further chunked I/O) rather than folded into the windowed
+  path — pictures inside such a tag are ignored entirely there, per the
+  robustness rule, rather than budget-limited. The v2.3/v2.4 extended-header
+  size fields follow the informal ID3v2 spec exactly (v2.3: plain
+  big-endian, excludes itself; v2.4: synchsafe, includes itself) since only
+  the skip length matters, never the content. v2.4's per-frame
+  unsynchronisation and data-length-indicator flags are not specially
+  handled (outside the robustness row's explicit list; real v2.4 writers in
+  the supported field set do not set them). Unknown frame ids are always
+  skipped by offset with zero reads, so the 256 KiB budget is spent only on
+  the 8 known text ids and APIC. `test/helpers/mp3-fixture.js`'s API
+  (`buildId3v2Tag`, `buildFrame`, `textFrameBody`, `apicFrameBody`,
+  `buildMpegFrame`, `withXingHeader`, `withVbriHeader`, `makeReadAt`,
+  `instrumentReadAt`) is not fixed by this spec; it is designed for reuse by
+  the FLAC, tag-mapping and audio-meta-pass test issues.
