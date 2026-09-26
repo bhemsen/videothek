@@ -144,7 +144,7 @@ export function mimeForExtension(ext) {
   return EXTENSIONS[ext]?.mime ?? null;
 }
 
-/** @typedef {{ video: string[], audio: string[] }} SniffedCodecs */
+/** @typedef {import('../tags/mp4-codec.js').SniffedCodecs} SniffedCodecs */
 
 /** Sample-entry fourccs that keep an MP4-family video track playable. */
 const SNIFF_VIDEO_OK = new Set(['avc1', 'avc3', 'av01', 'vp09']);

@@ -12,6 +12,9 @@ import { open } from 'node:fs/promises';
 /** @typedef {{ video: string[], audio: string[] }} SniffedCodecs */
 
 const MAX_BOXES_PER_LEVEL = 64;
+// The fixed trak -> mdia -> hdlr/minf -> stbl -> stsd walk below never nests
+// past depth 5, so this guard cannot trigger today; it stays as a safety net
+// against a future caller adding deeper recursion.
 const MAX_DEPTH = 8;
 const MAX_READ_BYTES = 64 * 1024;
 
@@ -95,9 +98,13 @@ async function findAllBoxes(state, start, end, targetType, depth) {
 }
 
 /**
- * Scans one level of sibling boxes for the first box of `targetType`, or
- * `null` when none is present (not a guard violation - the caller decides
- * whether a missing box skips its subtree or fails the whole walk).
+ * Scans one level of sibling boxes for the first box of `targetType`,
+ * stopping as soon as it is found (unlike `findAllBoxes`, it never walks the
+ * remaining siblings), or returns `null` when none is present before the
+ * level ends (not a guard violation - the caller decides whether a missing
+ * box skips its subtree or fails the whole walk). Stopping at the first match
+ * keeps a fragmented file (`moov` followed by many `moof`/`mdat` pairs) from
+ * running the box-count guard against trailing siblings the walk never needed.
  * @param {SniffState} state
  * @param {number} start
  * @param {number} end
@@ -106,8 +113,16 @@ async function findAllBoxes(state, start, end, targetType, depth) {
  * @returns {Promise<BoxHeader | null>}
  */
 async function findBox(state, start, end, targetType, depth) {
-  const all = await findAllBoxes(state, start, end, targetType, depth);
-  return all[0] ?? null;
+  if (depth > MAX_DEPTH) throw new SniffAbort('max depth exceeded');
+  let offset = start;
+  for (let count = 0; offset + 8 <= end; count += 1) {
+    if (count >= MAX_BOXES_PER_LEVEL) throw new SniffAbort('too many boxes');
+    const box = await readBoxHeader(state, offset, end);
+    if (!box) break;
+    if (box.type === targetType) return box;
+    offset = box.end;
+  }
+  return null;
 }
 
 /**
