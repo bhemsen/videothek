@@ -542,3 +542,19 @@ Human QA (Chromium + Firefox; desktop 1280 px and 390 px mobile emulation;
   fills ignored; lightbox split pre-named (`lightbox-slide.js`,
   `lightbox-history.js`) to stay within 300 lines per file; folder URLs beyond
   P1's 2,048-char `safeNext` cap fall back to `/` after login — accepted.
+- 2026-09-26: Issue #77 (`005-image-meta.sql` + `src/db/image-meta.js`)
+  implemented exactly per D12/the repository row: `insertMetaStubs` wraps its
+  batch in one `BEGIN IMMEDIATE`/`COMMIT` (users.js's guarded-write pattern),
+  no-op when given an empty array; `folderExists`/`findFolderCover`/
+  `listSubtreeFolderCounts` use the `[key/, key0)` range trick throughout
+  (root short-circuits `folderExists` to `true` without a query); verified
+  005 applies standalone on a fresh DB (`[1, 2, 5]`, 003/004 absent, per the
+  Risks row) and that `image_meta` rejects a non-numeric value in an INTEGER
+  column (STRICT). Side effect for sibling migration issues (003/004): adding
+  005 to the shared `src/db/migrations/` directory changed the *count* of
+  migrations `migrate(db)` applies with its default directory, which two
+  already-merged tests hardcoded — `test/db/index.test.js` and
+  `test/db/library-repo.test.js` each asserted `[1, 2]` for that call. Both
+  were bumped to `[1, 2, 5]` in this PR (one-line each, same mechanical
+  update as the H9 test edits). Whichever of 003/004 merges next will need
+  the same one-line bump to the count array in both files.
