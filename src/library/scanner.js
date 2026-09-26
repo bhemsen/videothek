@@ -5,8 +5,9 @@ import { syncDirectory } from './dir-sync.js';
 import { reconcilePaths } from './reconcile.js';
 import { listDirectory, isSkippedName } from './walk.js';
 import { categoryForFolder } from './categories.js';
-import { hasItemsUnderDir, deleteItemsUnderDir, listDirsUnderDir, deleteOrphanedSeries } from '../db/library-repo.js';
+import { hasItemsUnderDir, listIndexedRootNames, deleteOrphanedSeries } from '../db/library-repo.js';
 import { createScanQueue } from './scan-queue.js';
+import { emptyStats, addDirStats, sweepPrefix } from './scan-stats.js';
 
 /**
  * Full/subtree scan, root safety, the end-of-walk sweep, series orphan
@@ -18,60 +19,23 @@ import { createScanQueue } from './scan-queue.js';
 
 /** @typedef {import('./dir-watch.js').Logger} Logger */
 /** @typedef {import('./dir-watch.js').DirWatchSet} DirWatchSet */
-/** @typedef {import('./dir-sync.js').DirSyncStats} DirSyncStats */
-/** @typedef {{ added: number, updated: number, removed: number, unchanged: number, failedDirs: number, skippedSymlinks: number, skippedUndecodable: number, protectedRoots: number, durationMs: number }} ScanStats */
+/** @typedef {import('./scan-stats.js').ScanStats} ScanStats */
 /** @typedef {{ running: boolean, lastCompletedAt: number | null, lastStats: ScanStats | null, lastError: string | null }} ScanStatus */
 /** @typedef {{ kind: 'initial' | 'full' | 'paths', stats: ScanStats, completedAt: number }} ScanCompletePayload */
 
 /** @type {DirWatchSet} */
 const NOOP_DIR_OBSERVER = { seen() {}, gone() {}, sweep() {}, count: () => 0, closeAll() {} };
 
-/** @returns {ScanStats} */
-function emptyStats() {
-  return {
-    added: 0,
-    updated: 0,
-    removed: 0,
-    unchanged: 0,
-    failedDirs: 0,
-    skippedSymlinks: 0,
-    skippedUndecodable: 0,
-    protectedRoots: 0,
-    durationMs: 0,
-  };
-}
-
-/** @param {ScanStats} target mutated in place @param {DirSyncStats} part @returns {void} */
-function addDirStats(target, part) {
-  target.added += part.added;
-  target.updated += part.updated;
-  target.removed += part.removed;
-  target.unchanged += part.unchanged;
-  target.skippedSymlinks += part.skippedSymlinks;
-  target.skippedUndecodable += part.skippedUndecodable;
-}
-
-/** @param {string} dir @param {string[]} protectedPrefixes @returns {boolean} whether `dir` is, or lies under, a protected/failed prefix */
-function isUnderProtected(dir, protectedPrefixes) {
-  return protectedPrefixes.some((p) => dir === p || dir.startsWith(`${p}/`));
-}
-
 /**
- * Deletes rows for every DB-known directory under `rootPrefix` that the walk
- * did not visit, except under a protected/failed prefix. Shared by the full
- * scan (one call per healthy category root) and `scanSubtree` (one call
- * scoped to the reconciled directory).
- * @param {import('node:sqlite').DatabaseSync} db
- * @param {string} rootPrefix
- * @param {Set<string>} visited
- * @param {string[]} protectedPrefixes
- * @param {ScanStats} stats mutated in place
- * @returns {void}
+ * Thrown by `walkDir` when `stop()` cut a walk short; propagates out of
+ * `runFullScan`/`scanSubtree` uncaught, so `scan-queue.js` logs the run as
+ * failed instead of reporting a completion (spec: not fired for a run "cut
+ * short by `stop()`").
  */
-function sweepPrefix(db, rootPrefix, visited, protectedPrefixes, stats) {
-  for (const dir of listDirsUnderDir(db, rootPrefix)) {
-    if (visited.has(dir) || isUnderProtected(dir, protectedPrefixes)) continue;
-    stats.removed += deleteItemsUnderDir(db, dir);
+class ScanAbortedError extends Error {
+  constructor() {
+    super('scan aborted by stop()');
+    this.name = 'ScanAbortedError';
   }
 }
 
@@ -95,10 +59,10 @@ export function createScanner({ db, mediaRoot, log, now, dirObserver = NOOP_DIR_
   const listeners = new Set();
   /** @type {{ lastCompletedAt: number | null, lastStats: ScanStats | null, lastError: string | null }} */
   const state = { lastCompletedAt: null, lastStats: null, lastError: null };
-  /** @type {Set<string>} known category-root dir names, across full scans */
-  let knownRoots = new Set();
   /** @type {Set<string> | null} the currently-running full scan's visited set, for interleaved reconciles to extend */
   let activeFullVisited = null;
+  /** @type {boolean} set by `stop()`; checked by `walkDir` between directories so a full/subtree walk aborts instead of running to completion */
+  let stopped = false;
 
   /**
    * @param {string} relDir
@@ -108,19 +72,28 @@ export function createScanner({ db, mediaRoot, log, now, dirObserver = NOOP_DIR_
    * @returns {Promise<void>}
    */
   async function walkDir(relDir, stats, visited, protectedPrefixes) {
+    if (stopped) throw new ScanAbortedError();
     dirObserver.seen(relDir);
     let result;
     try {
       result = await syncDirectory(syncCtx, relDir);
     } catch (err) {
-      log.warn('library_dir_failed', { dir: relDir, code: /** @type {NodeJS.ErrnoException} */ (err)?.code ?? 'unknown' });
-      stats.failedDirs += 1;
-      protectedPrefixes.push(relDir);
+      const code = /** @type {NodeJS.ErrnoException} */ (err)?.code ?? 'unknown';
+      if (code !== 'ENOENT') {
+        log.warn('library_dir_failed', { dir: relDir, code });
+        stats.failedDirs += 1;
+        protectedPrefixes.push(relDir);
+      }
+      // ENOENT: the directory vanished between its parent's listing and its
+      // own readdir (an interleaved reconcile, or a user deleting it mid-scan)
+      // — treated as simply gone, not a failure: it is left out of `visited`
+      // so the end-of-walk sweep deletes its rows, with no warning and no
+      // protected subtree.
       return;
     }
     addDirStats(stats, result.stats);
     visited.add(relDir);
-    await queue.drainPathsBetweenDirs();
+    if (activeFullVisited) await queue.drainPathsBetweenDirs();
     for (const child of result.dirs) {
       await walkDir(`${relDir}/${child}`, stats, visited, protectedPrefixes);
     }
@@ -132,7 +105,7 @@ export function createScanner({ db, mediaRoot, log, now, dirObserver = NOOP_DIR_
    * currently-running full scan's set (if one is in progress) so an
    * interleaved reconcile's finds survive that full scan's own sweep.
    * @param {string} startRelDir
-   * @returns {Promise<{ stats: DirSyncStats }>}
+   * @returns {Promise<{ stats: ScanStats }>}
    */
   async function scanSubtree(startRelDir) {
     const stats = emptyStats();
@@ -176,13 +149,11 @@ export function createScanner({ db, mediaRoot, log, now, dirObserver = NOOP_DIR_
    * @param {ScanStats} stats
    * @param {Set<string>} visited
    * @param {string[]} protectedPrefixes
-   * @param {Set<string>} nextKnownRoots mutated in place
    * @returns {Promise<void>}
    */
-  async function visitRoot(name, isPresent, stats, visited, protectedPrefixes, nextKnownRoots) {
+  async function visitRoot(name, isPresent, stats, visited, protectedPrefixes) {
     const reason = isPresent ? await checkPresentRootHealth(name) : 'missing';
     if (!reason) {
-      nextKnownRoots.add(name);
       await walkDir(name, stats, visited, protectedPrefixes);
       sweepPrefix(db, name, visited, protectedPrefixes, stats);
       return;
@@ -191,7 +162,6 @@ export function createScanner({ db, mediaRoot, log, now, dirObserver = NOOP_DIR_
       log.warn('library_root_protected', { root: name, reason });
       stats.protectedRoots += 1;
       protectedPrefixes.push(name);
-      nextKnownRoots.add(name);
     }
   }
 
@@ -213,30 +183,36 @@ export function createScanner({ db, mediaRoot, log, now, dirObserver = NOOP_DIR_
     const stats = emptyStats();
     const visited = new Set();
     const protectedPrefixes = /** @type {string[]} */ ([]);
-    const nextKnownRoots = new Set();
+    const rootCandidates = new Set([...discovered, ...listIndexedRootNames(db)]);
     activeFullVisited = visited;
     try {
-      for (const name of new Set([...discovered, ...knownRoots])) {
-        await visitRoot(name, discovered.has(name), stats, visited, protectedPrefixes, nextKnownRoots);
+      for (const name of rootCandidates) {
+        await visitRoot(name, discovered.has(name), stats, visited, protectedPrefixes);
       }
     } finally {
       activeFullVisited = null;
     }
-    knownRoots = nextKnownRoots;
     deleteOrphanedSeries(db);
+    dirObserver.sweep(visited);
 
     stats.durationMs = Date.now() - start;
-    state.lastError = stats.protectedRoots > 0 ? 'root_protected' : stats.failedDirs > 0 ? 'dir_failed' : null;
     void kind;
     return stats;
   }
 
   /**
+   * Runs the reconcile, then stamps `durationMs` on its stats so a `'paths'`
+   * run's stats carry the same full `ScanStats` shape as `'initial'`/`'full'`
+   * (`reconcile.js`'s `ReconcileStats` deliberately omits `durationMs`, since
+   * only this wrapper — timing the whole batch, incl. any subtree walks —
+   * knows it).
    * @param {string[]} relPaths
-   * @returns {Promise<{ stats: import('./reconcile.js').ReconcileStats, escalate: boolean }>}
+   * @returns {Promise<{ stats: ScanStats, escalate: boolean }>}
    */
-  function runPathsReconcile(relPaths) {
-    return reconcilePaths({ db, mediaRoot, now, dirObserver, scanSubtree }, relPaths);
+  async function runPathsReconcile(relPaths) {
+    const start = Date.now();
+    const { stats, escalate } = await reconcilePaths({ db, mediaRoot, now, dirObserver, scanSubtree }, relPaths);
+    return { stats: { ...stats, durationMs: Date.now() - start }, escalate };
   }
 
   /**
@@ -250,6 +226,11 @@ export function createScanner({ db, mediaRoot, log, now, dirObserver = NOOP_DIR_
     );
     state.lastCompletedAt = now();
     state.lastStats = innerStats;
+    // Applies to every run kind (not just full scans): a 'paths' run may
+    // itself carry a failed/protected subtree via an interleaved reconcile's
+    // scanSubtree, and a run that completes cleanly must reset a lingering
+    // error from an earlier one.
+    state.lastError = innerStats.protectedRoots > 0 ? 'root_protected' : innerStats.failedDirs > 0 ? 'dir_failed' : null;
     log.info('library_scan_complete', { kind, ...innerStats });
     if (innerStats.skippedUndecodable) log.warn('library_names_undecodable', { count: innerStats.skippedUndecodable });
 
@@ -270,6 +251,17 @@ export function createScanner({ db, mediaRoot, log, now, dirObserver = NOOP_DIR_
 
   const queue = createScanQueue({ runFull: runFullScan, runPaths: runPathsReconcile, onComplete: dispatchComplete, log });
 
+  /**
+   * Stops the queue from starting any further run (`queue.stop()`) and marks
+   * this scanner `stopped` so `walkDir` aborts the run currently in flight
+   * (if any) at its next directory, instead of letting it run to completion.
+   * @returns {void}
+   */
+  function stop() {
+    stopped = true;
+    queue.stop();
+  }
+
   return {
     requestFull: queue.requestFull,
     requestPaths: queue.requestPaths,
@@ -284,7 +276,7 @@ export function createScanner({ db, mediaRoot, log, now, dirObserver = NOOP_DIR_
       lastError: state.lastError,
     }),
     idle: queue.idle,
-    stop: queue.stop,
+    stop,
   };
 }
 

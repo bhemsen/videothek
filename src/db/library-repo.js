@@ -169,6 +169,27 @@ export function listDirsUnderDir(db, prefix) {
 }
 
 /**
+ * Lists the exact on-disk name of every category-root segment (the first
+ * `/`-separated component of `rel_path`) that has at least one indexed item
+ * under it. Root safety (D7) evaluates `discovered ∪ listIndexedRootNames(db)`
+ * as its candidate set, so a root that once had files keeps being checked
+ * (and re-protected) across a process restart — including the "disk
+ * unmounted before the process started" case, where `discoverRoots()` alone
+ * would never see it — while a category that was never used is never
+ * evaluated and so never warns.
+ * @param {import('node:sqlite').DatabaseSync} db
+ * @returns {string[]}
+ */
+export function listIndexedRootNames(db) {
+  const rows = /** @type {{ root: string }[]} */ (
+    /** @type {unknown} */ (
+      db.prepare("SELECT DISTINCT substr(rel_path, 1, instr(rel_path, '/') - 1) AS root FROM library_items").all()
+    )
+  );
+  return rows.map((row) => row.root);
+}
+
+/**
  * Checks whether any indexed item lies anywhere under `dir`, without loading
  * rows. Used for root safety (D7): a category root that still has rows but
  * is missing, unreadable or empty must not be swept.

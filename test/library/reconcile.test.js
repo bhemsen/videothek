@@ -34,6 +34,11 @@ function fakeDirObserver() {
   };
 }
 
+/** @returns {import('../../src/library/reconcile.js').ReconcileStats} */
+function emptyStats() {
+  return { added: 0, updated: 0, removed: 0, unchanged: 0, failedDirs: 0, skippedSymlinks: 0, skippedUndecodable: 0, protectedRoots: 0 };
+}
+
 /**
  * @param {string} root
  * @param {import('node:sqlite').DatabaseSync} db
@@ -46,7 +51,7 @@ function makeCtx(root, db, overrides = {}) {
     mediaRoot: root,
     now: NOW,
     dirObserver,
-    scanSubtree: async () => ({ stats: { added: 0, updated: 0, removed: 0, unchanged: 0, skippedSymlinks: 0, skippedUndecodable: 0 } }),
+    scanSubtree: async () => ({ stats: emptyStats() }),
     ...overrides,
   };
 }
@@ -69,7 +74,7 @@ test('reconcilePaths: MEDIA_ROOT itself ("") escalates', async () => {
   const db = makeDb();
   const { stats, escalate } = await reconcilePaths(makeCtx('/media', db), ['']);
   assert.equal(escalate, true);
-  assert.deepEqual(stats, { added: 0, updated: 0, removed: 0, unchanged: 0 });
+  assert.deepEqual(stats, emptyStats());
 });
 
 test('reconcilePaths: a top-level folder escalates', async () => {
@@ -86,7 +91,7 @@ test('reconcilePaths: a path outside every category root is ignored', async (t) 
   const { stats, escalate } = await reconcilePaths(makeCtx(root, db), ['Downloads/file.mp4']);
 
   assert.equal(escalate, false);
-  assert.deepEqual(stats, { added: 0, updated: 0, removed: 0, unchanged: 0 });
+  assert.deepEqual(stats, emptyStats());
 });
 
 test('reconcilePaths: a new regular file is added', async (t) => {
@@ -112,7 +117,7 @@ test('reconcilePaths: an unchanged regular file is left alone', async (t) => {
 
   const { stats } = await reconcilePaths(ctx, ['Filme/Arrival (2016).webm']);
 
-  assert.deepEqual(stats, { added: 0, updated: 0, removed: 0, unchanged: 1 });
+  assert.deepEqual(stats, { ...emptyStats(), unchanged: 1 });
 });
 
 test('reconcilePaths: a changed regular file is re-parsed and keeps its id', async (t) => {
@@ -177,7 +182,7 @@ test('reconcilePaths: any other lstat error keeps the row', async (t) => {
   const { stats, escalate } = await reconcilePaths(ctx, ['Filme/Arrival (2016).webm/impossible.webm']);
 
   assert.equal(escalate, false);
-  assert.deepEqual(stats, { added: 0, updated: 0, removed: 0, unchanged: 0 });
+  assert.deepEqual(stats, emptyStats());
   assert.deepEqual(loadRow(db, 'Filme/Arrival (2016).webm'), before);
 });
 
@@ -191,7 +196,7 @@ test('reconcilePaths: a directory delegates to ctx.scanSubtree and aggregates it
   const ctx = makeCtx(root, db, {
     scanSubtree: async (relDir) => {
       calls.push(relDir);
-      return { stats: { added: 2, updated: 1, removed: 0, unchanged: 3, skippedSymlinks: 0, skippedUndecodable: 0 } };
+      return { stats: { ...emptyStats(), added: 2, updated: 1, unchanged: 3, failedDirs: 1 } };
     },
   });
 
@@ -199,7 +204,7 @@ test('reconcilePaths: a directory delegates to ctx.scanSubtree and aggregates it
 
   assert.equal(escalate, false);
   assert.deepEqual(calls, ['Filme/Inception (2010)']);
-  assert.deepEqual(stats, { added: 2, updated: 1, removed: 0, unchanged: 3 });
+  assert.deepEqual(stats, { ...emptyStats(), added: 2, updated: 1, unchanged: 3, failedDirs: 1 });
 });
 
 test('reconcilePaths: a symlink deletes existing rows and calls dirObserver.gone', async (t) => {
@@ -236,6 +241,37 @@ test('reconcilePaths: a hidden (skipped) name deletes any existing row', async (
 
   assert.equal(stats.removed, 1);
   assert.equal(loadRow(db, 'Filme/.hidden.webm'), undefined);
+});
+
+test('reconcilePaths: a path under a skipped ancestor directory is never lstat\'d, indexed or descended into', async (t) => {
+  const root = await createMediaTree();
+  t.after(() => removeMediaTree(root));
+  await writeMediaFile(root, 'Filme/.hidden/movie.webm');
+  const db = makeDb();
+  seedRow(db, 'Filme/.hidden/movie.webm', 'Movie');
+  let scanSubtreeCalled = false;
+  const ctx = makeCtx(root, db, { scanSubtree: async () => { scanSubtreeCalled = true; return { stats: emptyStats() }; } });
+
+  const { stats, escalate } = await reconcilePaths(ctx, ['Filme/.hidden/movie.webm']);
+
+  assert.equal(escalate, false);
+  assert.equal(stats.removed, 1, 'a row under a skipped ancestor is removed, matching "never indexed"');
+  assert.equal(loadRow(db, 'Filme/.hidden/movie.webm'), undefined);
+  assert.equal(scanSubtreeCalled, false, 'the ancestor is skipped before any stat/scanSubtree call, not descended into');
+});
+
+test('reconcilePaths: a path segment of ".." is treated as unsafe/skipped, never lstat\'d', async (t) => {
+  const root = await createMediaTree();
+  t.after(() => removeMediaTree(root));
+  const db = makeDb();
+  let scanSubtreeCalled = false;
+  const ctx = makeCtx(root, db, { scanSubtree: async () => { scanSubtreeCalled = true; return { stats: emptyStats() }; } });
+
+  const { stats, escalate } = await reconcilePaths(ctx, ['Filme/../../../etc/passwd']);
+
+  assert.equal(escalate, false);
+  assert.deepEqual(stats, emptyStats());
+  assert.equal(scanSubtreeCalled, false);
 });
 
 test('reconcilePaths: a series episode resolves its series_id', async (t) => {

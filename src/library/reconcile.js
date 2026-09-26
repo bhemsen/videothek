@@ -1,6 +1,6 @@
 // @ts-check
 import { lstat } from 'node:fs/promises';
-import { join, basename } from 'node:path';
+import { join } from 'node:path';
 import { isSkippedName, listDirectory } from './walk.js';
 import { buildItem } from './item-builder.js';
 import { upsertBuiltRow } from './dir-sync.js';
@@ -16,13 +16,20 @@ import { getItemsByDir, deleteItem, deleteItemsUnderDir } from '../db/library-re
  * Spec: docs/specs/spec-library-video.md, "Scanner modules" (path reconcile).
  */
 
-/** @typedef {import('./dir-sync.js').DirSyncStats} SubtreeStats */
 /**
+ * Same field set as `scanner.js`'s `ScanStats`, minus `durationMs` (measured
+ * by `scanner.js`'s `runPathsReconcile`, which wraps the whole batch, not by
+ * this module) — so a `'paths'` run's `onScanComplete` payload and
+ * `status().lastStats` carry the same shape as every other run kind.
  * @typedef {object} ReconcileStats
  * @property {number} added
  * @property {number} updated
  * @property {number} removed
  * @property {number} unchanged
+ * @property {number} failedDirs
+ * @property {number} skippedSymlinks
+ * @property {number} skippedUndecodable
+ * @property {number} protectedRoots
  */
 /**
  * @typedef {object} ReconcileCtx
@@ -30,15 +37,26 @@ import { getItemsByDir, deleteItem, deleteItemsUnderDir } from '../db/library-re
  * @property {string} mediaRoot
  * @property {() => number} now
  * @property {import('./dir-watch.js').DirWatchSet} dirObserver
- * @property {(relDir: string) => Promise<{ stats: SubtreeStats }>} scanSubtree runs the
- *   same walk scoped to `relDir`, sweeping only that prefix. Provided by
- *   `scanner.js` so this module never imports it back (would be circular:
- *   `scanner.js` already imports `reconcile.js` for its `'paths'` runs).
+ * @property {(relDir: string) => Promise<{ stats: ReconcileStats }>} scanSubtree runs the
+ *   same walk scoped to `relDir`, sweeping only that prefix (`scanner.js`'s
+ *   implementation returns its own full `ScanStats`, a superset of this
+ *   shape). Provided by `scanner.js` so this module never imports it back
+ *   (would be circular: `scanner.js` already imports `reconcile.js` for its
+ *   `'paths'` runs).
  */
 
 /** @returns {ReconcileStats} */
 function emptyStats() {
-  return { added: 0, updated: 0, removed: 0, unchanged: 0 };
+  return {
+    added: 0,
+    updated: 0,
+    removed: 0,
+    unchanged: 0,
+    failedDirs: 0,
+    skippedSymlinks: 0,
+    skippedUndecodable: 0,
+    protectedRoots: 0,
+  };
 }
 
 /**
@@ -81,6 +99,21 @@ function deletePathAndSubtree(db, relPath, stats) {
   const removedItem = deleteItem(db, relPath);
   const removedSubtree = deleteItemsUnderDir(db, relPath) > 0;
   if (removedItem || removedSubtree) stats.removed += 1;
+}
+
+/**
+ * Whether any `/`-separated segment of `relPath` — not just its last one —
+ * is unsafe (`''`, `.` or `..`, which would escape containment) or a skipped
+ * name. A watcher can report a path such as `Filme/.hidden/x.mp4` or
+ * `Filme/@eaDir/x.mp4` (an ancestor, not the entry itself, matches the skip
+ * rules); the whole path must then be treated as skipped — never indexed,
+ * never descended into — matching the walk, which never lists a skipped
+ * directory's contents in the first place.
+ * @param {string} relPath
+ * @returns {boolean}
+ */
+function hasUnsafeOrSkippedSegment(relPath) {
+  return relPath.split('/').some((segment) => segment === '' || segment === '.' || segment === '..' || isSkippedName(segment));
 }
 
 /**
@@ -148,6 +181,12 @@ async function reconcileFile(ctx, relPath, category, stat, stats) {
  * @returns {Promise<boolean>} whether to escalate to a full scan
  */
 async function reconcileOne(ctx, relPath, rootName, category, stats) {
+  if (hasUnsafeOrSkippedSegment(relPath)) {
+    deletePathAndSubtree(ctx.db, relPath, stats);
+    ctx.dirObserver.gone(relPath);
+    return false;
+  }
+
   /** @type {import('node:fs').Stats} */
   let st;
   try {
@@ -159,7 +198,7 @@ async function reconcileOne(ctx, relPath, rootName, category, stats) {
     return false; // any other lstat error: keep rows, the periodic scan repairs it
   }
 
-  if (st.isSymbolicLink() || isSkippedName(basename(relPath))) {
+  if (st.isSymbolicLink()) {
     deletePathAndSubtree(ctx.db, relPath, stats);
     ctx.dirObserver.gone(relPath);
     return false;
@@ -170,6 +209,10 @@ async function reconcileOne(ctx, relPath, rootName, category, stats) {
     stats.updated += sub.updated;
     stats.removed += sub.removed;
     stats.unchanged += sub.unchanged;
+    stats.failedDirs += sub.failedDirs;
+    stats.skippedSymlinks += sub.skippedSymlinks;
+    stats.skippedUndecodable += sub.skippedUndecodable;
+    stats.protectedRoots += sub.protectedRoots;
     return false;
   }
   if (st.isFile()) {
