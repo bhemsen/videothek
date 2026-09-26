@@ -13,7 +13,7 @@
 |---|---|---|---|
 | 1 | Foundation & accounts — project skeleton, config, router, static serving, SQLite + migrations, login/sessions, admin bootstrap, user admin UI, `npm run verify` | [spec-foundation-accounts](specs/spec-foundation-accounts.md) | [#1](https://github.com/bhemsen/videothek/milestone/1) |
 | 2 | Library index: movies & series — scanner, movie/series parsers, direct-play compatibility table, watcher + periodic rescan, browse API + UI | [spec-library-video](specs/spec-library-video.md) | [#2](https://github.com/bhemsen/videothek/milestone/2) |
-| 3 | Video streaming & player — path guard, range streaming (206/416), video player page | — | — |
+| 3 | Video streaming & player — path guard, range streaming (206/416), video player page | [spec-video-streaming](specs/spec-video-streaming.md) | [#3](https://github.com/bhemsen/videothek/milestone/3) |
 | 4 | Progress & resume — progress API, player integration, "continue watching" | — | — |
 | 5 | Music & audiobooks — ID3v2/FLAC tag readers, parsers, audio player with album/book queue and resume | — | — |
 | 6 | Image gallery — folder gallery, EXIF embedded thumbnails, lightbox | — | — |
