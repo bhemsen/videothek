@@ -237,13 +237,25 @@ export function listSubtreeFolderCounts(db, key) {
 
 /**
  * The first playable image in folder `key`'s subtree (`key` itself and every
- * folder below it), in `(folder, rel_path)` binary order — the gallery API's
- * folder-tile cover — or `null` when the subtree has no playable image.
+ * folder below it — for the root, `key === ''`, every folder in the library),
+ * in `(folder, rel_path)` binary order — the gallery API's folder-tile cover —
+ * or `null` when the subtree has no playable image.
  * @param {import('node:sqlite').DatabaseSync} db
  * @param {string} key
  * @returns {ItemRow | null}
  */
 export function findFolderCover(db, key) {
+  if (key === '') {
+    const row = db
+      .prepare(
+        `${ITEM_ROW_SELECT}
+         WHERE li.kind = 'image' AND li.playable = 1
+         ORDER BY im.folder, li.rel_path
+         LIMIT 1`
+      )
+      .get();
+    return row ? toItemRow(row) : null;
+  }
   const [lower, upper] = subtreeBounds(key);
   const row = db
     .prepare(

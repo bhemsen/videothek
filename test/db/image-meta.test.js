@@ -227,6 +227,27 @@ test('listSubtreeFolderCounts aggregates per exact folder below key, root treate
   }
 });
 
+test('listSubtreeFolderCounts uses exact range bounds: a LIKE "_" wildcard would over-match, the range must not', () => {
+  const db = makeDb();
+  try {
+    const wild = insertItem(db, { rel_path: 'Bilder/A_B/x/1.jpg', dir: 'Bilder/A_B/x' });
+    const decoy = insertItem(db, { rel_path: 'Bilder/AxB/y/1.jpg', dir: 'Bilder/AxB/y' });
+    insertMetaStubs(db, [
+      { itemId: wild, folder: 'A_B/x' },
+      { itemId: decoy, folder: 'AxB/y' },
+    ]);
+    // LIKE 'A\_B/%' would treat '_' as "any one character" and also match
+    // folder 'AxB/y'; the range bounds must exclude it.
+    assert.deepEqual(
+      listSubtreeFolderCounts(db, 'A_B').map((r) => ({ ...r })),
+      [{ folder: 'A_B/x', count: 1 }],
+      'only the literal A_B subtree matches, not AxB'
+    );
+  } finally {
+    db.close();
+  }
+});
+
 test('findFolderCover picks the first playable image in (folder, rel_path) binary order across the whole subtree', () => {
   const db = makeDb();
   try {
@@ -247,6 +268,51 @@ test('findFolderCover picks the first playable image in (folder, rel_path) binar
     assert.equal(findFolderCover(db, 'A')?.id, a, 'lowest rel_path among playable images in folder A itself wins');
     assert.equal(findFolderCover(db, 'A/Sub')?.id, deeper);
     assert.equal(findFolderCover(db, 'Nope'), null);
+  } finally {
+    db.close();
+  }
+});
+
+test('findFolderCover orders by folder before rel_path: a shallower folder wins even when its rel_path sorts later', () => {
+  const db = makeDb();
+  try {
+    const z = insertItem(db, { rel_path: 'Bilder/A/z.jpg', dir: 'Bilder/A' });
+    const subA = insertItem(db, { rel_path: 'Bilder/A/Sub/a.jpg', dir: 'Bilder/A/Sub' });
+    insertMetaStubs(db, [
+      { itemId: z, folder: 'A' },
+      { itemId: subA, folder: 'A/Sub' },
+    ]);
+    // By rel_path alone, 'Bilder/A/Sub/a.jpg' < 'Bilder/A/z.jpg' ('S' < 'z'),
+    // but ORDER BY folder first must still pick folder 'A' before 'A/Sub'.
+    assert.equal(findFolderCover(db, 'A')?.id, z, 'folder order wins over rel_path order');
+  } finally {
+    db.close();
+  }
+});
+
+test('findFolderCover sorts rel_path in BINARY order, not NOCASE', () => {
+  const db = makeDb();
+  try {
+    const upper = insertItem(db, { rel_path: 'Bilder/A/B.jpg', dir: 'Bilder/A' });
+    const lower = insertItem(db, { rel_path: 'Bilder/A/a.jpg', dir: 'Bilder/A' });
+    insertMetaStubs(db, [
+      { itemId: upper, folder: 'A' },
+      { itemId: lower, folder: 'A' },
+    ]);
+    // Under NOCASE, 'a.jpg' would compare as 'A.jpg' and sort before 'B.jpg'.
+    // Default BINARY collation sorts 'B' (0x42) before 'a' (0x61).
+    assert.equal(findFolderCover(db, 'A')?.id, upper, 'binary collation: uppercase sorts before lowercase');
+  } finally {
+    db.close();
+  }
+});
+
+test('findFolderCover with the root key covers the whole library, not just root-level items', () => {
+  const db = makeDb();
+  try {
+    const nested = insertItem(db, { rel_path: 'Bilder/A/a.jpg', dir: 'Bilder/A' });
+    insertMetaStubs(db, [{ itemId: nested, folder: 'A' }]);
+    assert.equal(findFolderCover(db, '')?.id, nested, 'root has no direct items, but the subtree still has one');
   } finally {
     db.close();
   }
