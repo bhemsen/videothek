@@ -503,6 +503,13 @@ Human QA (Chromium + Firefox; desktop 1280 px and 390 px mobile emulation;
   removed; lightbox history reconciled in one `close` handler (covers Android
   back via close-watcher); focus returns to the last shown item; arrow keys and
   swipes on a `<video>` left to native controls.
+- 2026-09-26: `orientationClass(n)` (`public/js/image-format.js`) names the
+  per-orientation CSS classes `orient-2`..`orient-8` (kebab-case, one class
+  per non-identity transform of the Orientation row); orientation 1 and any
+  unknown value get `''` (no class, no transform). `image-tiles.js`/
+  `images.css` and the lightbox slide styling must use exactly these class
+  names. `classifySwipe` returns the same `'prev' | 'next' | null` literals
+  as `keyAction` so both feed one navigation function.
 - 2026-09-26: Review findings resolved — breadcrumb hit area ≥ 44 px; header
   meta counts direct children and omits zero parts; `\` allowed in folder keys;
   range form instead of `LIKE`; `test/library/gallery.test.js` added; P3's
