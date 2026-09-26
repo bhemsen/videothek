@@ -659,3 +659,21 @@ compared with the exports):
   also get `year: null` — "ignore tags for group display" is read to cover
   the tag-derived year like it covers title/artist, not just the two fields
   the row names explicitly.
+- 2026-09-27: issue #71 implementation (`public/js/audio/{queue,player,format}.js`)
+  — verified the Phase 4 `progress.js` merged on main: `stopTracker` sets
+  `stopped`, clears the interval and removes every listener before calling
+  `report()` (unawaited), so `stop()` dispatches its report and detaches
+  listeners/timers synchronously before its first await exactly as this
+  issue requires; no Phase 4 fix needed. `createQueue`'s `startIndex` rule
+  ("a non-playable start item → the next playable one") is read as a forward
+  search from `startIndex` that wraps to the start of `items` when no
+  playable item follows, so a queue always has a current item whenever any
+  member is playable — the row does not name this edge case. The player's
+  bounded switch is implemented as `raceWithTimeout(outgoing.stop(), 1000)`
+  (a manual race that clears the 1 s timer once `stop()` wins) rather than
+  the row's literal `Promise.race([prev.stop(), delay(1000)])`, to avoid
+  leaking a pending timer on every fast switch; behaviour (wait for `stop()`,
+  capped at 1 s, old handle never called again) is unchanged and covered by
+  the never-resolving-`stop()` test. `formatPercent(null)` — not named in the
+  "German formatting" row — returns `'–'` (no `%`), matching the `–:–`
+  placeholder style of `formatDuration`/`formatTotal`.
