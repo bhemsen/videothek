@@ -115,6 +115,11 @@ a {
   cursor: not-allowed;
 }
 
+.btn svg {
+  width: var(--space-4);
+  height: var(--space-4);
+}
+
 .btn-primary {
   background: var(--color-primary);
   color: var(--color-background);
@@ -158,7 +163,7 @@ a {
 
 /* Inputs and selects — background fill (they sit on secondary cards) */
 
-input,
+input:not([type="range"], [type="checkbox"], [type="radio"]),
 textarea,
 .select select {
   display: block;
@@ -209,6 +214,8 @@ textarea[aria-invalid="true"],
   position: absolute;
   top: 50%;
   right: var(--space-3);
+  width: var(--space-4);
+  height: var(--space-4);
   transform: translateY(-50%);
   color: var(--color-muted);
   pointer-events: none;
@@ -236,13 +243,15 @@ textarea[aria-invalid="true"],
   height: var(--space-16);
 }
 
-.empty-state h2 {
+.empty-state h2,
+.empty-state-title {
   margin: 0;
   color: var(--color-foreground);
   font-size: var(--text-xl);
 }
 
-.empty-state p {
+.empty-state p,
+.empty-state-text {
   margin: 0;
   font-size: var(--text-md);
 }

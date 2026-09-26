@@ -117,6 +117,13 @@ test('design.md front matter parses completely (regression guard)', () => {
   assert.ok('scale' in spacing, 'spacing.scale missing');
   assert.deepEqual(Object.keys(radii).sort(), ['full', 'lg', 'md', 'sm']);
   assert.deepEqual(Object.keys(shadow).sort(), ['md', 'sm']);
+  // Guards the per-entry token tests below against a silently shortened
+  // scale (e.g. a removed size), which would otherwise pair textNames[i]/
+  // spaceNames[i] with the wrong number or leave them undefined.
+  assert.equal(numbers(type.scale).length, 7, 'type.scale must have 7 sizes');
+  assert.equal(numbers(type.weights).length, 3, 'type.weights must have 3 weights');
+  assert.equal(numbers(type['line-height']).length, 2, 'type.line-height must have 2 values');
+  assert.equal(numbers(spacing.scale).length, 8, 'spacing.scale must have 8 sizes');
 });
 
 test('tokens.css mirrors every design.md colour token', () => {
@@ -183,8 +190,9 @@ function findRawLengths(content) {
   /** @type {string[]} */
   const violations = [];
   for (const m of content.matchAll(/@media([^{]*)\{/g)) {
-    for (const n of m[1].matchAll(/(\d+)px/g)) {
-      if (n[1] !== '768' && n[1] !== '1024') violations.push(`@media ${n[1]}px`);
+    for (const n of m[1].matchAll(/(-?\d+(?:\.\d+)?)(px|rem|em)\b/g)) {
+      const length = `${n[1]}${n[2]}`;
+      if (length !== '768px' && length !== '1024px') violations.push(`@media ${length}`);
     }
   }
   const stripped = content.replace(/@media[^{]*\{/g, '@media {');
