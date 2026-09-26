@@ -246,8 +246,9 @@ Firefox, desktop and a phone-width viewport):
 - [ ] `/player.html?id=999999` → "Titel nicht gefunden"; after logging out, a
       direct `curl /media/<id>` → `401`.
 - [ ] Keyboard: Space, K, ←/→, F, M work with focus on the page; Tab reaches
-      "Zurück", the video controls and "Nächste Folge" with a visible amber focus
-      ring; Space on a focused button activates the button, not playback.
+      "Zurück", the video controls and "Nächste Folge" with a visible primary
+      (orange) focus ring; Space on a focused button activates the button, not
+      playback.
 - [ ] Screens match the committed mockups (tokens only, German copy, targets
       ≥ 44 px).
 - [ ] Performance on the Pi 4: idle RSS < 100 MB; two different 1080p MP4s play
