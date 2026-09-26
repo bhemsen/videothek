@@ -10,15 +10,15 @@ import { join } from 'node:path';
 
 /**
  * @typedef {object} DirWatchSet
- * @property {(relDir: string) => void} seen Ensure a non-recursive watch exists for `relDir` (idempotent).
+ * @property {(relDir: string) => void} seen Ensure a non-recursive watch exists for `relDir` (idempotent). A no-op after `closeAll`.
  * @property {(relDir: string) => void} gone Close the watch for `relDir` and every watch below it.
- * @property {(visitedDirs: Set<string>) => void} sweep Close every watch whose directory was not visited; only call after a full scan.
+ * @property {(visitedDirs: Set<string>) => void} sweep Close every watch whose directory was not visited; only call after a full scan. Never closes the `''` (MEDIA_ROOT) watch — the scanner's walk never visits MEDIA_ROOT itself, so `visitedDirs` never contains `''`.
  * @property {() => number} count Number of currently open watches.
  * @property {() => void} closeAll Close every open watch.
  */
 
 /** @typedef {{ mediaRoot: string, watchFn: WatchFn, onEvent: (relPath: string | null) => void, onWatchError: (relDir: string) => void, log: Logger }} Deps */
-/** @typedef {{ watches: Map<string, RawWatcher>, limitReached: boolean }} State */
+/** @typedef {{ watches: Map<string, RawWatcher>, limitReached: boolean, stopped: boolean }} State */
 
 /**
  * Creates the per-directory watch set used as the scanner's `dirObserver` on
@@ -26,14 +26,17 @@ import { join } from 'node:path';
  * kept in sync with `seen`/`gone`/`sweep`. Each watch handles its own error
  * independently; a resource-limit error (`ENOSPC`/`EMFILE`) is logged once
  * and stops new watches from being added until the next `sweep` (i.e. the
- * next full scan).
+ * next full scan). The `''` (MEDIA_ROOT) entry is seeded only by the
+ * watcher's own `start()`, never by the scanner's walk, so `sweep` leaves it
+ * alone regardless of `visitedDirs` (see decision log, #31). `seen` is a
+ * no-op after `closeAll` so an in-flight scan cannot reopen a watch post-stop.
  *
  * @param {Deps} deps
  * @returns {DirWatchSet}
  */
 export function createDirWatchSet(deps) {
   /** @type {State} */
-  const state = { watches: new Map(), limitReached: false };
+  const state = { watches: new Map(), limitReached: false, stopped: false };
   return {
     seen: (relDir) => seen(state, deps, relDir),
     gone: (relDir) => gone(state, relDir),
@@ -98,7 +101,7 @@ function joinRelPath(relDir, filename) {
  * @param {string} relDir
  */
 function seen(state, deps, relDir) {
-  if (state.watches.has(relDir) || state.limitReached) return;
+  if (state.stopped || state.watches.has(relDir) || state.limitReached) return;
   /** @type {RawWatcher} */
   let watcher;
   try {
@@ -132,17 +135,24 @@ function gone(state, relDir) {
 }
 
 /**
+ * Closes every watch whose directory was not visited by the full scan that
+ * just completed, except `''` (MEDIA_ROOT): the scanner's walk never visits
+ * MEDIA_ROOT itself, so `visitedDirs` never contains `''`, and treating it
+ * like any other unvisited key would close the root watch after the first
+ * full scan with nothing left to reopen it (decision log, #31).
+ *
  * @param {State} state
  * @param {Set<string>} visitedDirs
  */
 function sweep(state, visitedDirs) {
   for (const key of [...state.watches.keys()]) {
-    if (!visitedDirs.has(key)) closeWatch(state, key);
+    if (key !== '' && !visitedDirs.has(key)) closeWatch(state, key);
   }
   state.limitReached = false;
 }
 
 /** @param {State} state */
 function closeAll(state) {
+  state.stopped = true;
   for (const key of [...state.watches.keys()]) closeWatch(state, key);
 }

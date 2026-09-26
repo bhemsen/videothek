@@ -157,14 +157,21 @@ function createRecursiveMode({ mediaRoot, watchFn, log, rootBackoff, onFsEvent, 
 
   /** @returns {boolean} */
   function attempt() {
+    /** @type {ReturnType<WatchFn>} */
+    let thisWatcher;
     try {
-      watcher = watchFn(mediaRoot, { persistent: true, recursive: true }, handleEvent);
+      thisWatcher = watchFn(mediaRoot, { persistent: true, recursive: true }, handleEvent);
     } catch (err) {
       log.warn('library_watch_error', { dir: '', code: /** @type {NodeJS.ErrnoException} */ (err)?.code ?? 'unknown' });
       return false;
     }
-    watcher.on?.('error', (err) => {
-      if (isStopped()) return;
+    watcher = thisWatcher;
+    // Guards against the same (already-closed) watcher emitting 'error'
+    // twice: the first error nulls out `watcher` via close(), so a stale
+    // duplicate no longer matches `thisWatcher` and cannot schedule a second,
+    // overlapping backoff retry.
+    thisWatcher.on?.('error', (err) => {
+      if (watcher !== thisWatcher || isStopped()) return;
       close();
       log.warn('library_watch_error', { dir: '', code: err?.code ?? 'unknown' });
       rootBackoff.retry(attempt);
@@ -220,9 +227,14 @@ function createDebounce({ scanner, timers, debounceMs, maxWaitMs }) {
 
   /** @param {string | null} relPath */
   function record(relPath) {
-    if (relPath === null) escalated = true;
-    else pending.add(relPath);
-    if (pending.size > ESCALATE_PATH_COUNT) escalated = true;
+    if (relPath === null) {
+      escalated = true;
+    } else if (!escalated) {
+      // Once escalated, the set is thrown away unread at flush, so stop
+      // growing it — a long burst would otherwise accumulate paths forever.
+      pending.add(relPath);
+      if (pending.size > ESCALATE_PATH_COUNT) escalated = true;
+    }
     if (!maxWaitTimer) maxWaitTimer = timers.setTimeout(flush, maxWaitMs);
     if (trailingTimer) timers.clearTimeout(trailingTimer);
     trailingTimer = timers.setTimeout(flush, debounceMs);

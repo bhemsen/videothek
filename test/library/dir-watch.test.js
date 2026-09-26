@@ -144,6 +144,23 @@ test('sweep() closes every watch not in the visited set', () => {
   assert.equal(watchers.get(abs('Serien'))?.closed, true);
 });
 
+test('sweep() never closes the MEDIA_ROOT (\'\') watch even though the scanner never visits it', () => {
+  const { watchFn, watchers } = createFakeWatchFn();
+  const { log } = createFakeLog();
+  const set = createDirWatchSet({ mediaRoot, watchFn, onEvent() {}, onWatchError() {}, log });
+
+  set.seen(''); // only the watcher's start() ever does this
+  set.seen('Filme');
+
+  // The scanner's walk never visits MEDIA_ROOT itself, so a real visited set
+  // never contains ''.
+  set.sweep(new Set(['Filme']));
+
+  assert.equal(set.count(), 2);
+  assert.equal(watchers.get(abs(''))?.closed, false);
+  assert.equal(watchers.get(abs('Filme'))?.closed, false);
+});
+
 test('a per-watch runtime error closes the watch, logs once and reports the directory', () => {
   const { watchFn, watchers } = createFakeWatchFn();
   const { log, warns } = createFakeLog();
@@ -226,4 +243,16 @@ test('closeAll() closes every open watch', () => {
   assert.equal(set.count(), 0);
   assert.equal(watchers.get(abs('Filme'))?.closed, true);
   assert.equal(watchers.get(abs('Serien'))?.closed, true);
+});
+
+test('seen() is a no-op after closeAll(), so a scan walk still in flight cannot reopen a watch post-stop', () => {
+  const { watchFn, calls } = createFakeWatchFn();
+  const { log } = createFakeLog();
+  const set = createDirWatchSet({ mediaRoot, watchFn, onEvent() {}, onWatchError() {}, log });
+
+  set.closeAll();
+  set.seen('Filme'); // e.g. the scanner's in-flight walk, checked between directories only
+
+  assert.equal(set.count(), 0);
+  assert.equal(calls.length, 0);
 });

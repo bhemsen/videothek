@@ -239,6 +239,25 @@ test('recursive mode: an error on a running watch retries and recovers', (t) => 
   assert.equal(scanner.fullCount, 1);
 });
 
+test('recursive mode: a duplicate error event from the same stale watcher does not schedule a second backoff', (t) => {
+  t.mock.timers.enable({ apis: ['setTimeout'] });
+  const { watchFn, watchers } = createControllableWatchFn();
+  const scanner = createFakeScanner();
+  const watcher = createWatcher({ mediaRoot, scanner, log: createFakeLog().log, platform: 'win32', watchFn });
+
+  watcher.start();
+  const stale = watchers.get(mediaRoot);
+  const err = /** @type {NodeJS.ErrnoException} */ (Object.assign(new Error('x'), { code: 'EIO' }));
+  stale?.triggerError(err);
+  stale?.triggerError(err); // e.g. an EIO the OS reports twice on the same fd
+
+  t.mock.timers.tick(5000);
+  assert.equal(scanner.fullCount, 1); // one recovery, not one queued behind another
+
+  t.mock.timers.tick(300000); // nothing left over-scheduled
+  assert.equal(scanner.fullCount, 1);
+});
+
 test('recursive mode: relative-path events use forward slashes', (t) => {
   t.mock.timers.enable({ apis: ['setTimeout'] });
   const { watchFn, watchers } = createControllableWatchFn();
