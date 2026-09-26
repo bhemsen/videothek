@@ -820,3 +820,19 @@ phone 390 px and desktop 1440 px, compared with the design exports):
   `playing` fallback), a later `emptied` never re-issues it — only P3's own
   reload seek moves `currentTime` after that point, so `trackPlayback` never
   fights it.
+- 2026-09-26: implementation (#52) — `src/api/progress-rules.js` fixes the
+  names/shapes the spec left open: `validateProgressBody(body)` ->
+  `{ position, duration } | null`; `decideProgressWrite({ category, position,
+  duration, existingFinished })` -> `{ write: false }` or `{ write: true,
+  finished }` (the three write-rule steps collapsed into one discriminated
+  result so a caller never upserts on the guarded branch);
+  `deriveProgressState({ finished, position })` ->
+  `'none' | 'in_progress' | 'finished'` (also the function
+  `progress-next-up.js` uses to find *L* and ignore `none` rows —
+  the reason that issue depends on this one); `toProgressEntryJson({ itemId,
+  position, duration, finished, updatedAt })` -> the entry JSON (`updatedAt:
+  null` passes through as `null`, matching the "no row" entry);
+  `parseProgressQuery(searchParams)` -> `{ categories, view, limit } | null`,
+  `null` on any violation (caller maps it to `400 invalid_query`); the
+  `category`/`limit` defaults and the valid category set are derived from
+  P2's `CATEGORIES` at module load, never re-hardcoded.
