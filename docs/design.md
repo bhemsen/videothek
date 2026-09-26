@@ -102,8 +102,9 @@ as a committed file at the location above, not as a link.
   secondary surface); height ≥ 44 px, radius `md`; states: hover lightens 8 %,
   active darkens 8 %, disabled 40 % opacity, focus = 2 px `primary` outline with
   2 px offset.
-- **Input** — secondary surface, 1 px `border`, radius `md`, 16 px text (avoids
-  iOS zoom); focus = `primary` outline; error = `destructive` border + message
+- **Input** — `background` fill (inputs and selects sit on `secondary` cards,
+  where a secondary fill would be invisible), 1 px `border`, radius `md`,
+  16 px text (avoids iOS zoom); focus = `primary` outline; error = `destructive` border + message
   below.
 - **Media card** — thumbnail (16:9 video, 1:1 audio/image, 2:3 poster
   fallback), title (1 line, ellipsis), meta in `muted`; radius `md`, `shadow-sm`;
@@ -115,7 +116,10 @@ as a committed file at the location above, not as a link.
   title + back action above; audio player as a persistent bottom bar on
   `secondary` surface.
 - **Grid / list** — media cards in a responsive grid (min column 160 px, gap
-  16 px); episodes and tracks as list rows (≥ 48 px height).
+  16 px); phones always get at least two columns:
+  `grid-template-columns: repeat(auto-fill, minmax(min(var(--grid-min), calc(50% - 8px)), 1fr))`
+  (8 px = half the gap, written `calc(50% - var(--space-2))` in CSS;
+  `--grid-min` = 160 px); episodes and tracks as list rows (≥ 48 px height).
 
 ## Do's and Don'ts
 
