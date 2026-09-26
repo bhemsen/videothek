@@ -800,3 +800,26 @@ Chromium and Firefox, mobile ≤ 767 px and desktop ≥ 1024 px viewport):
   interleaving is not exercisable against a synchronous `node:sqlite` handle
   in a single-threaded test process; the two-connection form still proves the
   guard reads committed DB state rather than an in-process cache.
+- 2026-09-26 (#14): `src/auth/{sessions,bootstrap}.js` implemented. Both
+  `createSessionStore({ db, now })` and `ensureAdmin({ ..., now })` default
+  `now` to `Date.now`, matching the `now = Date.now` convention already used
+  by `rate-limit.js`/`log.js`, even though the module-layout table's
+  shorthand omits the default — every real caller and every test still
+  injects its own clock. `resolve()`'s expiry check reuses
+  `deleteExpiredSessions`'s inclusive rule (`expiresAt <= now` = expired) for
+  consistency, but does not itself delete the expired row — that stays
+  `purgeExpired()`'s (and the startup/hourly timer's) job, so `resolve` stays
+  a pure read-or-refresh path. The "at most one write per session per day"
+  property needs no extra bookkeeping: since a session refreshes only when
+  fewer than 29 of its 30-day lifetime remain, a refresh always pushes
+  `expiresAt` back out to a full 30 days, so a second resolve on the same day
+  can never again drop under the 29-day threshold. `ensureAdmin` independently
+  validates `adminUser`/`adminPassword` with `validateUsername`/
+  `validatePassword` even though `src/config.js` already requires the pair to
+  be both-set-or-both-unset — `loadConfig` never checks their *format*, so an
+  invalid username or a too-short password reaching `ensureAdmin` on an empty
+  database is exactly the "invalid vars" `BootstrapError` case the acceptance
+  criteria name. `admin_missing` logs at `error` (it precedes the process
+  exiting 1); `admin_env_ignored` logs at `warn` (non-fatal, but flags a
+  configuration the operator should probably clean up); `admin_bootstrapped`
+  logs at `info`.
