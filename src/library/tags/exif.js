@@ -91,6 +91,7 @@ export function parseExif(buf) {
  * payload starts `Exif\0\0`. Stops at SOS, EOI, a non-marker byte or the
  * window end. `segmentEnd` is the segment's *declared* end (from its length
  * field), which may exceed `window` for a deliberately truncated buffer.
+ * Every length-bearing marker (not just APPn/COM) is skipped the same way.
  *
  * @param {Buffer} buf
  * @param {number} window
@@ -238,8 +239,9 @@ function readAsciiTag(buf, ifd, tag, tiffStart, little, limit) {
 }
 
 /**
- * DateTimeOriginal from the Exif sub-IFD (`0x8769`/`0x9003`), falling back
- * to IFD0's DateTime (`0x0132`) when the sub-IFD or its tag is absent.
+ * DateTimeOriginal from the Exif sub-IFD (`0x8769`/`0x9003`), falling back to
+ * IFD0's DateTime (`0x0132`) only when absent by *presence*, not validity —
+ * a present-but-invalid DateTimeOriginal is not retried against IFD0.
  * @param {Buffer} buf @param {Ifd} ifd0 @param {number} tiffStart @param {boolean} little @param {number} limit @param {Set<number>} visited @returns {string | null}
  */
 function readTakenAt(buf, ifd0, tiffStart, little, limit, visited) {
@@ -292,6 +294,7 @@ function readThumbLocation(buf, ifd0, tiffStart, little, limit, payloadStart, se
   if (offsetRel === null || length === null || length <= 0 || length > MAX_THUMB_LENGTH) return none;
   const absOffset = tiffStart + offsetRel;
   if (absOffset < payloadStart || absOffset + length > segmentEnd) return none;
-  if (absOffset + 2 <= window && !isJpegStart(buf.subarray(absOffset, absOffset + 2))) return none;
+  const peekEnd = Math.min(segmentEnd, window);
+  if (absOffset + 2 <= peekEnd && !isJpegStart(buf.subarray(absOffset, absOffset + 2))) return none;
   return { thumbOffset: absOffset, thumbLength: length };
 }

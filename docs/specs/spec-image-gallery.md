@@ -562,7 +562,11 @@ Human QA (Chromium + Firefox; desktop 1280 px and 390 px mobile emulation;
   custom AC Huffman table needs only one symbol (EOB), avoiding transcribing
   the large standard 162-symbol table; verified by decoding the output
   visually before embedding it as base64. The QA fixture tree's non-JPEG
-  entries (`.heic`/`.webm`/`.mov`/`.png`/`.gif`) are a few arbitrary bytes per
-  the Fixtures row's explicit sanction; capture dates/times for the fixture
-  files the QA tree row leaves unpinned (Tag 1/Tag 2, `geburtstag.jpg`,
-  `alias.jpg`) were chosen to keep chronological order plausible.
+  entries (`.heic`/`.mov`/`.png`/`.gif`) are a few arbitrary bytes per the
+  Fixtures row's explicit sanction; `VID_0433.webm` is that row's one
+  exception (a real, decodable VP8/VP9 file, ≤ 50 KiB), committed separately
+  by the docs/fixtures issue, so `--write` never generates or overwrites it —
+  it only re-applies the fixed mtime when the file is already present and
+  otherwise leaves it out. Capture dates/times for the fixture files the QA
+  tree row leaves unpinned (Tag 1/Tag 2, `geburtstag.jpg`, `alias.jpg`) were
+  chosen to keep chronological order plausible.

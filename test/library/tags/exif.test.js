@@ -1,7 +1,7 @@
 import { test } from 'node:test';
 import assert from 'node:assert/strict';
 import { randomBytes } from 'node:crypto';
-import { mkdtemp, writeFile, mkdir } from 'node:fs/promises';
+import { mkdtemp, writeFile, mkdir, rm } from 'node:fs/promises';
 import { tmpdir } from 'node:os';
 import path from 'node:path';
 import { EXIF_WINDOW_BYTES, JPEG_EXTENSIONS, THUMB_MIME, isJpegStart, parseExif, verifyThumb } from '../../../src/library/tags/exif.js';
@@ -154,8 +154,9 @@ test('parseExif: random bytes never throw', () => {
   }
 });
 
-test('verifyThumb: matching size/mtime and a JPEG SOI at the offset returns true', async () => {
+test('verifyThumb: matching size/mtime and a JPEG SOI at the offset returns true', async (t) => {
   const dir = await mkdtemp(path.join(tmpdir(), 'exif-thumb-'));
+  t.after(() => rm(dir, { recursive: true, force: true }));
   const file = path.join(dir, 'photo.jpg');
   const buf = buildExifJpeg({ thumbnail: { compression: 6 } });
   await writeFile(file, buf);
@@ -165,8 +166,9 @@ test('verifyThumb: matching size/mtime and a JPEG SOI at the offset returns true
   assert.equal(ok, true);
 });
 
-test('verifyThumb: a changed size or mtime returns false', async () => {
+test('verifyThumb: a changed size or mtime returns false', async (t) => {
   const dir = await mkdtemp(path.join(tmpdir(), 'exif-thumb-'));
+  t.after(() => rm(dir, { recursive: true, force: true }));
   const file = path.join(dir, 'photo.jpg');
   const buf = buildExifJpeg({ thumbnail: { compression: 6 } });
   await writeFile(file, buf);
@@ -177,16 +179,18 @@ test('verifyThumb: a changed size or mtime returns false', async () => {
   assert.equal(await verifyThumb(file, { thumbOffset, sourceSize: stat.size, sourceMtimeMs: Math.trunc(stat.mtimeMs) + 1000 }), false);
 });
 
-test('verifyThumb: a directory instead of a file returns false', async () => {
+test('verifyThumb: a directory instead of a file returns false', async (t) => {
   const dir = await mkdtemp(path.join(tmpdir(), 'exif-thumb-'));
+  t.after(() => rm(dir, { recursive: true, force: true }));
   const sub = path.join(dir, 'sub');
   await mkdir(sub);
   const ok = await verifyThumb(sub, { thumbOffset: 0, sourceSize: 0, sourceMtimeMs: 0 });
   assert.equal(ok, false);
 });
 
-test('verifyThumb: a short read at the offset (near EOF) returns false', async () => {
+test('verifyThumb: a short read at the offset (near EOF) returns false', async (t) => {
   const dir = await mkdtemp(path.join(tmpdir(), 'exif-thumb-'));
+  t.after(() => rm(dir, { recursive: true, force: true }));
   const file = path.join(dir, 'photo.jpg');
   await writeFile(file, Buffer.from([0xff, 0xd8]));
   const fs = await import('node:fs/promises');
@@ -195,8 +199,9 @@ test('verifyThumb: a short read at the offset (near EOF) returns false', async (
   assert.equal(ok, false);
 });
 
-test('verifyThumb: bytes at the offset not starting FF D8 return false', async () => {
+test('verifyThumb: bytes at the offset not starting FF D8 return false', async (t) => {
   const dir = await mkdtemp(path.join(tmpdir(), 'exif-thumb-'));
+  t.after(() => rm(dir, { recursive: true, force: true }));
   const file = path.join(dir, 'photo.jpg');
   await writeFile(file, Buffer.from([0x00, 0x00, 0x00, 0x00]));
   const fs = await import('node:fs/promises');
@@ -212,9 +217,10 @@ test('verifyThumb: an openFile rejection returns false without throwing', async 
   assert.equal(ok, false);
 });
 
-test('verifyThumb: every opened handle is closed, on every success and failure path', async () => {
+test('verifyThumb: every opened handle is closed, on every success and failure path', async (t) => {
   const fs = await import('node:fs/promises');
   const dir = await mkdtemp(path.join(tmpdir(), 'exif-thumb-'));
+  t.after(() => rm(dir, { recursive: true, force: true }));
 
   const matchFile = path.join(dir, 'photo.jpg');
   const buf = buildExifJpeg({ thumbnail: { compression: 6 } });
@@ -237,6 +243,7 @@ test('verifyThumb: every opened handle is closed, on every success and failure p
   const scenarios = [
     { label: 'match', file: matchFile, expected: { thumbOffset, sourceSize: matchStat.size, sourceMtimeMs: Math.trunc(matchStat.mtimeMs) }, wantOk: true },
     { label: 'size mismatch', file: matchFile, expected: { thumbOffset, sourceSize: 1, sourceMtimeMs: 0 }, wantOk: false },
+    { label: 'mtime mismatch', file: matchFile, expected: { thumbOffset, sourceSize: matchStat.size, sourceMtimeMs: Math.trunc(matchStat.mtimeMs) + 1000 }, wantOk: false },
     { label: 'directory', file: subDir, expected: { thumbOffset: 0, sourceSize: 0, sourceMtimeMs: 0 }, wantOk: false },
     { label: 'short read near EOF', file: shortFile, expected: { thumbOffset: shortStat.size - 1, sourceSize: shortStat.size, sourceMtimeMs: Math.trunc(shortStat.mtimeMs) }, wantOk: false },
     { label: 'bytes not FF D8', file: nonSoiFile, expected: { thumbOffset: 0, sourceSize: nonSoiStat.size, sourceMtimeMs: Math.trunc(nonSoiStat.mtimeMs) }, wantOk: false },

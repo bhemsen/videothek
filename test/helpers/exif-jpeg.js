@@ -10,7 +10,7 @@
  * @see docs/specs/spec-image-gallery.md — "Fixtures", "QA fixture tree".
  */
 
-import { writeFileSync, mkdirSync, utimesSync } from 'node:fs';
+import { writeFileSync, mkdirSync, utimesSync, existsSync } from 'node:fs';
 import path from 'node:path';
 import { pathToFileURL, fileURLToPath } from 'node:url';
 
@@ -174,15 +174,19 @@ export function buildExifJpeg(opts = {}) {
   return Buffer.concat([base.subarray(0, 2), app1, base.subarray(2)]);
 }
 
-/** QA fixture tree per the spec's "QA fixture tree" row; non-JPEG entries are a few synthetic bytes.
- * @type {{ p: string, exif?: Parameters<typeof buildExifJpeg>[0], raw?: Buffer, mtime: string }[]} */
+/** QA fixture tree per the spec's "QA fixture tree" row; non-JPEG entries are a few synthetic
+ * bytes, except `VID_0433.webm` (`skipContent`): the Fixtures row makes it the one file that must
+ * be a real, decodable video, committed separately by the docs/fixtures issue, so this writer
+ * never fabricates or overwrites it — it only re-applies the fixed mtime when the file already
+ * exists and otherwise leaves it out.
+ * @type {{ p: string, exif?: Parameters<typeof buildExifJpeg>[0], raw?: Buffer, skipContent?: boolean, mtime: string }[]} */
 const QA_FILES = [
   { p: 'Bilder/Urlaub 2024/Italien/IMG_0412.jpg', exif: { order: 'II', orientation: 1, dateTimeOriginal: '2024:07:14 09:14:00', thumbnail: { compression: 6 } }, mtime: '2024-07-14T09:14:00' },
   { p: 'Bilder/Urlaub 2024/Italien/IMG_0415.jpg', exif: { order: 'MM', orientation: 6, dateTimeOriginal: '2024:07:14 10:28:00', base: leftBandJpegBuffer(), thumbnail: { compression: 6, data: leftBandJpegBuffer() } }, mtime: '2024-07-14T10:28:00' },
   { p: 'Bilder/Urlaub 2024/Italien/IMG_0419.jpg', exif: { orientation: 8, dateTimeOriginal: '2024:07:14 11:45:00', base: rightBandJpegBuffer(), thumbnail: { compression: 6, data: rightBandJpegBuffer() } }, mtime: '2024-07-14T11:45:00' },
   { p: 'Bilder/Urlaub 2024/Italien/IMG_0424.jpg', raw: baseJpegBuffer(), mtime: '2024-07-14T12:00:00' },
   { p: 'Bilder/Urlaub 2024/Italien/IMG_0431.heic', raw: Buffer.from('synthetic-heic-fixture'), mtime: '2024-07-14T12:05:00' },
-  { p: 'Bilder/Urlaub 2024/Italien/VID_0433.webm', raw: Buffer.from('synthetic-webm-fixture'), mtime: '2024-07-14T12:10:00' },
+  { p: 'Bilder/Urlaub 2024/Italien/VID_0433.webm', skipContent: true, mtime: '2024-07-14T12:10:00' },
   { p: 'Bilder/Urlaub 2024/Italien/VID_0434.mov', raw: Buffer.from('synthetic-mov-fixture'), mtime: '2024-07-14T12:15:00' },
   { p: 'Bilder/Urlaub 2024/Italien/Screenshot 2.png', raw: Buffer.from('synthetic-png-fixture-2'), mtime: '2024-07-15T08:00:00' },
   { p: 'Bilder/Urlaub 2024/Italien/Screenshot 10.png', raw: Buffer.from('synthetic-png-fixture-10'), mtime: '2024-07-15T08:01:00' },
@@ -198,14 +202,20 @@ const QA_FILES = [
 /** (Re)writes the committed QA fixture tree under `root`, with fixed mtimes.
  * @param {string} root */
 function writeQaTree(root) {
+  let written = 0;
   for (const f of QA_FILES) {
     const full = path.join(root, f.p);
+    if (f.skipContent) {
+      if (existsSync(full)) utimesSync(full, new Date(f.mtime), new Date(f.mtime));
+      continue;
+    }
     mkdirSync(path.dirname(full), { recursive: true });
     writeFileSync(full, f.exif ? buildExifJpeg(f.exif) : f.raw ?? Buffer.alloc(0));
     const t = new Date(f.mtime);
     utimesSync(full, t, t);
+    written += 1;
   }
-  process.stdout.write(`wrote ${QA_FILES.length} QA fixture files under ${root}\n`);
+  process.stdout.write(`wrote ${written} QA fixture files under ${root}\n`);
 }
 
 /** Writes `n` copies of the base JPEG into `dir`, for the large-folder check.
@@ -221,8 +231,9 @@ const FIXTURES_MEDIA_DIR = new URL('../fixtures/media/', import.meta.url);
 
 function main() {
   const [cmd, a, b] = process.argv.slice(2);
+  const n = Number(a);
   if (cmd === '--write') writeQaTree(fileURLToPath(FIXTURES_MEDIA_DIR));
-  else if (cmd === '--bulk' && a && b) writeBulk(Number(a), b);
+  else if (cmd === '--bulk' && b && Number.isInteger(n) && n > 0) writeBulk(n, b);
   else {
     process.stderr.write('Usage: node test/helpers/exif-jpeg.js --write | --bulk <n> <dir>\n');
     process.exitCode = 1;
