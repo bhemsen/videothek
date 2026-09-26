@@ -4,7 +4,8 @@ import { cleanName, normalizeSeparators, parseYear } from './text.js';
 
 /**
  * @typedef {object} MovieResult
- * @property {string} title display title, never empty
+ * @property {string} title display title; empty only when nothing remains
+ *   after `cleanName` (e.g. a name that is only a parenthesised year)
  * @property {number | null} year release year, or `null` when not determined
  */
 
@@ -78,11 +79,23 @@ function extractTitleYear(s, now) {
 }
 
 /**
+ * Applies movie parse rules 1–3 (parenthesised year, token year, else
+ * `cleanName`) to a plain name with no extension to strip — used for a
+ * folder name, such as a series' folder (rules 1–3 on the folder name).
+ * @param {string} name raw folder (or extension-free) name
+ * @param {() => number} now injected clock
+ * @returns {MovieResult} the best-effort title and year
+ */
+export function titleYearFromName(name, now) {
+  return extractTitleYear(name, now) ?? { title: cleanName(name), year: null };
+}
+
+/**
  * Parses a movie's title and year from its path relative to the category
  * folder (`Filme`/`Movies`), per the spec's movie parse rules 1–4.
  * @param {string} relInCategory `/`-separated path below the category folder
  * @param {() => number} now injected clock (epoch ms), for the year upper bound
- * @returns {MovieResult} the best-effort title (never empty) and year
+ * @returns {MovieResult} the best-effort title and year
  */
 export function parseMovie(relInCategory, now) {
   const segments = relInCategory.split('/');

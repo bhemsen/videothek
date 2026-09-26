@@ -61,7 +61,7 @@ export function normalizeSeparators(s) {
 /**
  * Normalises a raw filename stem or folder name into a display title.
  * @param {string} s raw stem or folder name
- * @returns {string} the cleaned title, never empty
+ * @returns {string} the cleaned title; empty only when `s` itself is empty
  */
 export function cleanName(s) {
   let result = normalizeSeparators(s);

@@ -121,3 +121,32 @@ test('episode title is never empty', () => {
   assert.notEqual(result.title, '');
   assert.equal(result.title, 'S01E09');
 });
+
+test('series folder name with a dot after an abbreviation is not read as an extension', () => {
+  const result = parseEpisode('Mr. Robot/Season 1/Mr. Robot S01E01.mkv', NOW_2026);
+  assert.deepEqual(result, {
+    seriesKey: 'Mr. Robot',
+    seriesTitle: 'Mr. Robot',
+    seriesYear: null,
+    season: 1,
+    episode: 1,
+    episodeEnd: null,
+    title: 'S01E01'
+  });
+});
+
+test('series folder name with a dotted title and a year keeps both title and year', () => {
+  const result = parseEpisode('Dr. House (2004)/Staffel 1/S01E01.mp4', NOW_2026);
+  assert.equal(result.seriesKey, 'Dr. House (2004)');
+  assert.equal(result.seriesTitle, 'Dr. House');
+  assert.equal(result.seriesYear, 2004);
+  assert.equal(result.season, 1);
+  assert.equal(result.episode, 1);
+});
+
+test('episode word without a season folder: season null, episode from the word', () => {
+  const result = parseEpisode('MyShow/Folge 3 - Der Anfang.mp4', NOW_2026);
+  assert.equal(result.season, null);
+  assert.equal(result.episode, 3);
+  assert.equal(result.title, 'Der Anfang');
+});

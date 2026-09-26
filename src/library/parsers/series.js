@@ -1,7 +1,7 @@
 // @ts-check
 
 import { cleanName, episodeCode } from './text.js';
-import { parseMovie } from './movie.js';
+import { titleYearFromName } from './movie.js';
 
 /**
  * @typedef {object} EpisodeResult
@@ -16,7 +16,7 @@ import { parseMovie } from './movie.js';
 
 /** @typedef {{ season: number | null, episode: number | null, episodeEnd: number | null, matchStart: number | null, matchEnd: number | null }} SeasonEpisodeMatch */
 
-const SXXEXX_RE = /\bS(\d{1,2})[ ._-]?E(\d{1,3})(?:(?:-?E|-)(\d{1,3}))?\b/i;
+const SXXEXX_RE = /\bS(\d{1,2})[ ._-]?E(\d{1,3})(?:(?:-?E|-)(\d{1,3})\b)?/i;
 const NXMM_RE = /\b(\d{1,2})x(\d{2,3})\b/i;
 const SEASON_FOLDER_RE = /^(?:season|staffel|s)[ ._-]*(\d{1,2})$/i;
 const SPECIALS_FOLDER_RE = /^specials?$/i;
@@ -118,8 +118,9 @@ function detectFromFolderAndStem(stem, ancestorFolders) {
 
 /**
  * Derives the series key/title/year: the exact subfolder name (parsed with
- * movie rules 1–3), or, for a loose file, the cleaned text before the
- * matched season/episode token.
+ * movie rules 1–3 on the folder name itself, not as a file stem — the folder
+ * has no extension to strip), or, for a loose file, the cleaned text before
+ * the matched season/episode token.
  * @param {string[]} segments the full `/`-split relative path
  * @param {string} stem the file stem
  * @param {SeasonEpisodeMatch} match the detected season/episode match
@@ -129,7 +130,7 @@ function detectFromFolderAndStem(stem, ancestorFolders) {
 function deriveSeries(segments, stem, match, now) {
   if (segments.length > 1) {
     const folder = segments[0];
-    const parsed = parseMovie(folder, now);
+    const parsed = titleYearFromName(folder, now);
     return { seriesKey: folder, seriesTitle: parsed.title, seriesYear: parsed.year };
   }
   const before = match.matchStart !== null ? stem.slice(0, match.matchStart) : stem;
