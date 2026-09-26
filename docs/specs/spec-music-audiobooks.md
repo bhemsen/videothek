@@ -618,3 +618,12 @@ compared with the exports):
   chosen among playable files only; bar offset below 768 px includes
   `env(safe-area-inset-bottom)` like Phase 1's `main` padding; upper-case
   cover extensions rely on Phase 3's lower-casing `mediaTypeFor`.
+- 2026-09-26: `src/library/audio-groups.js` (#62) — the "Group assembly" row
+  names no total-duration field, so `buildAlbums`/`buildBooks` add
+  `durationMs` to each group object (sum of known member `durationMs`, `null`
+  when none is known) alongside `{ id, coverId, groupKey, title, artist/
+  author, members }`, since #68/#69 need one summed total and this module is
+  "one implementation ... for both APIs". Pseudo-albums (`groupTitle` null)
+  also get `year: null` — "ignore tags for group display" is read to cover
+  the tag-derived year like it covers title/artist, not just the two fields
+  the row names explicitly.
