@@ -745,3 +745,58 @@ Chromium and Firefox, mobile ≤ 767 px and desktop ≥ 1024 px viewport):
   parameters accept it without a cast. `PORT`/`RESCAN_INTERVAL_MIN` accept
   only a bare non-negative integer literal (`^\d+$`, no sign, decimal or
   whitespace) before the range check.
+- 2026-09-26: Issue #21 (tokens/base/favicon/frontend-rules test) implemented:
+  `favicon.svg` reuses only `--color-secondary` (rounded square) and
+  `--color-primary` (play triangle), matching the exports' wordmark mark.
+  `.visually-hidden` sizes itself with `var(--border-width)` (exactly 1 px)
+  instead of a new raw literal, so the sr-only technique needs no length
+  outside `tokens.css`. `test/frontend-rules.test.js` parses `docs/design.md`'s
+  front matter directly (regex, no dependency) to keep `tokens.css` verifiably
+  in sync; added a regression-guard test after the initial parser silently
+  dropped every `color:` entry (each has a trailing `# comment`), which would
+  have made the colour-mirror assertions pass vacuously over an empty set.
+- 2026-09-26: Issue #15 (`src/http/{router,respond,cookies,guards}.js`)
+  implementation notes: `router.js` matches path shape independently of
+  method via a literal/param trie, recursively backtracking from a literal
+  child to the param child at each segment when the literal subtree yields
+  no handler or `{ allow }` candidate at the matched path length — "literal
+  beats param" holds only when both would otherwise match the same path
+  (equal segment count), not merely because a literal child exists; `{
+  allow }` is the union of methods across every subtree that fully matches
+  the path, not just the first one found. A duplicate leaf/method collision
+  throws even when the colliding pattern text differs (a stricter superset
+  of the literal `(method, pattern)` rule); a later pattern reusing a trie
+  position under a different `:name` also throws at registration, since one
+  node carries exactly one param name. `respond.js`'s `sendNoContent`/
+  `redirect` additionally send `Cache-Control: no-store` (only `sendJson`/
+  `sendError` were required to) since every call site (`/logout`, deletes,
+  login/page redirects) is session-dependent; `readJson` drains an oversized
+  body with `req.resume()` instead of `req.destroy()`, so the `413` response
+  reaches the client instead of the socket closing first.
+- 2026-09-26 (#12): `src/db/{users,sessions}.js` implemented. `UserRow`
+  mirrors the raw `users` row verbatim, incl. the snake_case
+  `password_hash`/`created_at` keys (no camelCase mapping in the repository
+  layer — that is `src/api/users.js`'s job); `getSessionWithUser` does map to
+  camelCase (`expiresAt`, nested `user: { id, username, role }`) since it is
+  already a joined, computed shape with no single backing row. `node:sqlite`'s
+  `StatementSync.get()`/`.all()` type as `Record<string, SQLOutputValue>`
+  (a union of `null | number | bigint | string | Uint8Array`), so every column
+  read is narrowed to its concrete field type with a per-field JSDoc `@type`
+  cast rather than one whole-row cast, to stay correct regardless of
+  `Record`-to-named-type assignability in a given TypeScript version.
+  `setRoleGuarded`/`deleteUserGuarded` share a `countOtherAdmins(db, id)`
+  helper and guard only the case that actually removes the last admin (current
+  role `admin`, target role/`DELETE` non-admin, zero *other* admins) — a
+  same-role update (incl. the sole admin re-confirming `admin`) is therefore
+  never refused, matching the API's "same role = no-op 200". Both guards
+  follow `migrate.js`'s rollback shape: `BEGIN IMMEDIATE` inside the `try`, a
+  nested `try/catch` around `ROLLBACK` so a failed `BEGIN` itself cannot mask
+  the original error. `deleteExpiredSessions` treats `expires_at <= now` as
+  expired (inclusive) — a session expiring at exactly `now` is purged rather
+  than kept for one more tick. "Last-admin refusal incl. concurrent demotion"
+  is tested by driving the guard from two separate `DatabaseSync` connections
+  opened on the same `DATA_DIR` (one demotes/deletes and commits, the other
+  then attempts the same on the last remaining admin) — real thread-level
+  interleaving is not exercisable against a synchronous `node:sqlite` handle
+  in a single-threaded test process; the two-connection form still proves the
+  guard reads committed DB state rather than an in-process cache.
