@@ -706,6 +706,73 @@ Chromium and Firefox, mobile ≤ 767 px and desktop ≥ 1024 px viewport):
   order. `check()` returns `retryAfterSec: null` when `allowed` is `true`,
   matching the `number | null` convention used elsewhere in this spec
   (`ApiError.retryAfterSec`).
+- 2026-09-26: Issue #22 (`public/js/lib/{dom,icons,api}.js`) implementation
+  choices not fixed elsewhere: `el()` treats `null`/`undefined`/`false` attribute
+  values as omitted and `true` as a boolean attribute (`setAttribute(key, '')`);
+  `class` additionally accepts a `string[]` (falsy entries filtered, joined with
+  a space) for conditional classes; children that are `null`/`undefined`/`false`
+  are silently skipped so callers can write `cond && el(...)`. Icon path data
+  (`icons.js`) is self-authored, minimal, single/double-`<path>` glyphs on the
+  24x24 grid colored via `fill="currentColor"` (no stroke icons), since the
+  Stitch exports show icons only at thumbnail size with no vector handoff;
+  visual fit is confirmed at milestone UI QA once a page mounts them. `api.js`
+  treats any body text that fails `JSON.parse` (2xx or error) as `null` /
+  `'unknown'` respectively rather than throwing, and `Retry-After` is accepted
+  only as a non-negative-integer digit string (`^\d+$`) per the spec's
+  "never sends the HTTP-date form" note.
+- 2026-09-26: Issue #26 (`README.md`/`.env.example`) implemented — README
+  covers install, the config table (incl. `ADMIN_USER`/`ADMIN_PASSWORD`
+  validation and the `config_invalid`/`admin_missing` failure paths), first
+  start, a systemd unit (`Restart=on-failure`), Caddy and nginx reverse-proxy
+  snippets (both preserving the host and setting `X-Forwarded-Proto`), backup
+  (stop, copy `videothek.db*`) and recovery via
+  `npm run reset-password -- <username>`; `.env.example` blanks
+  `ADMIN_PASSWORD` so copying it unedited fails loudly instead of creating an
+  admin with a known password. No new design decisions.
+- 2026-09-26: Issue #9 `src/config.js` implemented. `MEDIA_ROOT` is validated
+  as-given (must already be absolute; unlike `DATA_DIR` it is never resolved
+  against `cwd`), so a relative value is its own problem
+  (`"MEDIA_ROOT: must be an absolute path"`), distinct from missing
+  (`"MEDIA_ROOT: required"`) and from existing-but-invalid
+  (`"MEDIA_ROOT: must be a readable directory"`, covering both non-directory
+  and unreadable/missing-on-disk). `requireMediaRoot: false` (the CLI path)
+  never raises a `MEDIA_ROOT`/`DATA_DIR` problem at all — including the
+  "inside `MEDIA_ROOT`" containment check — and passes through an absolute
+  `MEDIA_ROOT` value uncontained/unverified so `reset-password` keeps working
+  with the media disk unmounted; a relative or unset value yields
+  `mediaRoot: ''` in that mode, keeping `Config.mediaRoot` a plain `string`
+  (matching this table's row) so every other phase's `string`-typed
+  parameters accept it without a cast. `PORT`/`RESCAN_INTERVAL_MIN` accept
+  only a bare non-negative integer literal (`^\d+$`, no sign, decimal or
+  whitespace) before the range check.
+- 2026-09-26: Issue #21 (tokens/base/favicon/frontend-rules test) implemented:
+  `favicon.svg` reuses only `--color-secondary` (rounded square) and
+  `--color-primary` (play triangle), matching the exports' wordmark mark.
+  `.visually-hidden` sizes itself with `var(--border-width)` (exactly 1 px)
+  instead of a new raw literal, so the sr-only technique needs no length
+  outside `tokens.css`. `test/frontend-rules.test.js` parses `docs/design.md`'s
+  front matter directly (regex, no dependency) to keep `tokens.css` verifiably
+  in sync; added a regression-guard test after the initial parser silently
+  dropped every `color:` entry (each has a trailing `# comment`), which would
+  have made the colour-mirror assertions pass vacuously over an empty set.
+- 2026-09-26: Issue #15 (`src/http/{router,respond,cookies,guards}.js`)
+  implementation notes: `router.js` matches path shape independently of
+  method via a literal/param trie, recursively backtracking from a literal
+  child to the param child at each segment when the literal subtree yields
+  no handler or `{ allow }` candidate at the matched path length — "literal
+  beats param" holds only when both would otherwise match the same path
+  (equal segment count), not merely because a literal child exists; `{
+  allow }` is the union of methods across every subtree that fully matches
+  the path, not just the first one found. A duplicate leaf/method collision
+  throws even when the colliding pattern text differs (a stricter superset
+  of the literal `(method, pattern)` rule); a later pattern reusing a trie
+  position under a different `:name` also throws at registration, since one
+  node carries exactly one param name. `respond.js`'s `sendNoContent`/
+  `redirect` additionally send `Cache-Control: no-store` (only `sendJson`/
+  `sendError` were required to) since every call site (`/logout`, deletes,
+  login/page redirects) is session-dependent; `readJson` drains an oversized
+  body with `req.resume()` instead of `req.destroy()`, so the `413` response
+  reaches the client instead of the socket closing first.
 - 2026-09-26 (#12): `src/db/{users,sessions}.js` implemented. `UserRow`
   mirrors the raw `users` row verbatim, incl. the snake_case
   `password_hash`/`created_at` keys (no camelCase mapping in the repository
