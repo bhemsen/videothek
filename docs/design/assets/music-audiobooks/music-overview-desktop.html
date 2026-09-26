@@ -1,0 +1,565 @@
+<!DOCTYPE html>
+<html lang="de">
+<head>
+  <meta charset="UTF-8">
+  <meta name="viewport" content="width=device-width, initial-scale=1.0">
+  <title>P5 Musik Übersicht – desktop</title>
+  <style>
+    :root {
+      --bg: #0f1115;
+      --fg: #e8eaed;
+      --primary: #f5b301;
+      --secondary: #1c2029;
+      --accent: #4fb3ff;
+      --muted: #9aa0aa;
+      --border: #2a2f3a;
+      --radius-sm: 4px;
+      --radius-md: 8px;
+      --radius-lg: 16px;
+      --font-sans: system-ui, -apple-system, 'Segoe UI', Roboto, 'Helvetica Neue', Arial, sans-serif;
+    }
+
+    *, *::before, *::after {
+      box-sizing: border-box;
+      margin: 0;
+      padding: 0;
+    }
+
+    body {
+      background-color: var(--bg);
+      color: var(--fg);
+      font-family: var(--font-sans);
+      line-height: 1.5;
+      min-height: 100vh;
+      -webkit-font-smoothing: antialiased;
+    }
+
+    /* Top Navigation Bar */
+    .topbar {
+      display: flex;
+      align-items: center;
+      justify-content: space-between;
+      height: 64px;
+      padding: 0 40px;
+      background-color: var(--bg);
+      border-bottom: 1px solid var(--border);
+    }
+
+    .brand-nav {
+      display: flex;
+      align-items: center;
+      gap: 40px;
+    }
+
+    .brand {
+      display: flex;
+      align-items: center;
+      gap: 10px;
+      font-size: 18px;
+      font-weight: 700;
+      color: var(--fg);
+      text-decoration: none;
+      letter-spacing: -0.01em;
+    }
+
+    .brand-icon {
+      color: var(--primary);
+    }
+
+    .nav-links {
+      display: flex;
+      align-items: center;
+      gap: 28px;
+      list-style: none;
+    }
+
+    .nav-link {
+      position: relative;
+      display: inline-flex;
+      align-items: center;
+      height: 64px;
+      color: var(--muted);
+      text-decoration: none;
+      font-size: 15px;
+      font-weight: 500;
+      transition: color 0.15s ease;
+    }
+
+    .nav-link:hover {
+      color: var(--fg);
+    }
+
+    .nav-link.active {
+      color: var(--primary);
+      font-weight: 600;
+    }
+
+    .nav-link.active::after {
+      content: '';
+      position: absolute;
+      bottom: 0;
+      left: 0;
+      right: 0;
+      height: 2px;
+      background-color: var(--primary);
+      border-radius: 2px 2px 0 0;
+    }
+
+    .user-actions {
+      display: flex;
+      align-items: center;
+      gap: 16px;
+    }
+
+    .btn-logout {
+      display: inline-flex;
+      align-items: center;
+      gap: 8px;
+      background: none;
+      border: none;
+      color: var(--muted);
+      font-family: inherit;
+      font-size: 14px;
+      font-weight: 500;
+      cursor: pointer;
+      padding: 8px 12px;
+      border-radius: var(--radius-sm);
+      min-height: 44px;
+      min-width: 44px;
+      transition: color 0.15s ease;
+    }
+
+    .btn-logout:hover {
+      color: var(--fg);
+    }
+
+    /* Main Container */
+    .container {
+      max-width: 1200px;
+      margin: 0 auto;
+      padding: 40px 24px 80px 24px;
+    }
+
+    .page-title {
+      font-size: 32px;
+      font-weight: 700;
+      letter-spacing: -0.02em;
+      margin-bottom: 24px;
+      color: var(--fg);
+    }
+
+    /* Weiterhören Card */
+    .resume-card {
+      display: flex;
+      align-items: center;
+      justify-content: space-between;
+      max-width: 560px;
+      background-color: var(--secondary);
+      border-radius: var(--radius-md);
+      padding: 16px 20px;
+      gap: 20px;
+      margin-bottom: 48px;
+      box-shadow: 0 1px 3px rgba(0, 0, 0, 0.4);
+      border: 1px solid rgba(255, 255, 255, 0.04);
+    }
+
+    .resume-left {
+      display: flex;
+      align-items: center;
+      gap: 16px;
+      flex: 1;
+      min-width: 0;
+    }
+
+    .resume-cover {
+      width: 72px;
+      height: 72px;
+      flex-shrink: 0;
+      background-color: #242935;
+      border-radius: var(--radius-sm);
+      display: flex;
+      align-items: center;
+      justify-content: center;
+      color: var(--muted);
+      border: 1px solid var(--border);
+    }
+
+    .resume-info {
+      flex: 1;
+      min-width: 0;
+      display: flex;
+      flex-direction: column;
+      gap: 3px;
+    }
+
+    .resume-badge {
+      font-size: 11px;
+      font-weight: 600;
+      text-transform: uppercase;
+      letter-spacing: 0.08em;
+      color: var(--muted);
+    }
+
+    .resume-title {
+      font-size: 16px;
+      font-weight: 600;
+      color: var(--fg);
+      white-space: nowrap;
+      overflow: hidden;
+      text-overflow: ellipsis;
+    }
+
+    .resume-meta {
+      font-size: 13px;
+      color: var(--muted);
+      white-space: nowrap;
+      overflow: hidden;
+      text-overflow: ellipsis;
+      margin-bottom: 4px;
+    }
+
+    .resume-progress-wrap {
+      display: flex;
+      align-items: center;
+      gap: 10px;
+      margin-top: 2px;
+    }
+
+    .progress-bar-track {
+      flex: 1;
+      height: 4px;
+      background-color: var(--border);
+      border-radius: 2px;
+      overflow: hidden;
+    }
+
+    .progress-bar-fill {
+      height: 100%;
+      background-color: var(--primary);
+      border-radius: 2px;
+    }
+
+    .resume-time {
+      font-size: 11px;
+      font-family: var(--font-sans);
+      color: var(--muted);
+      white-space: nowrap;
+    }
+
+    .btn-resume {
+      display: inline-flex;
+      align-items: center;
+      justify-content: center;
+      gap: 8px;
+      background-color: var(--primary);
+      color: #0f1115;
+      font-family: inherit;
+      font-size: 14px;
+      font-weight: 700;
+      padding: 0 18px;
+      height: 44px;
+      border-radius: var(--radius-md);
+      border: none;
+      cursor: pointer;
+      flex-shrink: 0;
+      transition: filter 0.15s ease, transform 0.1s ease;
+    }
+
+    .btn-resume:hover {
+      filter: brightness(1.08);
+    }
+
+    .btn-resume:active {
+      filter: brightness(0.92);
+      transform: scale(0.99);
+    }
+
+    /* Artist Sections */
+    .artist-section {
+      margin-bottom: 44px;
+    }
+
+    .artist-header {
+      display: flex;
+      align-items: baseline;
+      gap: 12px;
+      margin-bottom: 16px;
+    }
+
+    .artist-name {
+      font-size: 20px;
+      font-weight: 600;
+      color: var(--fg);
+      letter-spacing: -0.01em;
+    }
+
+    .artist-count {
+      font-size: 13px;
+      color: var(--muted);
+      font-weight: 400;
+    }
+
+    /* Album Grid */
+    .album-grid {
+      display: grid;
+      grid-template-columns: repeat(auto-fill, minmax(160px, 1fr));
+      gap: 16px;
+    }
+
+    .album-card {
+      display: flex;
+      flex-direction: column;
+      text-decoration: none;
+      border-radius: var(--radius-md);
+      transition: transform 0.15s ease;
+      cursor: pointer;
+    }
+
+    .album-card:hover .cover-placeholder {
+      border-color: rgba(255, 255, 255, 0.16);
+      transform: translateY(-2px);
+    }
+
+    .album-card:hover .album-title {
+      color: var(--primary);
+    }
+
+    .cover-wrapper {
+      position: relative;
+      width: 100%;
+      padding-top: 100%; /* 1:1 Aspect ratio */
+      border-radius: var(--radius-md);
+      overflow: hidden;
+      margin-bottom: 10px;
+    }
+
+    .cover-placeholder {
+      position: absolute;
+      top: 0;
+      left: 0;
+      width: 100%;
+      height: 100%;
+      background-color: var(--secondary);
+      border: 1px solid var(--border);
+      border-radius: var(--radius-md);
+      display: flex;
+      align-items: center;
+      justify-content: center;
+      box-shadow: 0 1px 2px rgba(0,0,0,0.4);
+      transition: transform 0.15s ease, border-color 0.15s ease;
+    }
+
+    .cover-icon {
+      color: var(--muted);
+      opacity: 0.6;
+      width: 44px;
+      height: 44px;
+    }
+
+    .album-details {
+      display: flex;
+      flex-direction: column;
+      gap: 2px;
+    }
+
+    .album-title {
+      font-size: 14px;
+      font-weight: 600;
+      color: var(--fg);
+      white-space: nowrap;
+      overflow: hidden;
+      text-overflow: ellipsis;
+      line-height: 1.3;
+      transition: color 0.15s ease;
+    }
+
+    .album-year {
+      font-size: 12px;
+      color: var(--muted);
+    }
+  </style>
+</head>
+<body>
+
+  <!-- Top bar -->
+  <header class="topbar">
+    <div class="brand-nav">
+      <a href="#" class="brand" aria-label="Videothek Startseite">
+        <svg class="brand-icon" width="22" height="22" viewBox="0 0 24 24" fill="currentColor">
+          <polygon points="5 3 19 12 5 21 5 3"></polygon>
+        </svg>
+        <span>Videothek</span>
+      </a>
+
+      <nav aria-label="Hauptnavigation">
+        <ul class="nav-links">
+          <li><a href="#" class="nav-link">Filme</a></li>
+          <li><a href="#" class="nav-link">Serien</a></li>
+          <li><a href="#" class="nav-link active" aria-current="page">Musik</a></li>
+          <li><a href="#" class="nav-link">Hörbücher</a></li>
+          <li><a href="#" class="nav-link">Bilder</a></li>
+        </ul>
+      </nav>
+    </div>
+
+    <div class="user-actions">
+      <button class="btn-logout" type="button" title="Abmelden">
+        <svg width="18" height="18" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round">
+          <path d="M9 21H5a2 2 0 0 1-2-2V5a2 2 0 0 1 2-2h4"></path>
+          <polyline points="16 17 21 12 16 7"></polyline>
+          <line x1="21" y1="12" x2="9" y2="12"></line>
+        </svg>
+        <span>Abmelden</span>
+      </button>
+    </div>
+  </header>
+
+  <!-- Content -->
+  <main class="container">
+    <h1 class="page-title">Musik</h1>
+
+    <!-- Weiterhören card -->
+    <section aria-labelledby="resume-section-heading">
+      <h2 id="resume-section-heading" style="position: absolute; width: 1px; height: 1px; padding: 0; margin: -1px; overflow: hidden; clip: rect(0, 0, 0, 0); border: 0;">Weiterhören</h2>
+      <div class="resume-card">
+        <div class="resume-left">
+          <div class="resume-cover" aria-hidden="true">
+            <svg width="32" height="32" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.75" stroke-linecap="round" stroke-linejoin="round">
+              <path d="M9 18V5l12-2v13"></path>
+              <circle cx="6" cy="18" r="3"></circle>
+              <circle cx="18" cy="16" r="3"></circle>
+            </svg>
+          </div>
+          <div class="resume-info">
+            <span class="resume-badge">Weiterhören</span>
+            <div class="resume-title" title="Nachtzug">Nachtzug</div>
+            <div class="resume-meta" title="Unterwegs · Die Beispiele">Unterwegs · Die Beispiele</div>
+            <div class="resume-progress-wrap">
+              <div class="progress-bar-track" role="progressbar" aria-valuenow="30" aria-valuemin="0" aria-valuemax="100">
+                <div class="progress-bar-fill" style="width: 30%;"></div>
+              </div>
+              <span class="resume-time">1:12 / 3:58</span>
+            </div>
+          </div>
+        </div>
+        <button class="btn-resume" type="button">
+          <svg width="16" height="16" viewBox="0 0 24 24" fill="currentColor">
+            <polygon points="5 3 19 12 5 21 5 3"></polygon>
+          </svg>
+          <span>Fortsetzen</span>
+        </button>
+      </div>
+    </section>
+
+    <!-- Artists sections alphabetically -->
+
+    <!-- Section 1: Anna Beispiel -->
+    <section class="artist-section" aria-labelledby="artist-anna">
+      <div class="artist-header">
+        <h2 id="artist-anna" class="artist-name">Anna Beispiel</h2>
+        <span class="artist-count">2 Alben</span>
+      </div>
+      <div class="album-grid">
+        <article class="album-card" tabindex="0" role="button" aria-label="Album Erste Schritte, 2015">
+          <div class="cover-wrapper">
+            <div class="cover-placeholder" aria-hidden="true">
+              <svg class="cover-icon" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.5" stroke-linecap="round" stroke-linejoin="round">
+                <path d="M9 18V5l12-2v13"></path>
+                <circle cx="6" cy="18" r="3"></circle>
+                <circle cx="18" cy="16" r="3"></circle>
+              </svg>
+            </div>
+          </div>
+          <div class="album-details">
+            <span class="album-title" title="Erste Schritte">Erste Schritte</span>
+            <span class="album-year">2015</span>
+          </div>
+        </article>
+
+        <article class="album-card" tabindex="0" role="button" aria-label="Album Morgenlicht, 2017">
+          <div class="cover-wrapper">
+            <div class="cover-placeholder" aria-hidden="true">
+              <svg class="cover-icon" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.5" stroke-linecap="round" stroke-linejoin="round">
+                <path d="M9 18V5l12-2v13"></path>
+                <circle cx="6" cy="18" r="3"></circle>
+                <circle cx="18" cy="16" r="3"></circle>
+              </svg>
+            </div>
+          </div>
+          <div class="album-details">
+            <span class="album-title" title="Morgenlicht">Morgenlicht</span>
+            <span class="album-year">2017</span>
+          </div>
+        </article>
+      </div>
+    </section>
+
+    <!-- Section 2: Die Beispiele -->
+    <section class="artist-section" aria-labelledby="artist-beispiele">
+      <div class="artist-header">
+        <h2 id="artist-beispiele" class="artist-name">Die Beispiele</h2>
+        <span class="artist-count">3 Alben</span>
+      </div>
+      <div class="album-grid">
+        <article class="album-card" tabindex="0" role="button" aria-label="Album Unterwegs, 2019">
+          <div class="cover-wrapper">
+            <div class="cover-placeholder" aria-hidden="true">
+              <svg class="cover-icon" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.5" stroke-linecap="round" stroke-linejoin="round">
+                <path d="M9 18V5l12-2v13"></path>
+                <circle cx="6" cy="18" r="3"></circle>
+                <circle cx="18" cy="16" r="3"></circle>
+              </svg>
+            </div>
+          </div>
+          <div class="album-details">
+            <span class="album-title" title="Unterwegs">Unterwegs</span>
+            <span class="album-year">2019</span>
+          </div>
+        </article>
+
+        <article class="album-card" tabindex="0" role="button" aria-label="Album Live im Hafen, 2021">
+          <div class="cover-wrapper">
+            <div class="cover-placeholder" aria-hidden="true">
+              <svg class="cover-icon" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.5" stroke-linecap="round" stroke-linejoin="round">
+                <path d="M9 18V5l12-2v13"></path>
+                <circle cx="6" cy="18" r="3"></circle>
+                <circle cx="18" cy="16" r="3"></circle>
+              </svg>
+            </div>
+          </div>
+          <div class="album-details">
+            <span class="album-title" title="Live im Hafen">Live im Hafen</span>
+            <span class="album-year">2021</span>
+          </div>
+        </article>
+      </div>
+    </section>
+
+    <!-- Section 3: Kammerorchester Nord -->
+    <section class="artist-section" aria-labelledby="artist-kammerorchester">
+      <div class="artist-header">
+        <h2 id="artist-kammerorchester" class="artist-name">Kammerorchester Nord</h2>
+        <span class="artist-count">1 Album</span>
+      </div>
+      <div class="album-grid">
+        <article class="album-card" tabindex="0" role="button" aria-label="Album Sinfonie Nr. 3, 2020">
+          <div class="cover-wrapper">
+            <div class="cover-placeholder" aria-hidden="true">
+              <svg class="cover-icon" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.5" stroke-linecap="round" stroke-linejoin="round">
+                <path d="M9 18V5l12-2v13"></path>
+                <circle cx="6" cy="18" r="3"></circle>
+                <circle cx="18" cy="16" r="3"></circle>
+              </svg>
+            </div>
+          </div>
+          <div class="album-details">
+            <span class="album-title" title="Sinfonie Nr. 3">Sinfonie Nr. 3</span>
+            <span class="album-year">2020</span>
+          </div>
+        </article>
+      </div>
+    </section>
+  </main>
+
+</body>
+</html>

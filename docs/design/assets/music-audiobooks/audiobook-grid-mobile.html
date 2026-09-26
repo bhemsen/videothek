@@ -1,0 +1,386 @@
+<!DOCTYPE html>
+<html lang="de">
+<head>
+  <meta charset="UTF-8">
+  <meta name="viewport" content="width=device-width, initial-scale=1.0">
+  <title>P5 Hörbücher Übersicht – mobile</title>
+  <style>
+    :root {
+      --bg: #0f1115;
+      --fg: #e8eaed;
+      --primary: #f5b301;
+      --surface: #1c2029;
+      --accent: #4fb3ff;
+      --muted: #9aa0aa;
+      --border: #2a2f3a;
+      --radius-md: 8px;
+      --shadow-sm: 0 1px 2px rgba(0, 0, 0, 0.4);
+    }
+
+    * {
+      box-sizing: border-box;
+      margin: 0;
+      padding: 0;
+    }
+
+    body {
+      background-color: var(--bg);
+      color: var(--fg);
+      font-family: system-ui, -apple-system, 'Segoe UI', Roboto, 'Helvetica Neue', Arial, sans-serif;
+      line-height: 1.5;
+      -webkit-font-smoothing: antialiased;
+      display: flex;
+      justify-content: center;
+      min-height: 100vh;
+    }
+
+    .app-viewport {
+      width: 100%;
+      max-width: 390px;
+      min-height: 100vh;
+      background-color: var(--bg);
+      display: flex;
+      flex-direction: column;
+      position: relative;
+      padding-bottom: 76px; /* space for bottom navigation bar */
+    }
+
+    /* Header */
+    .header {
+      padding: 24px 16px 16px 16px;
+    }
+
+    .title-row {
+      display: flex;
+      align-items: baseline;
+      gap: 8px;
+    }
+
+    .page-title {
+      font-size: 24px;
+      font-weight: 700;
+      color: var(--fg);
+      line-height: 1.2;
+      letter-spacing: -0.01em;
+    }
+
+    .item-count {
+      font-size: 14px;
+      color: var(--muted);
+      font-weight: 400;
+    }
+
+    /* Grid */
+    .grid {
+      display: grid;
+      grid-template-columns: repeat(2, 1fr);
+      gap: 16px;
+      padding: 0 16px 24px 16px;
+    }
+
+    .book-card {
+      display: flex;
+      flex-direction: column;
+      text-decoration: none;
+      color: inherit;
+      border-radius: var(--radius-md);
+      transition: opacity 0.15s ease;
+      cursor: pointer;
+    }
+
+    .book-card:focus-visible {
+      outline: 2px solid var(--primary);
+      outline-offset: 2px;
+    }
+
+    .cover-container {
+      position: relative;
+      width: 100%;
+      aspect-ratio: 1 / 1;
+      background-color: var(--surface);
+      border-radius: var(--radius-md);
+      overflow: hidden;
+      box-shadow: var(--shadow-sm);
+      display: flex;
+      align-items: center;
+      justify-content: center;
+    }
+
+    .book-icon {
+      width: 44px;
+      height: 44px;
+      stroke: var(--muted);
+      opacity: 0.35;
+    }
+
+    /* Progress bar along bottom of cover */
+    .progress-track {
+      position: absolute;
+      bottom: 0;
+      left: 0;
+      right: 0;
+      height: 4px;
+      background-color: var(--border);
+    }
+
+    .progress-fill {
+      height: 100%;
+      background-color: var(--primary);
+    }
+
+    /* Meta text */
+    .book-info {
+      padding-top: 8px;
+      display: flex;
+      flex-direction: column;
+      gap: 2px;
+    }
+
+    .book-title {
+      font-size: 15px;
+      font-weight: 600;
+      color: var(--fg);
+      white-space: nowrap;
+      overflow: hidden;
+      text-overflow: ellipsis;
+      line-height: 1.3;
+    }
+
+    .book-meta {
+      font-size: 14px;
+      color: var(--muted);
+      line-height: 1.3;
+      white-space: nowrap;
+      overflow: hidden;
+      text-overflow: ellipsis;
+      display: flex;
+      align-items: center;
+      gap: 4px;
+    }
+
+    .check-icon {
+      width: 14px;
+      height: 14px;
+      stroke: var(--muted);
+      stroke-width: 2.2;
+      flex-shrink: 0;
+    }
+
+    /* Fixed Bottom Navigation */
+    .bottom-nav {
+      position: fixed;
+      bottom: 0;
+      left: 50%;
+      transform: translateX(-50%);
+      width: 100%;
+      max-width: 390px;
+      height: 64px;
+      background-color: #12141a;
+      border-top: 1px solid var(--border);
+      display: grid;
+      grid-template-columns: repeat(5, 1fr);
+      z-index: 100;
+    }
+
+    .nav-item {
+      display: flex;
+      flex-direction: column;
+      align-items: center;
+      justify-content: center;
+      gap: 4px;
+      text-decoration: none;
+      color: var(--muted);
+      font-size: 11px;
+      font-weight: 500;
+      min-height: 44px;
+      user-select: none;
+      transition: color 0.15s ease;
+    }
+
+    .nav-item svg {
+      width: 20px;
+      height: 20px;
+      stroke: currentColor;
+    }
+
+    .nav-item.active {
+      color: var(--primary);
+    }
+  </style>
+</head>
+<body>
+  <div class="app-viewport">
+    <!-- Header -->
+    <header class="header">
+      <div class="title-row">
+        <h1 class="page-title">Hörbücher</h1>
+        <span class="item-count">6 Hörbücher</span>
+      </div>
+    </header>
+
+    <!-- 2-Column Grid -->
+    <main class="grid">
+      <!-- 1. Die Reise zum Mittelpunkt (34 %) -->
+      <article class="book-card" tabindex="0">
+        <div class="cover-container">
+          <svg class="book-icon" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.6" stroke-linecap="round" stroke-linejoin="round">
+            <path d="M4 19.5A2.5 2.5 0 0 1 6.5 17H20"/>
+            <path d="M6.5 2H20v20H6.5A2.5 2.5 0 0 1 4 19.5v-15A2.5 2.5 0 0 1 6.5 2z"/>
+          </svg>
+          <div class="progress-track">
+            <div class="progress-fill" style="width: 34%;"></div>
+          </div>
+        </div>
+        <div class="book-info">
+          <div class="book-title" title="Die Reise zum Mittelpunkt">Die Reise zum Mittelpunkt</div>
+          <div class="book-meta">
+            <span>Jules Beispiel</span>
+            <span>·</span>
+            <span>34 %</span>
+          </div>
+        </div>
+      </article>
+
+      <!-- 2. Der kleine Leuchtturm (Gehört) -->
+      <article class="book-card" tabindex="0">
+        <div class="cover-container">
+          <svg class="book-icon" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.6" stroke-linecap="round" stroke-linejoin="round">
+            <path d="M4 19.5A2.5 2.5 0 0 1 6.5 17H20"/>
+            <path d="M6.5 2H20v20H6.5A2.5 2.5 0 0 1 4 19.5v-15A2.5 2.5 0 0 1 6.5 2z"/>
+          </svg>
+        </div>
+        <div class="book-info">
+          <div class="book-title" title="Der kleine Leuchtturm">Der kleine Leuchtturm</div>
+          <div class="book-meta">
+            <span>Maria Muster</span>
+            <span>·</span>
+            <svg class="check-icon" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-linecap="round" stroke-linejoin="round">
+              <polyline points="20 6 9 17 4 12"></polyline>
+            </svg>
+            <span>Gehört</span>
+          </div>
+        </div>
+      </article>
+
+      <!-- 3. Winterwald (not started) -->
+      <article class="book-card" tabindex="0">
+        <div class="cover-container">
+          <svg class="book-icon" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.6" stroke-linecap="round" stroke-linejoin="round">
+            <path d="M4 19.5A2.5 2.5 0 0 1 6.5 17H20"/>
+            <path d="M6.5 2H20v20H6.5A2.5 2.5 0 0 1 4 19.5v-15A2.5 2.5 0 0 1 6.5 2z"/>
+          </svg>
+        </div>
+        <div class="book-info">
+          <div class="book-title" title="Winterwald">Winterwald</div>
+          <div class="book-meta">Tom Probe</div>
+        </div>
+      </article>
+
+      <!-- 4. Das Archiv (72 %) -->
+      <article class="book-card" tabindex="0">
+        <div class="cover-container">
+          <svg class="book-icon" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.6" stroke-linecap="round" stroke-linejoin="round">
+            <path d="M4 19.5A2.5 2.5 0 0 1 6.5 17H20"/>
+            <path d="M6.5 2H20v20H6.5A2.5 2.5 0 0 1 4 19.5v-15A2.5 2.5 0 0 1 6.5 2z"/>
+          </svg>
+          <div class="progress-track">
+            <div class="progress-fill" style="width: 72%;"></div>
+          </div>
+        </div>
+        <div class="book-info">
+          <div class="book-title" title="Das Archiv">Das Archiv</div>
+          <div class="book-meta">
+            <span>Lena Test</span>
+            <span>·</span>
+            <span>72 %</span>
+          </div>
+        </div>
+      </article>
+
+      <!-- 5. Sternenhimmel (not started) -->
+      <article class="book-card" tabindex="0">
+        <div class="cover-container">
+          <svg class="book-icon" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.6" stroke-linecap="round" stroke-linejoin="round">
+            <path d="M4 19.5A2.5 2.5 0 0 1 6.5 17H20"/>
+            <path d="M6.5 2H20v20H6.5A2.5 2.5 0 0 1 4 19.5v-15A2.5 2.5 0 0 1 6.5 2z"/>
+          </svg>
+        </div>
+        <div class="book-info">
+          <div class="book-title" title="Sternenhimmel">Sternenhimmel</div>
+          <div class="book-meta">Maria Muster</div>
+        </div>
+      </article>
+
+      <!-- 6. Ein Sommer am Meer (not started) -->
+      <article class="book-card" tabindex="0">
+        <div class="cover-container">
+          <svg class="book-icon" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.6" stroke-linecap="round" stroke-linejoin="round">
+            <path d="M4 19.5A2.5 2.5 0 0 1 6.5 17H20"/>
+            <path d="M6.5 2H20v20H6.5A2.5 2.5 0 0 1 4 19.5v-15A2.5 2.5 0 0 1 6.5 2z"/>
+          </svg>
+        </div>
+        <div class="book-info">
+          <div class="book-title" title="Ein Sommer am Meer">Ein Sommer am Meer</div>
+          <div class="book-meta">Jules Beispiel</div>
+        </div>
+      </article>
+    </main>
+
+    <!-- Bottom Navigation Bar -->
+    <nav class="bottom-nav" aria-label="Hauptnavigation">
+      <!-- Filme -->
+      <a href="#filme" class="nav-item">
+        <svg viewBox="0 0 24 24" fill="none" stroke-width="1.75" stroke-linecap="round" stroke-linejoin="round">
+          <rect x="2" y="2" width="20" height="20" rx="2.18" ry="2.18"></rect>
+          <line x1="7" y1="2" x2="7" y2="22"></line>
+          <line x1="17" y1="2" x2="17" y2="22"></line>
+          <line x1="2" y1="12" x2="22" y2="12"></line>
+          <line x1="2" y1="7" x2="7" y2="7"></line>
+          <line x1="2" y1="17" x2="7" y2="17"></line>
+          <line x1="17" y1="17" x2="22" y2="17"></line>
+          <line x1="17" y1="7" x2="22" y2="7"></line>
+        </svg>
+        <span>Filme</span>
+      </a>
+
+      <!-- Serien -->
+      <a href="#serien" class="nav-item">
+        <svg viewBox="0 0 24 24" fill="none" stroke-width="1.75" stroke-linecap="round" stroke-linejoin="round">
+          <rect x="2" y="7" width="20" height="15" rx="2" ry="2"></rect>
+          <polyline points="17 2 12 7 7 2"></polyline>
+        </svg>
+        <span>Serien</span>
+      </a>
+
+      <!-- Musik -->
+      <a href="#musik" class="nav-item">
+        <svg viewBox="0 0 24 24" fill="none" stroke-width="1.75" stroke-linecap="round" stroke-linejoin="round">
+          <path d="M9 18V5l12-2v13"></path>
+          <circle cx="6" cy="18" r="3"></circle>
+          <circle cx="18" cy="16" r="3"></circle>
+        </svg>
+        <span>Musik</span>
+      </a>
+
+      <!-- Hörbücher (Active) -->
+      <a href="#hoerbuecher" class="nav-item active" aria-current="page">
+        <svg viewBox="0 0 24 24" fill="none" stroke-width="1.75" stroke-linecap="round" stroke-linejoin="round">
+          <path d="M3 18v-6a9 9 0 0 1 18 0v6"></path>
+          <path d="M21 19a2 2 0 0 1-2 2h-1a2 2 0 0 1-2-2v-3a2 2 0 0 1 2-2h3zM3 19a2 2 0 0 0 2 2h1a2 2 0 0 0 2-2v-3a2 2 0 0 0-2-2H3z"></path>
+        </svg>
+        <span>Hörbücher</span>
+      </a>
+
+      <!-- Bilder -->
+      <a href="#bilder" class="nav-item">
+        <svg viewBox="0 0 24 24" fill="none" stroke-width="1.75" stroke-linecap="round" stroke-linejoin="round">
+          <rect x="3" y="3" width="18" height="18" rx="2" ry="2"></rect>
+          <circle cx="8.5" cy="8.5" r="1.5"></circle>
+          <polyline points="21 15 16 10 5 21"></polyline>
+        </svg>
+        <span>Bilder</span>
+      </a>
+    </nav>
+  </div>
+</body>
+</html>

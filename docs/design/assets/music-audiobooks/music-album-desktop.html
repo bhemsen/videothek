@@ -1,0 +1,851 @@
+<!DOCTYPE html>
+<html lang="de">
+<head>
+  <meta charset="UTF-8">
+  <meta name="viewport" content="width=device-width, initial-scale=1.0">
+  <title>P5 Musik Album – desktop</title>
+  <style>
+    /* CSS Tokens strictly per docs/design.md */
+    :root {
+      --color-background: #0f1115;
+      --color-foreground: #e8eaed;
+      --color-primary: #f5b301;
+      --color-secondary: #1c2029;
+      --color-accent: #4fb3ff;
+      --color-muted: #9aa0aa;
+      --color-border: #2a2f3a;
+      --color-destructive: #ff5c5c;
+
+      --font-sans: system-ui, -apple-system, 'Segoe UI', Roboto, 'Helvetica Neue', Arial, sans-serif;
+      --radius-sm: 4px;
+      --radius-md: 8px;
+      --radius-full: 9999px;
+      --shadow-sm: 0 1px 2px rgba(0,0,0,.4);
+      --shadow-md: 0 8px 24px rgba(0,0,0,.5);
+    }
+
+    * {
+      box-sizing: border-box;
+      margin: 0;
+      padding: 0;
+    }
+
+    body {
+      background-color: var(--color-background);
+      color: var(--color-foreground);
+      font-family: var(--font-sans);
+      min-height: 100vh;
+      display: flex;
+      flex-direction: column;
+      -webkit-font-smoothing: antialiased;
+      line-height: 1.5;
+    }
+
+    /* Top Bar */
+    header.top-bar {
+      width: 100%;
+      height: 64px;
+      background-color: var(--color-background);
+      border-bottom: 1px solid var(--color-border);
+      display: flex;
+      align-items: center;
+      justify-content: space-between;
+      padding: 0 32px;
+      position: sticky;
+      top: 0;
+      z-index: 40;
+    }
+
+    .brand-section {
+      display: flex;
+      align-items: center;
+      gap: 32px;
+    }
+
+    .brand-logo {
+      display: flex;
+      align-items: center;
+      gap: 10px;
+      font-size: 20px;
+      font-weight: 700;
+      color: var(--color-foreground);
+      text-decoration: none;
+    }
+
+    .brand-logo svg {
+      width: 24px;
+      height: 24px;
+      fill: var(--color-primary);
+    }
+
+    nav.nav-links {
+      display: flex;
+      align-items: center;
+      gap: 28px;
+    }
+
+    nav.nav-links a {
+      color: var(--color-muted);
+      text-decoration: none;
+      font-size: 15px;
+      font-weight: 500;
+      padding: 20px 2px;
+      position: relative;
+      transition: color 0.15s ease;
+      display: inline-flex;
+      align-items: center;
+    }
+
+    nav.nav-links a:hover {
+      color: var(--color-foreground);
+    }
+
+    nav.nav-links a.active {
+      color: var(--color-foreground);
+      font-weight: 600;
+    }
+
+    nav.nav-links a.active::after {
+      content: '';
+      position: absolute;
+      bottom: 0;
+      left: 0;
+      right: 0;
+      height: 2px;
+      background-color: var(--color-primary);
+    }
+
+    .auth-section {
+      display: flex;
+      align-items: center;
+    }
+
+    .btn-abmelden {
+      background: transparent;
+      border: none;
+      color: var(--color-muted);
+      font-size: 14px;
+      font-family: inherit;
+      cursor: pointer;
+      display: inline-flex;
+      align-items: center;
+      gap: 8px;
+      padding: 8px 12px;
+      border-radius: var(--radius-md);
+      transition: color 0.15s ease, background-color 0.15s ease;
+      min-height: 44px;
+    }
+
+    .btn-abmelden:hover {
+      color: var(--color-foreground);
+      background-color: rgba(255, 255, 255, 0.04);
+    }
+
+    /* Main Container */
+    main.content-container {
+      width: 100%;
+      max-width: 1100px;
+      margin: 0 auto;
+      padding: 32px 24px 120px 24px;
+      flex: 1;
+    }
+
+    /* Back Link */
+    .back-nav {
+      margin-bottom: 24px;
+    }
+
+    .back-link {
+      display: inline-flex;
+      align-items: center;
+      gap: 6px;
+      color: var(--color-accent);
+      text-decoration: none;
+      font-size: 14px;
+      font-weight: 500;
+      min-height: 44px;
+      border-radius: var(--radius-sm);
+    }
+
+    .back-link:hover {
+      text-decoration: underline;
+    }
+
+    /* Album Header Row */
+    .album-header {
+      display: flex;
+      gap: 32px;
+      align-items: flex-end;
+      margin-bottom: 40px;
+    }
+
+    .album-cover-placeholder {
+      width: 240px;
+      height: 240px;
+      flex-shrink: 0;
+      background-color: var(--color-secondary);
+      border-radius: var(--radius-md);
+      border: 1px solid var(--color-border);
+      box-shadow: var(--shadow-md);
+      display: flex;
+      align-items: center;
+      justify-content: center;
+    }
+
+    .album-cover-placeholder svg {
+      width: 72px;
+      height: 72px;
+      stroke: var(--color-muted);
+      opacity: 0.55;
+    }
+
+    .album-meta-col {
+      display: flex;
+      flex-direction: column;
+      justify-content: flex-end;
+      flex: 1;
+    }
+
+    .meta-tag {
+      font-size: 12px;
+      font-weight: 600;
+      text-transform: uppercase;
+      letter-spacing: 0.08em;
+      color: var(--color-muted);
+      margin-bottom: 6px;
+    }
+
+    .album-title {
+      font-size: 32px;
+      font-weight: 700;
+      line-height: 1.2;
+      color: var(--color-foreground);
+      margin-bottom: 8px;
+    }
+
+    .album-artist {
+      font-size: 20px;
+      font-weight: 600;
+      color: var(--color-foreground);
+      opacity: 0.9;
+      margin-bottom: 8px;
+    }
+
+    .album-subtext {
+      font-size: 14px;
+      color: var(--color-muted);
+      margin-bottom: 24px;
+    }
+
+    .btn-play-all {
+      display: inline-flex;
+      align-items: center;
+      gap: 10px;
+      background-color: var(--color-primary);
+      color: #0f1115;
+      font-family: inherit;
+      font-size: 15px;
+      font-weight: 700;
+      padding: 0 24px;
+      height: 44px;
+      border-radius: var(--radius-md);
+      border: none;
+      cursor: pointer;
+      width: fit-content;
+      box-shadow: var(--shadow-sm);
+      transition: filter 0.15s ease, transform 0.1s ease;
+    }
+
+    .btn-play-all:hover {
+      filter: brightness(1.08);
+    }
+
+    .btn-play-all:active {
+      filter: brightness(0.92);
+      transform: translateY(1px);
+    }
+
+    .btn-play-all svg {
+      width: 18px;
+      height: 18px;
+      fill: currentColor;
+    }
+
+    /* Track List Table */
+    .tracklist-section {
+      width: 100%;
+    }
+
+    .track-table {
+      width: 100%;
+      border-collapse: collapse;
+      text-align: left;
+    }
+
+    .track-table th {
+      font-size: 12px;
+      font-weight: 600;
+      color: var(--color-muted);
+      text-transform: uppercase;
+      letter-spacing: 0.05em;
+      padding: 12px 16px;
+      border-bottom: 1px solid var(--color-border);
+    }
+
+    .col-num {
+      width: 56px;
+      text-align: center !important;
+    }
+
+    .col-title {
+      /* takes rest of width */
+    }
+
+    .col-duration {
+      width: 100px;
+      text-align: right !important;
+      padding-right: 20px !important;
+    }
+
+    .section-header-row td {
+      padding: 24px 16px 8px 16px;
+      font-size: 13px;
+      font-weight: 600;
+      color: var(--color-muted);
+      letter-spacing: 0.05em;
+      border-bottom: 1px solid var(--color-border);
+    }
+
+    .track-row {
+      height: 52px;
+      border-bottom: 1px solid var(--color-border);
+      transition: background-color 0.12s ease;
+      cursor: default;
+    }
+
+    .track-row:hover:not(.dimmed) {
+      background-color: rgba(255, 255, 255, 0.03);
+    }
+
+    .track-row td {
+      padding: 0 16px;
+      font-size: 14px;
+      vertical-align: middle;
+    }
+
+    .track-row .num-cell {
+      color: var(--color-muted);
+      font-size: 14px;
+      text-align: center;
+      font-variant-numeric: tabular-nums;
+    }
+
+    .track-row .title-cell {
+      display: flex;
+      align-items: center;
+      gap: 12px;
+      min-height: 52px;
+    }
+
+    .track-name {
+      color: var(--color-foreground);
+      font-weight: 500;
+    }
+
+    .track-row.playing .track-name {
+      color: var(--color-primary);
+      font-weight: 600;
+    }
+
+    .track-row .dur-cell {
+      color: var(--color-muted);
+      text-align: right;
+      font-variant-numeric: tabular-nums;
+      padding-right: 20px;
+    }
+
+    /* Dimmed / Not Playable */
+    .track-row.dimmed {
+      opacity: 0.55;
+    }
+
+    .badge-unplayable {
+      display: inline-flex;
+      align-items: center;
+      gap: 4px;
+      font-size: 11px;
+      font-weight: 600;
+      color: var(--color-destructive);
+      border: 1px solid var(--color-destructive);
+      padding: 2px 8px;
+      border-radius: var(--radius-full);
+      line-height: 1.3;
+    }
+
+    /* Animated/Static Equalizer SVG */
+    .equalizer-icon {
+      display: inline-flex;
+      align-items: center;
+      justify-content: center;
+      width: 16px;
+      height: 16px;
+      margin: 0 auto;
+    }
+
+    .equalizer-icon rect {
+      fill: var(--color-primary);
+    }
+
+    /* Fixed Audio Player Bar */
+    .player-bar {
+      position: fixed;
+      bottom: 0;
+      left: 0;
+      right: 0;
+      height: 80px;
+      background-color: var(--color-secondary);
+      border-top: 1px solid var(--color-border);
+      box-shadow: 0 -4px 16px rgba(0, 0, 0, 0.4);
+      display: flex;
+      align-items: center;
+      justify-content: space-between;
+      padding: 0 28px;
+      z-index: 50;
+    }
+
+    /* Zone Left */
+    .player-left {
+      width: 280px;
+      display: flex;
+      align-items: center;
+      gap: 14px;
+      flex-shrink: 0;
+    }
+
+    .player-thumb {
+      width: 56px;
+      height: 56px;
+      border-radius: var(--radius-md);
+      background-color: #242935;
+      border: 1px solid var(--color-border);
+      display: flex;
+      align-items: center;
+      justify-content: center;
+      flex-shrink: 0;
+    }
+
+    .player-thumb svg {
+      width: 24px;
+      height: 24px;
+      stroke: var(--color-muted);
+      opacity: 0.7;
+    }
+
+    .player-info {
+      display: flex;
+      flex-direction: column;
+      overflow: hidden;
+      white-space: nowrap;
+    }
+
+    .player-track-title {
+      font-size: 14px;
+      font-weight: 600;
+      color: var(--color-foreground);
+      text-overflow: ellipsis;
+      overflow: hidden;
+    }
+
+    .player-artist-album {
+      font-size: 12px;
+      color: var(--color-muted);
+      text-overflow: ellipsis;
+      overflow: hidden;
+      margin-top: 2px;
+    }
+
+    /* Zone Center */
+    .player-center {
+      display: flex;
+      flex-direction: column;
+      align-items: center;
+      justify-content: center;
+      gap: 6px;
+      flex: 1;
+      max-width: 580px;
+    }
+
+    .player-controls {
+      display: flex;
+      align-items: center;
+      gap: 18px;
+    }
+
+    .ctrl-btn {
+      background: transparent;
+      border: none;
+      color: var(--color-foreground);
+      display: flex;
+      align-items: center;
+      justify-content: center;
+      cursor: pointer;
+      border-radius: var(--radius-full);
+      padding: 6px;
+      min-width: 44px;
+      min-height: 44px;
+      transition: color 0.15s ease, transform 0.1s ease;
+    }
+
+    .ctrl-btn:hover {
+      color: var(--color-primary);
+    }
+
+    .ctrl-btn:active {
+      transform: scale(0.94);
+    }
+
+    .ctrl-btn svg {
+      width: 22px;
+      height: 22px;
+      fill: currentColor;
+    }
+
+    .btn-playpause {
+      width: 48px;
+      height: 48px;
+      border-radius: var(--radius-full);
+      background-color: var(--color-primary);
+      color: #0f1115;
+      display: flex;
+      align-items: center;
+      justify-content: center;
+      border: none;
+      cursor: pointer;
+      box-shadow: var(--shadow-sm);
+      transition: filter 0.15s ease, transform 0.1s ease;
+    }
+
+    .btn-playpause:hover {
+      filter: brightness(1.1);
+    }
+
+    .btn-playpause:active {
+      filter: brightness(0.92);
+      transform: scale(0.96);
+    }
+
+    .btn-playpause svg {
+      width: 22px;
+      height: 22px;
+      fill: #0f1115;
+    }
+
+    /* Slider Bar */
+    .player-scrubber-wrapper {
+      display: flex;
+      align-items: center;
+      gap: 12px;
+      width: 100%;
+      max-width: 480px;
+    }
+
+    .time-stamp {
+      font-size: 12px;
+      font-variant-numeric: tabular-nums;
+      color: var(--color-muted);
+      width: 32px;
+    }
+
+    .time-stamp.left {
+      text-align: right;
+    }
+
+    .time-stamp.right {
+      text-align: left;
+    }
+
+    .scrubber-track {
+      flex: 1;
+      height: 4px;
+      background-color: var(--color-border);
+      border-radius: var(--radius-full);
+      position: relative;
+      cursor: pointer;
+    }
+
+    .scrubber-fill {
+      position: absolute;
+      top: 0;
+      left: 0;
+      bottom: 0;
+      width: 30.7%; /* 1:12 of 3:58 approx 30% */
+      background-color: var(--color-primary);
+      border-radius: var(--radius-full);
+    }
+
+    .scrubber-handle {
+      position: absolute;
+      top: 50%;
+      left: 30.7%;
+      transform: translate(-50%, -50%);
+      width: 12px;
+      height: 12px;
+      background-color: var(--color-primary);
+      border-radius: var(--radius-full);
+      box-shadow: 0 1px 3px rgba(0,0,0,0.6);
+      opacity: 0;
+      transition: opacity 0.15s ease;
+    }
+
+    .scrubber-track:hover .scrubber-handle {
+      opacity: 1;
+    }
+
+    /* Zone Right */
+    .player-right {
+      width: 280px;
+      flex-shrink: 0;
+    }
+  </style>
+</head>
+<body>
+
+  <!-- Top Bar -->
+  <header class="top-bar">
+    <div class="brand-section">
+      <a href="#" class="brand-logo">
+        <svg viewBox="0 0 24 24">
+          <path d="M5 3l14 9-14 9V3z"/>
+        </svg>
+        <span>Videothek</span>
+      </a>
+      <nav class="nav-links">
+        <a href="#">Filme</a>
+        <a href="#">Serien</a>
+        <a href="#" class="active">Musik</a>
+        <a href="#">Hörbücher</a>
+        <a href="#">Bilder</a>
+      </nav>
+    </div>
+    <div class="auth-section">
+      <button class="btn-abmelden" type="button">
+        <svg width="18" height="18" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round">
+          <path d="M9 21H5a2 2 0 0 1-2-2V5a2 2 0 0 1 2-2h4"></path>
+          <polyline points="16 17 21 12 16 7"></polyline>
+          <line x1="21" y1="12" x2="9" y2="12"></line>
+        </svg>
+        Abmelden
+      </button>
+    </div>
+  </header>
+
+  <!-- Main Content Container -->
+  <main class="content-container">
+    
+    <!-- Back Link -->
+    <div class="back-nav">
+      <a href="#" class="back-link">
+        <svg width="16" height="16" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2.5" stroke-linecap="round" stroke-linejoin="round">
+          <polyline points="15 18 9 12 15 6"></polyline>
+        </svg>
+        Musik
+      </a>
+    </div>
+
+    <!-- Album Header Row -->
+    <section class="album-header">
+      <div class="album-cover-placeholder" aria-label="Cover-Platzhalter">
+        <svg viewBox="0 0 24 24" fill="none" stroke-width="1.6" stroke-linecap="round" stroke-linejoin="round">
+          <path d="M9 18V5l12-2v13"></path>
+          <circle cx="6" cy="18" r="3"></circle>
+          <circle cx="18" cy="16" r="3"></circle>
+        </svg>
+      </div>
+
+      <div class="album-meta-col">
+        <span class="meta-tag">Album</span>
+        <h1 class="album-title">Unterwegs</h1>
+        <div class="album-artist">Die Beispiele</div>
+        <div class="album-subtext">2019 · 12 Titel · 48 Min.</div>
+        
+        <button class="btn-play-all" type="button">
+          <svg viewBox="0 0 24 24">
+            <path d="M6 4l15 8-15 8V4z"/>
+          </svg>
+          Alle abspielen
+        </button>
+      </div>
+    </section>
+
+    <!-- Track List Table -->
+    <section class="tracklist-section">
+      <table class="track-table">
+        <thead>
+          <tr>
+            <th class="col-num">#</th>
+            <th class="col-title">Titel</th>
+            <th class="col-duration">Dauer</th>
+          </tr>
+        </thead>
+        <tbody>
+          <!-- CD 1 -->
+          <tr class="section-header-row">
+            <td colspan="3">CD 1</td>
+          </tr>
+
+          <!-- Track 1 -->
+          <tr class="track-row">
+            <td class="num-cell">1</td>
+            <td class="title-cell">
+              <span class="track-name">Aufbruch</span>
+            </td>
+            <td class="dur-cell">3:41</td>
+          </tr>
+
+          <!-- Track 2 -->
+          <tr class="track-row">
+            <td class="num-cell">2</td>
+            <td class="title-cell">
+              <span class="track-name">Am Fluss</span>
+            </td>
+            <td class="dur-cell">4:05</td>
+          </tr>
+
+          <!-- Track 3 (Playing) -->
+          <tr class="track-row playing">
+            <td class="num-cell">
+              <span class="equalizer-icon" title="Wird abgespielt">
+                <svg width="14" height="14" viewBox="0 0 14 14" fill="none">
+                  <rect x="1" y="4" width="2.5" height="9" rx="1.2" />
+                  <rect x="5.7" y="1" width="2.5" height="12" rx="1.2" />
+                  <rect x="10.5" y="6" width="2.5" height="7" rx="1.2" />
+                </svg>
+              </span>
+            </td>
+            <td class="title-cell">
+              <span class="track-name">Nachtzug</span>
+            </td>
+            <td class="dur-cell" style="color: var(--color-primary); font-weight: 500;">3:58</td>
+          </tr>
+
+          <!-- Track 4 -->
+          <tr class="track-row">
+            <td class="num-cell">4</td>
+            <td class="title-cell">
+              <span class="track-name">Grenzland</span>
+            </td>
+            <td class="dur-cell">5:12</td>
+          </tr>
+
+          <!-- Track 5 -->
+          <tr class="track-row">
+            <td class="num-cell">5</td>
+            <td class="title-cell">
+              <span class="track-name">Heimweg</span>
+            </td>
+            <td class="dur-cell">3:27</td>
+          </tr>
+
+          <!-- Track 6 (Dimmed, unplayable) -->
+          <tr class="track-row dimmed">
+            <td class="num-cell">6</td>
+            <td class="title-cell">
+              <span class="track-name">Bonus (Live)</span>
+              <span class="badge-unplayable">
+                <svg width="12" height="12" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2.5" stroke-linecap="round" stroke-linejoin="round">
+                  <circle cx="12" cy="12" r="10"></circle>
+                  <line x1="4.93" y1="4.93" x2="19.07" y2="19.07"></line>
+                </svg>
+                Nicht abspielbar
+              </span>
+            </td>
+            <td class="dur-cell">—</td>
+          </tr>
+
+          <!-- CD 2 -->
+          <tr class="section-header-row">
+            <td colspan="3">CD 2</td>
+          </tr>
+
+          <!-- Track 1 CD 2 -->
+          <tr class="track-row">
+            <td class="num-cell">1</td>
+            <td class="title-cell">
+              <span class="track-name">Abendrot</span>
+            </td>
+            <td class="dur-cell">4:44</td>
+          </tr>
+
+          <!-- Track 2 CD 2 -->
+          <tr class="track-row">
+            <td class="num-cell">2</td>
+            <td class="title-cell">
+              <span class="track-name">Zugabe</span>
+            </td>
+            <td class="dur-cell">6:01</td>
+          </tr>
+        </tbody>
+      </table>
+    </section>
+
+  </main>
+
+  <!-- Persistent Audio Player Bar -->
+  <footer class="player-bar">
+    <!-- Left Zone: Track Info -->
+    <div class="player-left">
+      <div class="player-thumb">
+        <svg viewBox="0 0 24 24" fill="none" stroke-width="1.8" stroke-linecap="round" stroke-linejoin="round">
+          <path d="M9 18V5l12-2v13"></path>
+          <circle cx="6" cy="18" r="3"></circle>
+          <circle cx="18" cy="16" r="3"></circle>
+        </svg>
+      </div>
+      <div class="player-info">
+        <div class="player-track-title">Nachtzug</div>
+        <div class="player-artist-album">Die Beispiele · Unterwegs</div>
+      </div>
+    </div>
+
+    <!-- Center Zone: Controls & Scrubber -->
+    <div class="player-center">
+      <div class="player-controls">
+        <!-- Previous Track Button -->
+        <button class="ctrl-btn" type="button" aria-label="Vorheriger Titel">
+          <svg viewBox="0 0 24 24">
+            <path d="M6 6h2v12H6zm3.5 6l8.5 6V6z"/>
+          </svg>
+        </button>
+
+        <!-- Play/Pause Button (48px Amber Circular showing Pause) -->
+        <button class="btn-playpause" type="button" aria-label="Pause">
+          <svg viewBox="0 0 24 24">
+            <path d="M6 19h4V5H6v14zm8-14v14h4V5h-4z"/>
+          </svg>
+        </button>
+
+        <!-- Next Track Button -->
+        <button class="ctrl-btn" type="button" aria-label="Nächster Titel">
+          <svg viewBox="0 0 24 24">
+            <path d="M6 18l8.5-6L6 6v12zM16 6v12h2V6h-2z"/>
+          </svg>
+        </button>
+      </div>
+
+      <!-- Scrubber Bar (~480px) -->
+      <div class="player-scrubber-wrapper">
+        <span class="time-stamp left">1:12</span>
+        <div class="scrubber-track" role="slider" aria-label="Position" aria-valuenow="72" aria-valuemin="0" aria-valuemax="238">
+          <div class="scrubber-fill"></div>
+          <div class="scrubber-handle"></div>
+        </div>
+        <span class="time-stamp right">3:58</span>
+      </div>
+    </div>
+
+    <!-- Right Zone: Empty per spec -->
+    <div class="player-right"></div>
+  </footer>
+
+</body>
+</html>

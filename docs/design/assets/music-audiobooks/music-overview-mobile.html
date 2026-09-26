@@ -1,0 +1,470 @@
+<!DOCTYPE html>
+<html lang="de">
+<head>
+  <meta charset="UTF-8">
+  <meta name="viewport" content="width=device-width, initial-scale=1.0">
+  <title>P5 Musik Übersicht – mobile</title>
+  <style>
+    :root {
+      --color-background: #0f1115;
+      --color-foreground: #e8eaed;
+      --color-primary: #f5b301;
+      --color-secondary: #1c2029;
+      --color-accent: #4fb3ff;
+      --color-muted: #9aa0aa;
+      --color-border: #2a2f3a;
+      --font-sans: system-ui, -apple-system, 'Segoe UI', Roboto, 'Helvetica Neue', Arial, sans-serif;
+      --radius-sm: 4px;
+      --radius-md: 8px;
+      --shadow-sm: 0 1px 2px rgba(0,0,0,0.4);
+    }
+
+    * {
+      box-sizing: border-box;
+      margin: 0;
+      padding: 0;
+    }
+
+    body {
+      background-color: var(--color-background);
+      color: var(--color-foreground);
+      font-family: var(--font-sans);
+      min-height: 100vh;
+      display: flex;
+      justify-content: center;
+      background-attachment: fixed;
+      -webkit-font-smoothing: antialiased;
+    }
+
+    .mobile-container {
+      width: 100%;
+      max-width: 390px;
+      min-height: 100vh;
+      background-color: var(--color-background);
+      display: flex;
+      flex-direction: column;
+      position: relative;
+      padding-bottom: 72px; /* space for fixed bottom nav */
+    }
+
+    /* Header Bar */
+    .top-header {
+      padding: 16px 16px 12px 16px;
+      display: flex;
+      align-items: center;
+      justify-content: space-between;
+    }
+
+    .page-title {
+      font-size: 24px;
+      font-weight: 700;
+      color: var(--color-foreground);
+      letter-spacing: -0.02em;
+    }
+
+    .main-content {
+      padding: 0 16px 24px 16px;
+      display: flex;
+      flex-direction: column;
+      gap: 28px;
+    }
+
+    /* Weiterhören Card */
+    .resume-card {
+      background-color: var(--color-secondary);
+      border-radius: var(--radius-md);
+      box-shadow: var(--shadow-sm);
+      padding: 14px;
+      display: flex;
+      flex-direction: column;
+      gap: 12px;
+    }
+
+    .resume-header {
+      display: flex;
+      align-items: center;
+      gap: 12px;
+    }
+
+    .resume-cover {
+      width: 56px;
+      height: 56px;
+      background-color: #242935;
+      border-radius: var(--radius-sm);
+      display: flex;
+      align-items: center;
+      justify-content: center;
+      flex-shrink: 0;
+      color: var(--color-muted);
+    }
+
+    .resume-info {
+      flex: 1;
+      min-width: 0;
+    }
+
+    .resume-badge {
+      font-size: 11px;
+      text-transform: uppercase;
+      font-weight: 600;
+      letter-spacing: 0.05em;
+      color: var(--color-muted);
+      margin-bottom: 2px;
+    }
+
+    .resume-track {
+      font-size: 15px;
+      font-weight: 600;
+      color: var(--color-foreground);
+      white-space: nowrap;
+      overflow: hidden;
+      text-overflow: ellipsis;
+    }
+
+    .resume-meta {
+      font-size: 13px;
+      color: var(--color-muted);
+      white-space: nowrap;
+      overflow: hidden;
+      text-overflow: ellipsis;
+      margin-top: 1px;
+    }
+
+    /* Progress bar */
+    .progress-bar-container {
+      width: 100%;
+      height: 4px;
+      background-color: rgba(255, 255, 255, 0.08);
+      border-radius: 2px;
+      overflow: hidden;
+    }
+
+    .progress-bar-fill {
+      width: 30%;
+      height: 100%;
+      background-color: var(--color-primary);
+      border-radius: 2px;
+    }
+
+    /* Resume Action Button */
+    .resume-action-row {
+      display: flex;
+      justify-content: flex-end;
+    }
+
+    .btn-resume {
+      background-color: var(--color-primary);
+      color: #0f1115;
+      border: none;
+      border-radius: var(--radius-md);
+      padding: 0 16px;
+      height: 44px;
+      font-size: 14px;
+      font-weight: 600;
+      font-family: inherit;
+      display: inline-flex;
+      align-items: center;
+      gap: 8px;
+      cursor: pointer;
+    }
+
+    /* Artist Section */
+    .artist-section {
+      display: flex;
+      flex-direction: column;
+      gap: 12px;
+    }
+
+    .artist-header {
+      display: flex;
+      align-items: baseline;
+      gap: 8px;
+      padding-bottom: 2px;
+    }
+
+    .artist-name {
+      font-size: 20px;
+      font-weight: 600;
+      color: var(--color-foreground);
+      letter-spacing: -0.01em;
+    }
+
+    .album-count {
+      font-size: 13px;
+      color: var(--color-muted);
+    }
+
+    /* Album Grid */
+    .album-grid {
+      display: grid;
+      grid-template-columns: repeat(2, 1fr);
+      gap: 16px;
+    }
+
+    .album-card {
+      display: flex;
+      flex-direction: column;
+      text-decoration: none;
+      cursor: pointer;
+    }
+
+    .album-cover-box {
+      width: 100%;
+      aspect-ratio: 1 / 1;
+      background-color: var(--color-secondary);
+      border-radius: var(--radius-md);
+      box-shadow: var(--shadow-sm);
+      display: flex;
+      align-items: center;
+      justify-content: center;
+      color: #555b68;
+      position: relative;
+      margin-bottom: 8px;
+    }
+
+    .album-title {
+      font-size: 14px;
+      font-weight: 600;
+      color: var(--color-foreground);
+      white-space: nowrap;
+      overflow: hidden;
+      text-overflow: ellipsis;
+      line-height: 1.3;
+    }
+
+    .album-year {
+      font-size: 12px;
+      color: var(--color-muted);
+      margin-top: 2px;
+    }
+
+    /* Bottom Navigation Bar */
+    .bottom-nav {
+      position: fixed;
+      bottom: 0;
+      left: 50%;
+      transform: translateX(-50%);
+      width: 100%;
+      max-width: 390px;
+      height: 64px;
+      background-color: var(--color-secondary);
+      border-top: 1px solid var(--color-border);
+      display: flex;
+      align-items: center;
+      justify-content: space-around;
+      z-index: 100;
+      padding-bottom: env(safe-area-inset-bottom, 0);
+    }
+
+    .nav-item {
+      display: flex;
+      flex-direction: column;
+      align-items: center;
+      justify-content: center;
+      width: 60px;
+      height: 48px;
+      color: var(--color-muted);
+      text-decoration: none;
+      gap: 4px;
+      font-size: 11px;
+      font-weight: 500;
+    }
+
+    .nav-item.active {
+      color: var(--color-primary);
+    }
+
+    .nav-icon {
+      width: 22px;
+      height: 22px;
+      stroke-width: 2;
+      stroke: currentColor;
+      fill: none;
+      stroke-linecap: round;
+      stroke-linejoin: round;
+    }
+  </style>
+</head>
+<body>
+
+  <div class="mobile-container">
+    <!-- Header -->
+    <header class="top-header">
+      <h1 class="page-title">Musik</h1>
+    </header>
+
+    <!-- Main Content -->
+    <main class="main-content">
+      <!-- Weiterhören Card -->
+      <section class="resume-card" aria-label="Aktueller Titel zum Weiterhören">
+        <div class="resume-header">
+          <div class="resume-cover" aria-hidden="true">
+            <svg width="24" height="24" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.8" stroke-linecap="round" stroke-linejoin="round">
+              <path d="M9 18V5l12-2v13"></path>
+              <circle cx="6" cy="18" r="3"></circle>
+              <circle cx="18" cy="16" r="3"></circle>
+            </svg>
+          </div>
+          <div class="resume-info">
+            <div class="resume-badge">Weiterhören</div>
+            <div class="resume-track">Nachtzug</div>
+            <div class="resume-meta">Unterwegs · Die Beispiele</div>
+          </div>
+        </div>
+
+        <div class="progress-bar-container" role="progressbar" aria-valuenow="30" aria-valuemin="0" aria-valuemax="100">
+          <div class="progress-bar-fill"></div>
+        </div>
+
+        <div class="resume-action-row">
+          <button class="btn-resume" type="button">
+            <svg width="16" height="16" viewBox="0 0 24 24" fill="currentColor">
+              <polygon points="5 3 19 12 5 21 5 3"></polygon>
+            </svg>
+            Fortsetzen
+          </button>
+        </div>
+      </section>
+
+      <!-- Künstler 1: Anna Beispiel -->
+      <section class="artist-section">
+        <div class="artist-header">
+          <h2 class="artist-name">Anna Beispiel</h2>
+          <span class="album-count">2 Alben</span>
+        </div>
+        <div class="album-grid">
+          <article class="album-card">
+            <div class="album-cover-box" aria-hidden="true">
+              <svg width="36" height="36" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.5" stroke-linecap="round" stroke-linejoin="round">
+                <path d="M9 18V5l12-2v13"></path>
+                <circle cx="6" cy="18" r="3"></circle>
+                <circle cx="18" cy="16" r="3"></circle>
+              </svg>
+            </div>
+            <div class="album-title">Erste Schritte</div>
+            <div class="album-year">2015</div>
+          </article>
+
+          <article class="album-card">
+            <div class="album-cover-box" aria-hidden="true">
+              <svg width="36" height="36" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.5" stroke-linecap="round" stroke-linejoin="round">
+                <path d="M9 18V5l12-2v13"></path>
+                <circle cx="6" cy="18" r="3"></circle>
+                <circle cx="18" cy="16" r="3"></circle>
+              </svg>
+            </div>
+            <div class="album-title">Morgenlicht</div>
+            <div class="album-year">2017</div>
+          </article>
+        </div>
+      </section>
+
+      <!-- Künstler 2: Die Beispiele -->
+      <section class="artist-section">
+        <div class="artist-header">
+          <h2 class="artist-name">Die Beispiele</h2>
+          <span class="album-count">3 Alben</span>
+        </div>
+        <div class="album-grid">
+          <article class="album-card">
+            <div class="album-cover-box" aria-hidden="true">
+              <svg width="36" height="36" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.5" stroke-linecap="round" stroke-linejoin="round">
+                <path d="M9 18V5l12-2v13"></path>
+                <circle cx="6" cy="18" r="3"></circle>
+                <circle cx="18" cy="16" r="3"></circle>
+              </svg>
+            </div>
+            <div class="album-title">Unterwegs</div>
+            <div class="album-year">2019</div>
+          </article>
+
+          <article class="album-card">
+            <div class="album-cover-box" aria-hidden="true">
+              <svg width="36" height="36" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.5" stroke-linecap="round" stroke-linejoin="round">
+                <path d="M9 18V5l12-2v13"></path>
+                <circle cx="6" cy="18" r="3"></circle>
+                <circle cx="18" cy="16" r="3"></circle>
+              </svg>
+            </div>
+            <div class="album-title">Live im Hafen</div>
+            <div class="album-year">2021</div>
+          </article>
+        </div>
+      </section>
+
+      <!-- Künstler 3: Kammerorchester Nord -->
+      <section class="artist-section">
+        <div class="artist-header">
+          <h2 class="artist-name">Kammerorchester Nord</h2>
+          <span class="album-count">1 Album</span>
+        </div>
+        <div class="album-grid">
+          <article class="album-card">
+            <div class="album-cover-box" aria-hidden="true">
+              <svg width="36" height="36" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.5" stroke-linecap="round" stroke-linejoin="round">
+                <path d="M9 18V5l12-2v13"></path>
+                <circle cx="6" cy="18" r="3"></circle>
+                <circle cx="18" cy="16" r="3"></circle>
+              </svg>
+            </div>
+            <div class="album-title">Sinfonie Nr. 3</div>
+            <div class="album-year">2020</div>
+          </article>
+        </div>
+      </section>
+    </main>
+
+    <!-- Fixed Bottom Navigation Bar -->
+    <nav class="bottom-nav" aria-label="Hauptnavigation">
+      <a href="#" class="nav-item">
+        <svg class="nav-icon" viewBox="0 0 24 24">
+          <rect x="2" y="2" width="20" height="20" rx="2.18" ry="2.18"></rect>
+          <line x1="7" y1="2" x2="7" y2="22"></line>
+          <line x1="17" y1="2" x2="17" y2="22"></line>
+          <line x1="2" y1="12" x2="22" y2="12"></line>
+          <line x1="2" y1="7" x2="7" y2="7"></line>
+          <line x1="2" y1="17" x2="7" y2="17"></line>
+          <line x1="17" y1="17" x2="22" y2="17"></line>
+          <line x1="17" y1="7" x2="22" y2="7"></line>
+        </svg>
+        <span>Filme</span>
+      </a>
+
+      <a href="#" class="nav-item">
+        <svg class="nav-icon" viewBox="0 0 24 24">
+          <rect x="2" y="7" width="20" height="15" rx="2" ry="2"></rect>
+          <polyline points="17 2 12 7 7 2"></polyline>
+        </svg>
+        <span>Serien</span>
+      </a>
+
+      <a href="#" class="nav-item active">
+        <svg class="nav-icon" viewBox="0 0 24 24">
+          <path d="M9 18V5l12-2v13"></path>
+          <circle cx="6" cy="18" r="3"></circle>
+          <circle cx="18" cy="16" r="3"></circle>
+        </svg>
+        <span>Musik</span>
+      </a>
+
+      <a href="#" class="nav-item">
+        <svg class="nav-icon" viewBox="0 0 24 24">
+          <path d="M3 18v-6a9 9 0 0 1 18 0v6"></path>
+          <path d="M21 19a2 2 0 0 1-2 2h-1a2 2 0 0 1-2-2v-3a2 2 0 0 1 2-2h3zM3 19a2 2 0 0 0 2 2h1a2 2 0 0 0 2-2v-3a2 2 0 0 0-2-2H3z"></path>
+        </svg>
+        <span>Hörbücher</span>
+      </a>
+
+      <a href="#" class="nav-item">
+        <svg class="nav-icon" viewBox="0 0 24 24">
+          <rect x="3" y="3" width="18" height="18" rx="2" ry="2"></rect>
+          <circle cx="8.5" cy="8.5" r="1.5"></circle>
+          <polyline points="21 15 16 10 5 21"></polyline>
+        </svg>
+        <span>Bilder</span>
+      </a>
+    </nav>
+  </div>
+
+</body>
+</html>
