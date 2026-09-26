@@ -11,7 +11,7 @@
 
 | Phase | Name | Spec | Milestone |
 |---|---|---|---|
-| 1 | Foundation & accounts — project skeleton, config, router, static serving, SQLite + migrations, login/sessions, admin bootstrap, user admin UI, `npm run verify` | — | — |
+| 1 | Foundation & accounts — project skeleton, config, router, static serving, SQLite + migrations, login/sessions, admin bootstrap, user admin UI, `npm run verify` | [spec-foundation-accounts](specs/spec-foundation-accounts.md) | [#1](https://github.com/bhemsen/videothek/milestone/1) |
 | 2 | Library index: movies & series — scanner, movie/series parsers, direct-play compatibility table, watcher + periodic rescan, browse API + UI | — | — |
 | 3 | Video streaming & player — path guard, range streaming (206/416), video player page | — | — |
 | 4 | Progress & resume — progress API, player integration, "continue watching" | — | — |
