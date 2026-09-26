@@ -18,7 +18,7 @@ moved to `docs/specs/archive/`.
 - [ ] While a video plays, its position is persisted at least every 10 s and
       immediately on pause, end, tab hide and page leave.
 - [ ] The start page shows a "Weiterschauen" row of the user's in-progress
-      movies and episodes (most recent first, 4 px amber progress bar, remaining
+      movies and episodes (most recent first, 4 px primary (orange) progress bar, remaining
       time); the row is absent when there is nothing to continue.
 - [ ] A video watched to ≥ 90 % leaves the row and shows a "Gesehen" badge on its
       movie card / episode row; a started one shows the 4 px bar there.
@@ -211,7 +211,7 @@ continues with the next season's first, and the finale yields nothing.
   requests
   `GET /api/progress?category=movie,series` (limit 20); hidden when empty or when
   the request fails. Card = 16:9 placeholder (no video thumbnails in v1), 4 px
-  amber bar = position/duration, title (series title for episodes, movie title
+  primary (orange) bar = position/duration, title (series title for episodes, movie title
   otherwise, one line + ellipsis), muted meta (`S1 · F3 · Noch 24 Min.` /
   `Noch 1 Std. 52 Min.`; the `S · F` part is omitted when P2 has no numbers for
   the episode); the card links to `/player.html?id=<id>` (P3).
@@ -225,7 +225,7 @@ continues with the next season's first, and the finale yields nothing.
 - **Grid decoration** (`public/js/lib/progress-badges.js`): P2's movie grid and
   episode list call `decorateProgress(root, entries)` after rendering, with one
   `GET /api/progress?view=all&category=movie|series` per page. `in_progress` →
-  4 px amber bar on the thumbnail/row bottom plus visually hidden text
+  4 px primary (orange) bar on the thumbnail/row bottom plus visually hidden text
   "Zu 45 % gesehen"; `finished` → badge with check SVG and "Gesehen"; `none` →
   nothing. A failed request leaves the page undecorated (progress is an
   enhancement).
@@ -390,7 +390,7 @@ mobile 390 px and desktop 1440 px, compared with the design exports):
       10 s, none while paused, one on pause and one on tab close; no request to
       any external host.
 - [ ] Start page: the movie appears first in "Weiterschauen" with a proportional
-      4 px amber bar and "Noch … Min."; an episode shows `S1 · F3 · Noch … Min.`;
+      4 px primary (orange) bar and "Noch … Min."; an episode shows `S1 · F3 · Noch … Min.`;
       a new user sees no row at all.
 - [ ] Seek a movie past 90 % and stop: it leaves the row; its movie card shows
       "Gesehen"; reopening starts at 0:00 without toast. Open it and close
