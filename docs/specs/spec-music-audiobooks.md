@@ -618,6 +618,27 @@ compared with the exports):
   chosen among playable files only; bar offset below 768 px includes
   `env(safe-area-inset-bottom)` like Phase 1's `main` padding; upper-case
   cover extensions rely on Phase 3's lower-casing `mediaTypeFor`.
+- 2026-09-26: implementation (#60, `src/library/tags/flac.js`) — `readFlac`
+  returns Vorbis fields as raw, trimmed strings keyed by the upper-cased tag
+  key exactly as found (e.g. a literal `ALBUM ARTIST` key survives with its
+  space); numeric/`"n/total"`/year normalisation from the "Fields read" row is
+  left to the future `src/library/tags/index.js` mapping (out of this issue's
+  files), matching the Reader interfaces row's `Record<string, string>` type.
+  A repeated Vorbis key keeps its first non-empty value, including across a
+  malformed file's repeated VORBIS_COMMENT blocks (mirrors ID3's multi-value
+  rule without assuming FLAC's `\0`-separation). Each STREAMINFO/
+  VORBIS_COMMENT/PICTURE content read is additionally clamped to the bytes
+  left in the budget (on top of its own per-type cap), so total I/O honours
+  the 256 KiB row exactly bar the handful of fixed 4-byte block-header reads
+  already in flight when the budget crosses zero. PICTURE selection tracks
+  the first type-3 and the first non-type-3
+  block separately and prefers the former, so ordering never matters. The
+  fixture builder (`test/helpers/flac-fixture.js`) writes real, correctly
+  CRC'd (CRC-8/CRC-16, poly `0x07`/`0x8005`) CONSTANT-subframe frames using
+  the "value from STREAMINFO" codes for sample rate and bit depth and the
+  16-bit-follows block-size code, restricted to mono/stereo and
+  `bitsPerSample` a multiple of 8 — sufficient for this issue's silent test
+  fixtures and for reuse by the later `make-audio-fixtures.js` issue.
 - 2026-09-26: issue #61 implementation — `parseMusicPath`/`parseAudiobookPath`
   are fully self-contained (each duplicates its own small `cleanFileName` /
   `discFolderNumber` helpers rather than importing a shared module), since the
