@@ -1,6 +1,7 @@
 // @ts-check
 import { test } from 'node:test';
 import assert from 'node:assert/strict';
+import { randomBytes } from 'node:crypto';
 import { readMpegDurationMs } from '../../../src/library/tags/mpeg.js';
 import { buildMpegFrame, withXingHeader, withVbriHeader, buildId3v2Tag, makeReadAt } from '../../helpers/mp3-fixture.js';
 
@@ -36,6 +37,18 @@ test('garbage after the tag (no valid sync) yields null, never throws', async ()
   const file = Buffer.concat([tag, Buffer.alloc(4096, 0x20)]);
   await assert.doesNotReject(readMpegDurationMs(makeReadAt(file), tag.length, file.length));
   assert.equal(await readMpegDurationMs(makeReadAt(file), tag.length, file.length), null);
+});
+
+test('random garbage never fabricates a duration from an unconfirmed sync byte', async () => {
+  // A lone 0xFF sync-like pair happens fairly often in random bytes; a real
+  // frame header is only accepted once a second, matching header is found
+  // at the offset its own frame length implies. 300 random 8 KiB buffers
+  // (no ID3 tag, no real frames) must all yield null.
+  for (let i = 0; i < 300; i++) {
+    const buf = randomBytes(8192);
+    const durationMs = await readMpegDurationMs(makeReadAt(buf), 0, buf.length);
+    assert.equal(durationMs, null, `iteration ${i} fabricated a duration from random bytes`);
+  }
 });
 
 test('audioStart at or past the file end yields null, never throws', async () => {

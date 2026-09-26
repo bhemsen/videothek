@@ -37,14 +37,28 @@ export async function readMpegDurationMs(readAt, audioStart, fileSize) {
   return Math.round(((fileSize - audioStart) * 8 / bitrateBps) * 1000);
 }
 
-/** Scans a buffer for the first valid MPEG-1/2/2.5 Layer III frame header.
+/** Scans a buffer for the first valid MPEG-1/2/2.5 Layer III frame header,
+ * confirmed by a matching header at the very next frame's offset (inside
+ * `win`) so random/non-MPEG bytes are not mistaken for a real sync.
  * @param {Buffer} win @returns {{ offset: number, header: FrameHeader } | null} */
 function findFrame(win) {
   for (let i = 0; i + 4 <= win.length; i++) {
     const header = decodeFrameHeader(win[i], win[i + 1], win[i + 2], win[i + 3]);
-    if (header) return { offset: i, header };
+    if (!header) continue;
+    const nextOffset = i + frameLengthBytes(header);
+    if (nextOffset + 4 > win.length) continue;
+    const nextHeader = decodeFrameHeader(win[nextOffset], win[nextOffset + 1], win[nextOffset + 2], win[nextOffset + 3]);
+    if (!nextHeader || nextHeader.isV1 !== header.isV1 || nextHeader.sampleRate !== header.sampleRate) continue;
+    return { offset: i, header };
   }
   return null;
+}
+
+/** Layer III frame length in bytes (MPEG-1: 144×bitrate/sampleRate; MPEG-2/2.5: 72×bitrate/sampleRate), plus padding.
+ * @param {FrameHeader} header @returns {number} */
+function frameLengthBytes(header) {
+  const multiplier = header.isV1 ? 144 : 72;
+  return Math.floor((multiplier * header.bitrateKbps * 1000) / header.sampleRate) + header.padding;
 }
 
 /** Decodes 4 candidate header bytes; `null` when not a valid Layer III sync.
@@ -88,7 +102,8 @@ function tryXingFrames(probe, header) {
   if (tag !== 'Xing' && tag !== 'Info') return null;
   const flags = probe.readUInt32BE(tagOffset + 4);
   if ((flags & 0x1) === 0 || probe.length < tagOffset + 12) return null;
-  return probe.readUInt32BE(tagOffset + 8);
+  const frames = probe.readUInt32BE(tagOffset + 8);
+  return frames === 0 ? null : frames;
 }
 
 /** Reads the VBRI frame count from the probe buffer, when a VBRI header is present.
