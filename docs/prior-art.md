@@ -31,6 +31,30 @@
   - AVOID: the npm package itself; ETag/conditional-GET machinery beyond what browsers need for media seeking.
   - Source: https://github.com/pillarjs/send/blob/master/index.js , https://developer.mozilla.org/en-US/docs/Web/HTTP/Status/206
 
+### nginx `send_timeout`
+
+- Path: `ngx_http_core_module` directive `send_timeout`
+- License: BSD-2-Clause
+- Verdict: reference-only — a configuration default, adopted as a behaviour
+- Date: 2026-09-26
+- Notes:
+  - ADOPT: an idle timeout of 60 s measured between two successive writes (not over the whole response); a client that receives nothing for that long is disconnected, releasing the file descriptor of a paused or sleeping player.
+  - AVOID: socket-level timeouts that would also cut keep-alive connections.
+  - Source: https://nginx.org/en/docs/http/ngx_http_core_module.html#send_timeout
+
+## Subtitle sidecars (Phase 3)
+
+### jellyfin/jellyfin (external subtitles)
+
+- Path: docs `jellyfin.org/docs/general/server/media/movies`, section "External Subtitles and Audio Tracks"
+- License: GPL-2.0-only (docs describe a naming convention only)
+- Verdict: reference-only — adopt the naming convention, not the code
+- Date: 2026-09-26
+- Notes:
+  - ADOPT: subtitle files next to the video named `<video name>.<ext>` or `<video name>.<lang>.<ext>` (e.g. `Film.en.srt`), discovered by base-name match in the video's folder.
+  - AVOID: flag suffixes (`default`, `forced`, `sdh`, `cc`, `hi`) and non-WebVTT formats (`.srt`, `.ass`) — they need parsing or conversion; v1 serves `.vtt` byte-for-byte to the browser's native `<track>` menu.
+  - Source: https://jellyfin.org/docs/general/server/media/movies/
+
 ## Direct-play compatibility detection (Phase 2)
 
 ### Browser codec support (MDN / chromestatus)
