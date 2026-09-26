@@ -41,7 +41,8 @@ and milestone. A completed spec is moved to `docs/specs/archive/`.
 - [ ] A playback failure is explained on the page: missing file ("Datei nicht
       gefunden") is distinguished from an unsupported codec ("Wiedergabe nicht
       möglich") and from a dropped connection ("Verbindung unterbrochen"); each
-      offers a way back.
+      offers a way back, and "Erneut versuchen" resumes on the same `<video>`
+      element near the previous position with its subtitle tracks intact.
 - [ ] For a series episode with a successor, a "Nächste Folge" button opens the
       next episode; "Zurück" returns to the page the user came from, not to the
       previous episode.
@@ -62,14 +63,21 @@ New files (each with its test; test paths in Verification):
   `src/library/parsers/compat.js` (no second table).
 - `src/http/stream.js` — `sendMedia(req, res, opts)`.
 - `src/media/paths.js` — `resolveMediaPath(mediaRoot, relPath)`.
-- `src/media/subtitles.js` — `listSubtitles(mediaRoot, relPath)`.
+- `src/media/subtitles.js` — `listSubtitles(mediaRoot, row)` and
+  `SUBTITLE_CONTENT_TYPE`.
 - `src/db/episodes.js` — `getNextEpisode(db, row)` (also used by P4).
 - `src/api/item-detail.js` — `toItemDetailJson({ db, mediaRoot }, row)`.
 - `src/api/media.js` — `registerMediaRoutes(router, deps)`: `GET /media/:id`
   and `GET /media/:id/subtitles/:n` (HEAD via P1's GET fallback).
 - `public/player.html`, `public/js/player.js`, `public/js/player-panel.js`,
   `public/js/player-icons.js`, `public/css/player.css`,
-  `public/js/lib/player-keys.js`, `public/js/lib/player-format.js`.
+  `public/js/lib/player-keys.js`, `public/js/lib/player-format.js`,
+  `public/js/lib/player-stage.js`.
+
+Frontend imports from other phases (read-only): P1 `public/js/lib/api.js`
+(`request`, `toLogin`), `public/js/lib/dom.js` (`el`), `public/js/lib/icons.js`
+(`createIcon`), `public/css/tokens.css`, `public/css/base.css`; P2
+`public/js/lib/library-format.js` (`episodeCode`).
 
 Edits to files owned by other phases (minimal, one line or one section):
 
@@ -84,6 +92,10 @@ Edits to files owned by other phases (minimal, one line or one section):
   `src/db/episodes.js` (next-episode order) and `src/api/media.js`
   (`/media/:id`, `/media/:id/subtitles/:n`); Key flow 3 (Stream) gains the
   `HEAD` disambiguation, the subtitle route and the 60 s idle timeout.
+- `docs/prior-art.md` (made in this spec PR, not by an issue): ADOPT entries
+  for nginx `send_timeout` (under "HTTP range streaming (Phase 3)") and a new
+  concern "Subtitle sidecars (Phase 3)" with Jellyfin's external-subtitle
+  naming.
 
 ### Out of scope
 
@@ -120,14 +132,23 @@ reference only). Off-token shades in the Stitch exports map to tokens or to
 P1's derived state tokens (`--color-{primary,secondary}-{hover,active}`); no
 other colour is introduced.
 
-Layout rules (they override the exports where they differ):
+Layout rules (they override the exports where they differ). Literal sizes
+below name the design scale; in CSS they are always the tokens: 48 px icon →
+`--space-12`; text 12/14/20/24 px → `--text-xs`/`--text-sm`/`--text-lg`/
+`--text-xl`; 1 px borders → `--border-width`; 2 px focus ring/offset →
+`--focus-width`/`--focus-offset`; 44 px → `--tap-min`. No `px` literal is
+written outside `tokens.css` (P1's machine-checked rule).
 
 - Focused page: no category nav, no app shell (`mountShell` is not called).
   Top: secondary button "Zurück" (chevron SVG) + title block (overline 14 px
   `muted` semibold, heading 24 px bold). The overline is rendered exactly as
   text ("Film", or the series title) — no `text-transform`; the "FILM" of the
   error export is illustrative. ≥ 768 px: button and title block side by side;
-  below: stacked.
+  below: stacked. The heading is the page's `<h1>` while an item is loaded.
+  Without an item (loading, "Titel nicht gefunden", "Titel konnte nicht
+  geladen werden") the title block is `hidden`, the error panel's heading is
+  the `<h1>`, and `document.title` = that heading + " – Videothek" (loading:
+  the static `<title>Videothek</title>` of `player.html`).
 - Page frame: `max-width: var(--content-max)`, centred, inline padding
   `var(--space-4)` (< 768 px) / `var(--space-6)` (≥ 768 px), block gap
   `var(--space-6)`.
@@ -141,13 +162,21 @@ Layout rules (they override the exports where they differ):
   full width below. Under `@media (hover: hover) and (pointer: fine)` the page
   additionally shows the muted 12 px hint line "Tastatur: Leertaste
   Wiedergabe/Pause · ←/→ 10 Sekunden · F Vollbild · M Ton aus".
-- Loading and error states replace the `<video>`. Error panel: centred, on the
+- The page creates exactly one `<video>` element per page load, only on the
+  playable path (just before `startPlayback`), and keeps that same element
+  for the page's lifetime. The loading state precedes it (no element yet).
+  Playback error states detach it from the stage (`video.remove()`), never
+  discard or recreate it, and show the error panel in its place; the
+  below-stage "Nächste Folge" button is shown only while the video is
+  attached (in error states `next` appears as a panel action where the table
+  says so). Error panel: centred, on the
   `secondary` surface, radius `lg`, `shadow-md`, padding `var(--space-8)`,
   `width: 100%` with `max-width: calc(var(--space-16) * 7.5)` (480 px, tokens
   only); content centred: destructive
   icon (48 px), optional "Nicht abspielbar" pill badge (12 px semibold,
   `destructive` text, 1 px `destructive` border, radius `full`, ban icon),
-  heading 20 px semibold, muted body 14 px, then the actions. On ≥ 768 px the
+  heading 20 px semibold (`<h2>`, or `<h1>` when no item is loaded — same
+  style), muted body 14 px, then the actions. On ≥ 768 px the
   panel sits inside a stage box with 1 px `border`, radius `lg` and
   `aspect-ratio: 16 / 9`; below 768 px the panel follows the title block
   directly.
@@ -187,8 +216,9 @@ State copy (German UI, exact):
   `src/media/subtitles.js`, which calls it for every candidate) turns an item's
   stored relative path into a filesystem path; clients reference media by id
   only; `src/api/` knows nothing about file formats (Content-Type comes from
-  `sendMedia` via `mediaTypeFor`, subtitle naming lives in `src/media/`);
-  SQL only in `src/db/`.
+  `sendMedia` via `mediaTypeFor`; subtitle naming, the "only video items have
+  subtitles" rule and `SUBTITLE_CONTENT_TYPE` live in `src/media/subtitles.js`
+  and are passed through by the route); SQL only in `src/db/`.
 - P1 contract used verbatim (D4/D5): handlers `handler(req, res, ctx)` with
   `ctx = { user, params, url }`; `register<X>Routes(router, deps)` with
   `deps = { config, db, log, now, ...extra }`; `config.mediaRoot`; router
@@ -208,25 +238,33 @@ State copy (German UI, exact):
   `category`, `kind`, `ext`, `title`, `series_id`, `series_title`, `season`,
   `episode`, `episode_end`, `playable`, …); `CATEGORIES` ids `movies`, `series`,
   `music`, `audiobooks`, `images` (D3); `getItemById(db, id)` from
-  `src/db/library-queries.js` (full row incl. `rel_path`); `toItemJson(row)` from
-  `src/api/library-json.js` (already includes `ext`); `EXTENSIONS`
+  `src/db/library-queries.js` (full row incl. `rel_path`, or `undefined`);
+  `toItemJson(row)` from `src/api/library-json.js` (already includes `ext`,
+  `seriesTitle`, `season`, `episode`, `episodeEnd`); `EXTENSIONS`
   (ext → `{ kind, playable, mime }`) and `isPlayableExtension(ext)` from
-  `src/library/parsers/compat.js`.
+  `src/library/parsers/compat.js`; frontend `episodeCode({ season, episode,
+  episodeEnd })` from `public/js/lib/library-format.js` (`S01E06`,
+  `S01E01-E02`, `E06`, `E06-E07`, `null` when the episode is unknown).
 - No new configuration value: the idle timeout is a module constant.
 
 ## Prior art
 
 - [HTTP range streaming (Phase 3)](../prior-art.md#http-range-streaming-phase-3) —
   `pillarjs/send` + `jshttp/range-parser` are the precedent for range semantics
-  (read at source, see Decision log); ETag/conditional-GET machinery is AVOIDed.
+  (read at source, see Decision log); ETag/conditional-GET machinery is AVOIDed;
+  nginx `send_timeout` (default 60 s between two writes) is the precedent for
+  the idle timeout (entry added by this PR).
+- [Subtitle sidecars (Phase 3)](../prior-art.md#subtitle-sidecars-phase-3) —
+  Jellyfin's external-subtitle naming `<video name>.<lang>.<ext>` is the
+  precedent for the `.vtt` sidecar pattern; its flag suffixes (`default`,
+  `forced`, `sdh`) are AVOIDed (entry added by this PR).
 - [Direct-play compatibility detection (Phase 2)](../prior-art.md#direct-play-compatibility-detection-phase-2) —
   defines which extensions are playable and therefore servable; explains why an
   extension-based "playable" MP4 can still fail at runtime (HEVC) → the "Codec"
   error state.
 - [Library model and naming conventions (Phase 2)](../prior-art.md#library-model-and-naming-conventions-phase-2) —
   season/episode numbering (`Season 00` specials) that the next-episode order
-  builds on; Jellyfin's `<video name>.<lang>.<ext>` sidecar naming is the
-  precedent for the subtitle pattern.
+  builds on.
 
 ## Human prerequisites
 
@@ -255,23 +293,25 @@ milestone QA gate only (QA-only):
 | `HEAD` supported with the same headers as a `200` GET (full `Content-Length`, no `Content-Range`), no body, no read stream; `Range` on `HEAD` is ignored. Implemented in `sendMedia` (P1's router runs the GET handler for HEAD). | RFC 9110 §14.2: range handling is defined for GET only. The player uses `HEAD` to tell "file missing" from "codec unsupported". | 2026-09-26 |
 | **No validators:** no `ETag`, no `Last-Modified`, no `304`; any `If-Range` header → ignore `Range` and send `200` full. Headers on 200/206: `Content-Type`, `Content-Length`, `Accept-Ranges: bytes`, `Cache-Control` (default `private, no-cache`), `X-Content-Type-Options: nosniff`. `/media/:id` always uses the default, for images too (P6 originals are re-fetched when reopened; only P5's cover and P6's thumb pass a longer `cacheControl`). | Prior art AVOIDs conditional-GET machinery; with no validators issued an `If-Range` never matches (RFC 9110 §13.1.5; `send` behaves the same). `private` because content is behind auth; `no-cache` because a file replaced in place keeps its id (P2 upserts by `rel_path`), so immutable caching of `/media/:id` would serve stale bytes; LAN bandwidth is cheap and the lightbox preloads only neighbours. | 2026-09-26 |
 | **Media types** — `mediaTypeFor(ext)` in `src/http/media-types.js` lower-cases `ext` and returns `EXTENSIONS[ext].mime` from P2's `compat.js`, else `application/octet-stream`; it holds no table of its own. Every MIME type (incl. `image/bmp`, `jfif → image/jpeg`) is P2's; SVG is never served (non-playable → `404`). A test asserts every `ext` with `isPlayableExtension(ext) === true` gets a non-fallback type. | Cross-phase consolidation D9 (single owner = P2 `compat.js`); the test prevents drift between "playable" and "servable". | 2026-09-26 |
-| **`sendMedia(req, res, { path, contentType?, cacheControl = 'private, no-cache', idleTimeoutMs = MEDIA_IDLE_TIMEOUT_MS, slice?, openFile? })` → `Promise<{ status: number, aborted: boolean, error: Error \| null }>`** in `src/http/stream.js`. `path` is an already-guarded absolute path. `contentType` defaults to `mediaTypeFor(extname(path))`. `slice = { offset, length }` makes the served entity bytes `[offset, offset+length)` of the file (all range maths relative to the slice; `offset+length > file size` → `404`) — for P5's embedded covers. `openFile(path)` (default `fs.promises.open(path, 'r')`) is a test seam. The promise settles when the response has finished or closed. | Cross-phase consolidation D10 (signature, Content-Type inside `sendMedia`, `cacheControl` for P5/P6); `slice` lets P5 serve embedded cover slices "via the same range logic" (D10) without a second streaming implementation; the returned status/error lets routes log without `sendMedia` needing a logger. | 2026-09-26 |
+| **`sendMedia(req, res, { path, contentType?, cacheControl = 'private, no-cache', idleTimeoutMs = MEDIA_IDLE_TIMEOUT_MS, slice?, openFile? })` → `Promise<{ status: number, aborted: boolean, error: Error \| null }>`** in `src/http/stream.js`. `path` is an already-guarded absolute path. `contentType` defaults to `mediaTypeFor(extname(path))`. `slice = { offset, length }` makes the served entity bytes `[offset, offset+length)` of the file (all range maths relative to the slice; `offset+length > file size` → `404`) — used by P6's thumb route (`/media/:id/thumb`); P5's embedded covers may use it as well (P5 owns that choice). `openFile(path)` (default `fs.promises.open(path, 'r')`) is a test seam. The promise settles when the response has finished or closed. | Cross-phase consolidation D10 (signature, Content-Type inside `sendMedia`, `cacheControl` for P5/P6); `slice` lets P6 serve the EXIF thumbnail window of an original, and any byte window "via the same range logic" (D10), without a second streaming implementation; the returned status/error lets routes log without `sendMedia` needing a logger. | 2026-09-26 |
 | **Streaming mechanics:** `handle = await openFile(path)` → `handle.stat()` (not a regular file → `404`) → decide status → for a body `fs.createReadStream(path, { fd: handle, start, end })` (default 64 KiB `highWaterMark`, `autoClose` on) piped with `stream.pipeline` into the response. On every path that creates no read stream (HEAD, 416, 404 after open, errors) the handle is closed explicitly before settling. Open/stat failures before headers → `404 not_found`; read errors after headers → destroy the response. `ERR_STREAM_PREMATURE_CLOSE` (client abort) settles with `aborted: true, error: null`. | Constitution wording verbatim (D10); opening before `writeHead` makes "file vanished" a clean `404` and keeps size and stream consistent; `pipeline` gives backpressure and destroys the stream (closing the handle) on client disconnect — the Pi-memory requirement. | 2026-09-26 |
-| **Idle timeout:** `MEDIA_IDLE_TIMEOUT_MS = 60_000` (module constant). A timer (`unref()`ed) is armed when the body starts and re-armed on every chunk the read stream emits; when it fires the response is destroyed (settles `aborted: true`). It is cleared on `close` of the response; socket timeouts are never touched (they belong to P1's keep-alive handling). | A paused browser stops reading, so the stream stops emitting chunks and would otherwise pin a descriptor indefinitely (sleeping devices never close). Precedent: nginx `send_timeout` defaults to 60 s, and browsers resume with a fresh range request. An own timer avoids clobbering the keep-alive socket timeout Node sets after each response. | 2026-09-26 |
+| **Idle timeout:** `MEDIA_IDLE_TIMEOUT_MS = 60_000` (module constant). A timer (`unref()`ed) is armed when the body starts and re-armed on every chunk the read stream emits; when it fires the response is destroyed (settles `aborted: true`). It is cleared on `close` of the response; socket timeouts are never touched (they belong to P1's keep-alive handling). | A paused browser stops reading, so the stream stops emitting chunks and would otherwise pin a descriptor indefinitely (sleeping devices never close). Precedent: nginx `send_timeout` defaults to 60 s "between two successive write operations" (prior art "HTTP range streaming"), and browsers resume with a fresh range request. An own timer avoids clobbering the keep-alive socket timeout Node sets after each response. | 2026-09-26 |
 | Error bodies on `/media/*` are JSON `{"error": "<code>"}` via P1 `sendError`: `not_found`, `not_playable`, `range_not_satisfiable`; `401 unauthorized` from `requireUser`. `/media/*` is not a page route: unauthenticated requests get `401`, never a redirect. The media route logs via `deps.log`: `media_stream_error { id, code }` when `sendMedia` settles with an `error` whose code is not `ENOENT`/`ENOTDIR`/`EISDIR`; no log for 404s or aborts. | Constitution error format; D4 logging via the injected `log`; a redirect to an HTML login page is useless as a media source; expected misses must not flood the Pi's SD card. | 2026-09-26 |
-| **Item detail JSON:** only the single-item response `GET /api/library/items/:id` (P2's route) is extended — through `toItemDetailJson({ db, mediaRoot }, row)` in `src/api/item-detail.js` = `{ ...toItemJson(row), next, subtitles }`. `next` = `{ id, title, season, episode, episodeEnd }` of `getNextEpisode(db, row)` or `null`; `subtitles` = `[{ index, lang, label }]` from `listSubtitles` (`[]` for non-video items or on any error). List responses are unchanged. `ext` is already part of P2's item JSON. | D10 ("`next` only in the single-item response") and H4; global rule: missing interface data is added in the backend, never reconstructed in the frontend; one fetch serves title, next-episode label and tracks; a single-line edit keeps P2's file conflict-free. | 2026-09-26 |
-| **Next episode** — `getNextEpisode(db, row) → LibraryItemRow \| null` in `src/db/episodes.js` (prepared statement, row-value comparison): if `row.series_id`, `row.season` or `row.episode` is `NULL` → `null`; else the row with the same `series_id`, non-NULL `season` and `episode`, and the smallest `(season, episode, rel_path)` strictly greater than `(row.season, coalesce(row.episode_end, row.episode), row.rel_path)`. Non-playable successors are not skipped. Movies and other categories: `null`. No auto-advance; on `ended` the "Nächste Folge" button receives focus. P4 uses the same function for its next-up entries (D11/H6) — there is no second ordering rule. | Specials (`Season 00`) sort first per the Jellyfin convention; `episode_end` makes a double episode `S01E01-E02` continue with `E03`; not skipping keeps a missing episode visible (the target page shows "Nicht abspielbar" and its own "Nächste Folge"). Browsers block audible autoplay on a fresh page load (Firefox by default), so auto-advance would be unreliable. | 2026-09-26 |
-| **Subtitle sidecars** — `listSubtitles(mediaRoot, relPath) → Promise<Array<{ index, lang, label, path }>>` in `src/media/subtitles.js`: resolve the item via `resolveMediaPath` (null → `[]`), `readdir` its directory `withFileTypes` (error → `[]`); candidates are regular files (`isFile()`, so symlinks are skipped) whose NFC name ends in `.vtt` (case-insensitive) and whose stem equals the video's basename (name without its last extension) or is `<basename>.<middle>` — compared case-insensitively after NFC, `middle` non-empty and ≤ 64 characters. `lang` = `middle.toLowerCase()` when `middle` matches `^[a-z]{2,3}$` (i), else `null`; `label` = `middle` as written, or `null` for the bare `<basename>.vtt`. Sorted by NFC file name (code-unit order); `index` = position in that order (0-based); each `path` has passed `resolveMediaPath` (dir-relative `relPath` + name). Discovery runs per request; nothing is indexed or cached. The server emits no German text. | Human decision at spec-acceptance gate (H4 = B): `.vtt` sidecars only, not in compat `EXTENSIONS`, discovered on request; Jellyfin's `<name>.<lang>.<ext>` precedent; per-request discovery is always fresh without touching P2's scanner; code-unit order is deterministic across OSes. An index can shift if a sidecar is added between the item fetch and the track request — accepted (reload fixes it). | 2026-09-26 |
-| **Subtitle route** `GET /media/:id/subtitles/:n` (in `src/api/media.js`, `requireUser`): id/`n` patterns as above; item unknown or `kind` ≠ `video` → `404 not_found`; `n ≥` list length → `404 not_found`; else `sendMedia` with `contentType: 'text/vtt; charset=utf-8'` and the default `cacheControl` (`private, no-cache`). The item need not be playable. No `.srt` conversion; files are served byte-for-byte (WebVTT mandates UTF-8). | H4: path guard, auth, whole-segment route, `private, no-cache`; the CSP's `media-src 'self'` covers `<track>` loads. | 2026-09-26 |
+| **Item detail JSON:** only the single-item response `GET /api/library/items/:id` (P2's route) is extended — through `toItemDetailJson({ db, mediaRoot }, row)` in `src/api/item-detail.js` = `{ ...toItemJson(row), next, subtitles }`. `next` = `{ id, title, season, episode, episodeEnd }` of `getNextEpisode(db, row)` or `null`; `subtitles` = `[{ index, lang, label }]` from `listSubtitles(mediaRoot, row)` (`[]` for non-video items or on any error). List responses are unchanged. `ext` is already part of P2's item JSON. | D10 ("`next` only in the single-item response") and H4; global rule: missing interface data is added in the backend, never reconstructed in the frontend; one fetch serves title, next-episode label and tracks; a single-line edit keeps P2's file conflict-free. | 2026-09-26 |
+| **Next episode** — `getNextEpisode(db, row) → LibraryItemRow \| null` in `src/db/episodes.js` (one prepared statement, row-value comparison): if `row.series_id`, `row.season` or `row.episode` is `NULL` → `null`. The chain is P2's series-detail order restricted to numbered episodes: candidates are rows with the same `series_id`, non-NULL `season` and `episode`, and in the same group as `row` — regular seasons (`season ≥ 1`) form one chain, specials (`season = 0`) their own chain; within a group rows are ordered by P2's detail keys `(season, episode, coalesce(episode_end, -1), sort_title, id)` (`-1` reproduces SQLite's NULLs-first for `episode_end`), and `next` is the first candidate whose key tuple is strictly greater than `row`'s. So `next` is the next numbered row of the same group as displayed on the series page: last episode of S01 → first of S02; the last regular episode → `null` (never into Specials); S00E01 → S00E02; the last special → `null`; unnumbered rows ("Weitere Folgen", NULL episode) are never `next` and have none. Non-playable successors are not skipped. Movies and other categories: `null`. No auto-advance; on `ended` the "Nächste Folge" button receives focus. P4 uses the same function for its next-up entries (D11/H6) — there is no second ordering rule. | Aligns with P2's display order (review: the earlier `rel_path`/Specials-first order contradicted the series page), so the button names the row the user sees below the current one. Specials are optional extras (making-ofs); chaining the finale into them would park a permanent next-up card on the home page (H5: next-up cards have no "×"), hence separate chains — the only deliberate difference from the page, and it removes links rather than reordering. Double episodes follow P2's keys (an `S01E01-E02` file continues with `E03` unless a separate `E02` file exists, which then comes first as on the page). Not skipping keeps a missing episode visible (the target page shows "Nicht abspielbar" and its own "Nächste Folge"). Browsers block audible autoplay on a fresh page load (Firefox by default), so auto-advance would be unreliable. | 2026-09-26 |
+| **Subtitle sidecars** — `listSubtitles(mediaRoot, row) → Promise<Array<{ index, lang, label, path }>>` in `src/media/subtitles.js`, `row` = a `library_items` row (uses `kind` and `rel_path`): `row.kind !== 'video'` → `[]`; resolve the item via `resolveMediaPath(mediaRoot, row.rel_path)` (null → `[]`), `readdir` its directory `withFileTypes` (error → `[]`); candidates are regular files (`isFile()`, so symlinks are skipped) whose NFC name ends in `.vtt` (case-insensitive) and whose stem equals the video's basename (name without its last extension) or is `<basename>.<middle>` — compared case-insensitively after NFC, `middle` non-empty and ≤ 64 characters. `lang` = `middle.toLowerCase()` when `middle` matches `^[a-z]{2,3}$` (i), else `null`; `label` = `middle` as written, or `null` for the bare `<basename>.vtt` (Jellyfin flag suffixes such as `.de.forced` are not interpreted: `lang` null, label `de.forced`). Sorted by NFC file name (code-unit order); `index` = position in that order (0-based); each `path` has passed `resolveMediaPath` (dir-relative `rel_path` + name). The module also exports `SUBTITLE_CONTENT_TYPE = 'text/vtt; charset=utf-8'`. Discovery runs per request; nothing is indexed or cached. The server emits no German text. | Human decision at spec-acceptance gate (H4 = B): `.vtt` sidecars only, not in compat `EXTENSIONS`, discovered on request; Jellyfin's `<name>.<lang>.<ext>` precedent (prior art "Subtitle sidecars"); taking the row keeps the kind rule and the content type out of `src/api/` (architecture: `src/api/` knows nothing about file formats — review); per-request discovery is always fresh without touching P2's scanner; code-unit order is deterministic across OSes. An index can shift if a sidecar is added between the item fetch and the track request — accepted (reload fixes it). | 2026-09-26 |
+| **Subtitle route** `GET /media/:id/subtitles/:n` (in `src/api/media.js`, `requireUser`): id/`n` patterns as above; item unknown → `404 not_found`; `n ≥ listSubtitles(config.mediaRoot, row).length` (always the case for non-video items) → `404 not_found`; else `sendMedia` with `contentType: SUBTITLE_CONTENT_TYPE` (imported from `src/media/subtitles.js`) and the default `cacheControl` (`private, no-cache`). The item need not be playable. No `.srt` conversion; files are served byte-for-byte (WebVTT mandates UTF-8). | H4: path guard, auth, whole-segment route, `private, no-cache`; the CSP's `media-src 'self'` covers `<track>` loads; the route carries no format knowledge (review). | 2026-09-26 |
 | **Player tracks:** for each `subtitles` entry the page appends `<track kind="subtitles" src="/media/<id>/subtitles/<index>" srclang="<lang or und>" label="<label>">` before setting `src`; no `default` attribute (none on by default); the browser's native track menu is the only UI. Label (in `player-format.js`): `lang` → `new Intl.DisplayNames(['de'], { type: 'language' }).of(lang)` (on a throw or an unchanged code: the code upper-cased), else `label`, else "Untertitel"; repeated labels get " (2)", " (3)", … | H4: `<track kind="subtitles" srclang label>` per entry, none default-on, native menu; German label text belongs to the frontend (server stays language-neutral like P2's code fallback). | 2026-09-26 |
-| "Nächste Folge" navigates with `location.replace('/player?id=<next.id>')`. "Zurück" and "Zurück zur Übersicht": `history.back()` only if `document.referrer` is same-origin (its `URL.origin` equals `location.origin`) **and** `history.length > 1`, else `location.assign('/')`. | D10; `replace` keeps the browse page as the history predecessor so "Zurück" never walks back through episodes; P1's `Referrer-Policy: same-origin` keeps the referrer; direct/bookmarked opens in a fresh tab still have a way out. | 2026-09-26 |
+| "Nächste Folge" navigates with `location.replace('/player?id=<next.id>')`. "Zurück" and "Zurück zur Übersicht": `history.back()` only if `document.referrer` is same-origin (its `URL.origin` equals `location.origin`), its `pathname` is not `/login`, **and** `history.length > 1`; else `location.assign('/')`. The decision is the pure `backTarget({ referrer, origin, historyLength }) → 'back' \| 'home'` in `public/js/lib/player-format.js` (an empty or unparsable referrer → `'home'`). | D10; `replace` keeps the browse page as the history predecessor so "Zurück" never walks back through episodes; P1's `Referrer-Policy: same-origin` keeps the referrer; direct/bookmarked opens in a fresh tab still have a way out. Excluding `/login` (review): a bookmarked player opened while logged out arrives via `/login?next=…`, and going back there would 302 straight back to the player — a loop; this stays within D10's intent (back only to a real previous page). | 2026-09-26 |
 | Player URL is `/player?id=<id>` served from `public/player.html` by P1's page rule (session-gated: `302 /login?next=%2Fplayer%3Fid%3D<id>`); data only via authenticated APIs. A `401` from the item API goes through `request`'s default `redirectOn401` (`toLogin()`); a `401` from the `HEAD` probe calls `toLogin()`. | Cross-phase consolidation D1 (P1 page rule; direct `*.html` → 404). | 2026-09-26 |
-| Page handles categories `movies` and `series` only (the `CATEGORIES` ids, D3); any other category — incl. videos under `images` (H9, played inline in P6's lightbox) — renders "Titel nicht gefunden". Autoplay: `video.play()` after setting `src`; a rejected promise is ignored (the user presses play). Title: movies → overline "Film", heading = title; episodes → overline = `seriesTitle`, heading = `<code> · <episode title>` when season and episode are known, else the title; `<code>` = `S` + season padded to 2 + `E` + episode padded to 2 (+ `–E` + `episodeEnd` padded to 2 when set); an episode title equal (case-insensitive) to P2's code fallback (`S01E06` / `E06`) is shown as "Folge <episode>". The same format builds the "Nächste Folge: <code> · <title>" label from `next`. `document.title` = heading + " – Videothek". All text via `textContent`. | D10/H9: player movies/series only; P2 renders the code fallback as "Folge N", the player stays consistent. | 2026-09-26 |
-| **Playback error handling:** on the `<video>` `error` event (`MediaError.code` 1 = aborted is ignored) the page sends `fetch('/media/<id>', { method: 'HEAD', cache: 'no-store' })`: `401` → `toLogin()`; `404` → "Datei nicht gefunden"; `2xx` → code 2 → "Verbindung unterbrochen", any other code → "Wiedergabe nicht möglich"; network failure or any other status → "Verbindung unterbrochen". "Erneut versuchen" in the three playback states rebuilds the `<video>` stage, sets the same `src`, seeks back to the last known `currentTime` on `loadedmetadata`, and calls `play()`; in "Titel konnte nicht geladen werden" it calls `location.reload()`. | A `404` on a media source surfaces as `MEDIA_ERR_SRC_NOT_SUPPORTED`, indistinguishable from a codec problem without asking the server. The seek-back keeps the position; the source reload emits `emptied`, which P4's tracker uses to disarm (D11). | 2026-09-26 |
-| **P4 seam in `public/js/player.js`:** the item is loaded by `loadItem(id)` and playback is started by exactly one call of `startPlayback(video, item)` (append tracks, set `src`, `play()`), made once after the item has loaded and never again (retry does not call it). P4 edits only this file: it fetches the progress entry in parallel with `loadItem`, delays `startPlayback` until both settle and calls `trackPlayback(video, item.id, { entry, onResume })` right after it. | D11 (P4 hooks into P3's player, `trackPlayback` performs the seek); a named single entry point keeps P4's edit small and conflict-free. | 2026-09-26 |
-| **Keyboard** (`public/js/lib/player-keys.js`, pure `keyAction({ key, ctrlKey, altKey, metaKey, tagName, isContentEditable })` → `'toggle' \| 'back' \| 'forward' \| 'fullscreen' \| 'mute' \| null`): `' '` and `k`/`K` toggle, `ArrowLeft`/`ArrowRight` ∓/± 10 s (clamped to `[0, duration]`), `f`/`F` fullscreen toggle of the `<video>` element (`requestFullscreen` / `document.exitFullscreen`), `m`/`M` mute toggle. `null` when Ctrl/Alt/Meta is held, `tagName` is `VIDEO`, `BUTTON`, `A`, `INPUT`, `SELECT` or `TEXTAREA`, or `isContentEditable`. The page's single `keydown` listener on `document` acts only while a `<video>` exists and calls `preventDefault()` for handled keys. Escape is not bound. | Skipping the focused `<video>` avoids double handling with the browsers' own native-control shortcuts; skipping buttons keeps Enter/Space/arrow focus navigation working for TV remotes; fullscreen on the video keeps native controls and subtitles; Escape stays the native fullscreen exit. The descriptor (not a DOM event) keeps the module testable under `node:test`. | 2026-09-26 |
+| Page handles categories `movies` and `series` only (the `CATEGORIES` ids, D3); any other category — incl. videos under `images` (H9, played inline in P6's lightbox) — renders "Titel nicht gefunden". Autoplay: `video.play()` after setting `src`; a rejected promise is ignored (the user presses play). Title: movies → overline "Film", heading = title; episodes → overline = `seriesTitle`, heading = `<code> · <display title>` when `code = episodeCode({ season, episode, episodeEnd })` (P2's `public/js/lib/library-format.js`, imported, not copied) is non-null, else the display title; display title = "Folge <episode>" — or "Folgen <episode>–<episodeEnd>" (en dash) for a double episode — when the title equals `code` case-insensitively (P2's code fallback), else the title. Examples: `S01E02 · Geheimnisse`, `S01E01-E02 · Folgen 1–2`, `E06 · Folge 6`. The same format builds the "Nächste Folge: <code> · <display title>" label from `next`. `document.title` = heading + " – Videothek". All text via `textContent`. | D10/H9: player movies/series only; reusing P2's `episodeCode` and its "Folge N" / "Folgen a–b" rule keeps the player identical to P2's episode rows (review: double-episode fallback). | 2026-09-26 |
+| **Playback error handling:** the page records the last known position on every `timeupdate` (`lastTime = video.currentTime`, initially 0). On the `<video>` `error` event (`MediaError.code` 1 = aborted is ignored) the page detaches the element (`video.remove()`) and sends `fetch('/media/<id>', { method: 'HEAD', cache: 'no-store' })`: `401` → `toLogin()`; `404` → "Datei nicht gefunden"; `2xx` → code 2 → "Verbindung unterbrochen", any other code → "Wiedergabe nicht möglich"; network failure or any other status → "Verbindung unterbrochen". "Erneut versuchen" in the three playback states calls `retry(lastTime)` of the stage from `public/js/lib/player-stage.js`: it re-attaches **the same** `<video>` element (with its `<track>` children) to the stage, calls `video.load()` (the `src` attribute is left unchanged, never re-set), on the next `loadedmetadata` (once) sets `currentTime = lastTime` when `lastTime > 0`, then calls `video.play()` (rejection ignored). In "Titel konnte nicht geladen werden" it calls `location.reload()`. | A `404` on a media source surfaces as `MEDIA_ERR_SRC_NOT_SUPPORTED`, indistinguishable from a codec problem without asking the server. Keeping the one element keeps P4's `trackPlayback` bound and the subtitle tracks attached (`startPlayback` is never re-run); `load()` is the explicit form of the load algorithm and emits `emptied`, which P4's tracker uses to disarm until the next `playing` (D11). `lastTime` survives the error even when the element resets `currentTime`. | 2026-09-26 |
+| **P4 seam in `public/js/player.js`:** the item is loaded by `loadItem(id)`; on the playable path the page creates its single `<video>` element (see Design) and playback is started by exactly one call of `startPlayback(video, item)` (append tracks, set `src`, `play()`), made once after the item has loaded and never again (retry does not call it and reuses the same element). P4 edits only this file: it fetches the progress entry in parallel with `loadItem`, delays `startPlayback` until both settle and calls `trackPlayback(video, item.id, { entry, onResume })` right after it. | D11 (P4 hooks into P3's player, `trackPlayback` performs the seek); a named single entry point and one element per page load keep P4's edit small and its listeners valid across retries (review BLOCKING). | 2026-09-26 |
+| **Keyboard** (`public/js/lib/player-keys.js`, pure `keyAction({ key, ctrlKey, altKey, metaKey, tagName, isContentEditable })` → `'toggle' \| 'back' \| 'forward' \| 'fullscreen' \| 'mute' \| null`): `' '` and `k`/`K` toggle, `ArrowLeft`/`ArrowRight` ∓/± 10 s (clamped to `[0, duration]`), `f`/`F` fullscreen toggle of the `<video>` element (`requestFullscreen` / `document.exitFullscreen`), `m`/`M` mute toggle. `null` when Ctrl/Alt/Meta is held, `tagName` is `VIDEO`, `BUTTON`, `A`, `INPUT`, `SELECT` or `TEXTAREA`, or `isContentEditable`. The page's single `keydown` listener on `document` acts only while the page's video element is connected (`video.isConnected` — false before playback starts and while an error state has detached it) and calls `preventDefault()` for handled keys. Escape is not bound. | Skipping the focused `<video>` avoids double handling with the browsers' own native-control shortcuts; skipping buttons keeps Enter/Space/arrow focus navigation working for TV remotes; fullscreen on the video keeps native controls and subtitles; Escape stays the native fullscreen exit. The descriptor (not a DOM event) keeps the module testable under `node:test`. | 2026-09-26 |
 | Focus: in any error state the primary action receives focus on render; in the playing state no focus is forced; on `ended` "Nächste Folge" (if present) is focused. Loading text and error panels live in a container with `aria-live="polite"`; the `<video>` gets `aria-label` = heading. | design.md: full keyboard/remote navigation, WCAG 2.1 AA. | 2026-09-26 |
-| Frontend split to respect ≤ 300 lines/file: `public/js/player.js` (entry: id validation, `loadItem`, `startPlayback`, error probe, navigation), `public/js/player-panel.js` (loading/error panel DOM per state), `public/js/player-icons.js` (chevron, skip, film-off, ban SVGs via `createElementNS`), pure `public/js/lib/player-format.js` (`episodeCode`, `headingFor`, `overlineFor`, `nextLabel`, `subtitleLabels`, `errorStateFor({ headStatus, mediaErrorCode })`) and `public/js/lib/player-keys.js`. P1's `icons.js`/`dom.js` are used if they export what is needed but never edited. | Keeps the page testable (pure helpers under `node:test`) and every file owned by one issue. | 2026-09-26 |
+| Item-less states (loading, "Titel nicht gefunden", "Titel konnte nicht geladen werden"): the title block is `hidden`, the error panel's heading is the page's `<h1>`, `document.title` = panel heading + " – Videothek" (loading keeps the static `<title>Videothek</title>`); with an item the title-block heading is the `<h1>` and the panel heading an `<h2>`. | Review: the title block had no defined content without an item; one `<h1>` per page and a meaningful tab title without inventing an empty overline. | 2026-09-26 |
+| Literal sizes in the layout rules are design-scale names; CSS uses only tokens: 48 px icon → `--space-12`, text 12/14/20/24 px → `--text-xs`/`--text-sm`/`--text-lg`/`--text-xl`, 1 px → `--border-width`, 2 px focus → `--focus-width`/`--focus-offset`, 44 px → `--tap-min`; the 480 px panel cap is `calc(var(--space-16) * 7.5)`. | D5 (literal lengths outside `tokens.css` only for breakpoints, `%`, `vh/dvh`, `fr`, `0`) and P1's machine-checked px rule (review). | 2026-09-26 |
+| Frontend split to respect ≤ 300 lines/file: `public/js/player.js` (entry: id validation, `loadItem`, video creation, `startPlayback`, error probe, navigation, key listener), `public/js/player-panel.js` (loading/error panel DOM per state), `public/js/player-icons.js` (chevron, skip, film-off, ban icons built with P1's `createIcon(paths)`), pure `public/js/lib/player-format.js` (`headingFor`, `overlineFor`, `episodeTitleFor`, `nextLabel`, `subtitleLabels`, `errorStateFor({ headStatus, mediaErrorCode })`, `backTarget`; imports `episodeCode` from P2's `library-format.js`), `public/js/lib/player-keys.js`, and `public/js/lib/player-stage.js` (`createStage(host, video)` → `{ detach(), retry(position) }`, DOM-duck-typed: uses only `host.append`, `video.remove`, `video.load`, `video.play`, `video.addEventListener`, `video.currentTime`, so it runs under `node:test` with fakes). DOM is built with P1's `el` from `dom.js`; P1's `api.js`, `dom.js` and `icons.js` are imported and never edited; no P1 `icon(name)` entry is needed. | Keeps the page testable (pure helpers and the retry contract under `node:test`) and every file owned by one issue; the stage module machine-checks the single-element retry that P4 depends on. | 2026-09-26 |
 | Tests generate their own temp media trees and byte-pattern files inline (no committed fixtures, no shared helper in this phase); symlink cases use `fs.symlink(target, link, 'junction')` for directories (no admin rights on Windows, plain symlink on Linux) and `t.skip` file-symlink cases on `EPERM`. | Range assertions need known bytes; fixtures must never be real media; the dev machine is Windows, the target Linux; no shared helper means no cross-issue file conflicts. | 2026-09-26 |
 | Browse-to-player links are not P3 work: P2's playable movie cards and episode rows are `<a href="/player?id=<id>">`, P4's continue cards link the same URL. | Resolves review BLOCKING 1: P2's spec already owns the links on the D1 URL. | 2026-09-26 |
 | Human decision at spec-acceptance gate (H4 = B): `.vtt` sidecars only, now, in P3 — discovered on request, exposed as `subtitles` in the single-item JSON and streamed by `GET /media/:id/subtitles/:n`; no `.srt` conversion. | Recorded gate decision; supersedes the review's recommendation A. | 2026-09-26 |
@@ -327,12 +367,17 @@ Machine checks (per PR and at milestone end):
       `<base>.Deutsch.vtt`, `<BASE>.EN.VTT` found with the decided `lang`/`label`
       and order; another video's `.vtt`, `.srt`, a directory named `<base>.vtt`,
       a `middle` > 64 chars and a symlinked `.vtt` (skip on `EPERM`) ignored;
-      missing directory or item outside the root → `[]`.
+      `<base>.de.forced.vtt` → `lang` null, label `de.forced`; a row with
+      `kind` `audio`/`image`, a missing directory or an item outside the root
+      → `[]`; `SUBTITLE_CONTENT_TYPE` = `text/vtt; charset=utf-8`.
 - [ ] `test/db/episodes.test.js` (migrated temp DB): next across episodes and
-      seasons, specials before season 1, double episode `E01-E02` → `E03`,
-      two files of one episode ordered by `rel_path`, last episode → `null`,
-      movie → `null`, episode without numbers → `null`, non-playable successor
-      returned.
+      seasons (last of S01 → first of S02), last regular episode → `null` even
+      when specials exist, S00E01 → S00E02, last special → `null`, double
+      episode `E01-E02` → `E03`, `E01-E02` with a separate `E02` file → that
+      `E02` (P2 order: `episode_end` NULL first), two files of one episode
+      ordered by `sort_title` then `id`, an unnumbered row (NULL episode) is
+      never `next` and gets `null`, NULL season → `null`, movie → `null`,
+      non-playable successor returned.
 - [ ] `test/api/item-detail.test.js`: `next` shape and `null` cases; `subtitles`
       list for a video with sidecars, `[]` for audio/image items; through
       `startTestApp`, `GET /api/library/items/:id` carries `next` and
@@ -348,10 +393,19 @@ Machine checks (per PR and at milestone end):
       case; modifiers, `VIDEO`/`BUTTON`/`A`/`INPUT`/`SELECT`/`TEXTAREA`
       targets and content-editable → `null`.
 - [ ] `test/public/player-format.test.js`: heading/overline for movie, episode,
-      episode without numbers, code-fallback title → "Folge N", double episode;
-      next label; subtitle labels (`de` → "Deutsch", free label, none →
+      episode without numbers, code-fallback title → "Folge N", double
+      episode (`S01E01-E02 · Folgen 1–2` when the title is the code, else
+      `S01E01-E02 · <title>`), season unknown (`E06 · Folge 6`); next label;
+      `backTarget`: same-origin referrer + length 2 → `back`, length 1 →
+      `home`, cross-origin → `home`, empty/unparsable referrer → `home`,
+      same-origin `/login?next=…` referrer → `home`; subtitle labels (`de` → "Deutsch", free label, none →
       "Untertitel", duplicates numbered); `errorStateFor` for 404, 2xx × codes
       2/3/4, network failure, 500.
+- [ ] `test/public/player-stage.test.js` (fake host/video objects with
+      `EventTarget`): `detach()` removes the video; `retry(42)` re-appends the
+      **same** video object, calls `load()` once and never assigns `src`,
+      sets `currentTime = 42` on the first `loadedmetadata` only, then calls
+      `play()`; `retry(0)` does not seek; a rejected `play()` is swallowed.
 
 Human QA (milestone gate; `npm start` against the QA `MEDIA_ROOT`, Chromium and
 Firefox, desktop and a 390 px phone viewport):
@@ -364,8 +418,15 @@ Firefox, desktop and a 390 px phone viewport):
       Folge"; clicking it opens E03; "Zurück" then returns to the series page,
       not to E02. On `ended`, the button has focus and Enter opens the next
       episode.
-- [ ] MKV item → "Nicht abspielbar" panel naming `MKV`; no network request to
-      `/media/`.
+- [ ] MKV item (P2 renders unplayable cards/rows as non-links: open
+      `/player?id=<id>` with the id from the card's `data-item-id` in DevTools
+      or from `GET /api/library/movies`) → "Nicht abspielbar" panel naming
+      `MKV`; no network request to `/media/`.
+- [ ] Retry keeps the element: play the `.de.vtt` movie with subtitles on,
+      stop the server for ~10 s and seek → "Verbindung unterbrochen"; start the
+      server, "Erneut versuchen" → playback resumes near the previous position
+      and the subtitle menu still lists "Deutsch" (DevTools: the same
+      `<video>` node, no second one created).
 - [ ] Delete/rename a playing file's source, then seek → "Datei nicht gefunden";
       HEVC-in-MP4 (if provided) → "Wiedergabe nicht möglich".
 - [ ] Pause a playing video for > 90 s, then resume: playback continues in both
@@ -401,6 +462,7 @@ Firefox, desktop and a 390 px phone viewport):
 | Chrome/Firefox surface the idle-timeout disconnect as an error instead of re-requesting | Precedent: nginx closes idle sends after 60 s by default and browsers recover with a new range request; QA pauses > 90 s and resumes in both browsers; if one fails, "Erneut versuchen" seeks back. |
 | A file is replaced in place (same `rel_path`, same id) while cached | `Cache-Control: private, no-cache` on `/media/:id`; ids themselves are never reused (P2 `AUTOINCREMENT`). |
 | Subtitle index shifts when sidecars change between item fetch and track load | Accepted edge case; a page reload re-lists; routes 404 cleanly when out of range. |
+| A retry that recreates the `<video>` would detach P4's tracker and drop the subtitle tracks | One element per page load; retry via `player-stage.js` (`load()` on the same node), machine-tested with fakes and checked in QA. |
 | Non-UTF-8 `.vtt` files show garbled text | WebVTT mandates UTF-8; files are served byte-for-byte with `charset=utf-8`; no conversion (out of scope). |
 | Parallel phases edit `src/http/routes.js`, `src/api/library.js`, `docs/architecture.md`, `public/js/player.js` | One line / one section each; P4's player edit is confined to the `loadItem`/`startPlayback` seam. |
 
@@ -459,3 +521,33 @@ Firefox, desktop and a 390 px phone viewport):
   reloads the page; double episodes continue after `episode_end`; frontend
   split into page-private modules; Pi QA mandatory with the dev-machine check
   in addition.
+- 2026-09-26: acceptance-review resolutions — the page creates exactly one
+  `<video>` per page load and keeps it; error states detach it, "Erneut
+  versuchen" re-attaches the same element (tracks intact), calls `load()`,
+  seeks back on `loadedmetadata` and plays; the key listener acts only while
+  `video.isConnected`; the retry contract lives in the new, machine-tested
+  `public/js/lib/player-stage.js` (resolves BLOCKING; matches P4's player-hook
+  assumption).
+- 2026-09-26: acceptance-review resolutions — next-episode order aligned with
+  P2's series-detail order (`season, episode, episode_end NULLs first,
+  sort_title, id`); regular seasons and specials form separate chains, so a
+  finale never leads into Specials and Specials no longer come first. P2
+  needs no change (display order unaffected); P4 inherits it through
+  `getNextEpisode` (H6 "P3's `next` ordering" still holds).
+- 2026-09-26: acceptance-review resolutions — `slice` rationale names P6's
+  thumb route (P5 currently builds its own `src/http/slice.js`; reusing
+  `sendMedia({ slice })` is available and flagged to P5, whose spec owns that
+  choice); `listSubtitles` takes the row and `SUBTITLE_CONTENT_TYPE` is
+  exported from `src/media/subtitles.js`, so `src/api/media.js` holds no
+  format knowledge; prior-art entries for nginx `send_timeout` and Jellyfin
+  external subtitles added to `docs/prior-art.md` (sources:
+  https://nginx.org/en/docs/http/ngx_http_core_module.html#send_timeout ,
+  https://jellyfin.org/docs/general/server/media/movies/ section "External
+  Subtitles and Audio Tracks", both read 2026-09-26).
+- 2026-09-26: acceptance-review resolutions — "Zurück" also requires the
+  referrer's pathname ≠ `/login` (avoids the login → player loop; within
+  D10's intent); episode headings reuse P2's `episodeCode` and show
+  "Folgen a–b" for a double-episode code fallback; literal sizes mapped to
+  tokens once in Design; item-less states hide the title block and make the
+  panel heading the `<h1>`/`document.title`; the MKV QA line says how to
+  reach a non-linked item; retry QA line added.
