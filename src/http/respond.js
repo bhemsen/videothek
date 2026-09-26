@@ -114,17 +114,25 @@ export async function readJson(req, { limit = 16384 } = {}) {
     /** @type {Buffer[]} */
     const chunks = [];
     let size = 0;
+    let tooLarge = false;
     req.on('data', (chunk) => {
+      if (tooLarge) return;
       size += chunk.length;
       if (size > limit) {
-        req.destroy();
+        // Stop buffering and reject, but keep draining the socket instead of
+        // destroying it — destroying it here would tear down the connection
+        // before the 413 response below could ever reach the client.
+        tooLarge = true;
+        chunks.length = 0;
         reject(new HttpError(413, 'payload_too_large'));
+        req.resume();
         return;
       }
       chunks.push(chunk);
     });
     req.on('error', reject);
     req.on('end', () => {
+      if (tooLarge) return;
       try {
         resolve(JSON.parse(Buffer.concat(chunks).toString('utf8')));
       } catch {

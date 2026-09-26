@@ -151,6 +151,57 @@ test('method matching is case-insensitive', () => {
   assert.deepEqual(router.match('GET', '/api/me'), { handler: noop, params: {} });
 });
 
+test('a literal branch that cannot finish falls back to a param route at the same position', () => {
+  const router = createRouter();
+  /** @type {Handler} */
+  const categoryHandler = () => {};
+  /** @type {Handler} */
+  const seriesByIdHandler = () => {};
+  router.add('GET', '/api/library/:category', categoryHandler);
+  router.add('GET', '/api/library/series/:id', seriesByIdHandler);
+
+  const listResult = router.match('GET', '/api/library/series');
+  assert.deepEqual(listResult, { handler: categoryHandler, params: { category: 'series' } });
+
+  const otherCategoryResult = router.match('GET', '/api/library/movies');
+  assert.deepEqual(otherCategoryResult, { handler: categoryHandler, params: { category: 'movies' } });
+
+  const byIdResult = router.match('GET', '/api/library/series/7');
+  assert.deepEqual(byIdResult, { handler: seriesByIdHandler, params: { id: '7' } });
+});
+
+test('a literal branch matching only other methods falls back to the param route for this method', () => {
+  const router = createRouter();
+  /** @type {Handler} */
+  const getByIdHandler = () => {};
+  /** @type {Handler} */
+  const postLiteralHandler = () => {};
+  router.add('GET', '/x/:id', getByIdHandler);
+  router.add('POST', '/x/lit', postLiteralHandler);
+
+  const getResult = router.match('GET', '/x/lit');
+  assert.deepEqual(getResult, { handler: getByIdHandler, params: { id: 'lit' } });
+
+  const postResult = router.match('POST', '/x/lit');
+  assert.deepEqual(postResult, { handler: postLiteralHandler, params: {} });
+});
+
+test('{ allow } is the union of methods across every pattern that matches the path', () => {
+  const router = createRouter();
+  router.add('GET', '/x/:id', () => {});
+  router.add('POST', '/x/lit', () => {});
+
+  const result = router.match('DELETE', '/x/lit');
+  assert.deepEqual(result, { allow: ['GET', 'HEAD', 'POST'] });
+});
+
+test('a later pattern reusing a trie position under a different param name throws at registration', () => {
+  const router = createRouter();
+  router.add('GET', '/api/users/:id', () => {});
+
+  assert.throws(() => router.add('PUT', '/api/users/:userId/password', () => {}));
+});
+
 test('routes() lists every registered route with its original pattern', () => {
   const router = createRouter();
   router.add('GET', '/api/me', noop);

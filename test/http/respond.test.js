@@ -1,6 +1,7 @@
 import { test } from 'node:test';
 import assert from 'node:assert/strict';
 import { Readable } from 'node:stream';
+import http from 'node:http';
 import {
   HttpError,
   sendJson,
@@ -76,20 +77,22 @@ test('sendError sends { error: code } and merges extra headers', () => {
   assert.equal(res.body, JSON.stringify({ error: 'method_not_allowed' }));
 });
 
-test('sendNoContent sends an empty 204', () => {
+test('sendNoContent sends an empty 204 with no-store', () => {
   const res = makeRes();
   sendNoContent(res);
 
   assert.equal(res.statusCode, 204);
   assert.equal(res.body, undefined);
+  assert.equal(res.headers['Cache-Control'], 'no-store');
 });
 
-test('redirect defaults to 302 and sets Location', () => {
+test('redirect defaults to 302, sets Location and no-store', () => {
   const res = makeRes();
   redirect(res, '/login');
 
   assert.equal(res.statusCode, 302);
   assert.equal(res.headers.Location, '/login');
+  assert.equal(res.headers['Cache-Control'], 'no-store');
 });
 
 test('redirect accepts a custom status', () => {
@@ -145,6 +148,20 @@ test('readJson rejects 413 for a body over the limit', async () => {
   });
 });
 
+test('readJson rejects 413 for a body over the default 16 KiB limit', async () => {
+  const body = JSON.stringify({ a: 'x'.repeat(16384) });
+  const req = makeReq(
+    { 'content-length': String(body.length), 'content-type': 'application/json' },
+    [body],
+  );
+  await assert.rejects(readJson(req), (err) => {
+    assert.ok(err instanceof HttpError);
+    assert.equal(err.status, 413);
+    assert.equal(err.code, 'payload_too_large');
+    return true;
+  });
+});
+
 test('readJson rejects 400 for invalid JSON', async () => {
   const req = makeReq(
     { 'content-length': '9', 'content-type': 'application/json' },
@@ -165,4 +182,49 @@ test('readJson treats a Transfer-Encoding header as a body present', async () =>
     [body],
   );
   assert.deepEqual(await readJson(req), { ok: true });
+});
+
+test('readJson rejects 400 for an empty chunked body (Transfer-Encoding set, zero bytes)', async () => {
+  const req = makeReq({ 'transfer-encoding': 'chunked', 'content-type': 'application/json' }, []);
+  await assert.rejects(readJson(req), (err) => {
+    assert.ok(err instanceof HttpError);
+    assert.equal(err.status, 400);
+    assert.equal(err.code, 'invalid_json');
+    return true;
+  });
+});
+
+test('readJson over a real http server drains the socket so the 413 response reaches the client', async () => {
+  const server = http.createServer((req, res) => {
+    readJson(req, { limit: 10 }).then(
+      () => {
+        res.writeHead(200, { 'Content-Type': 'application/json' });
+        res.end(JSON.stringify({ ok: true }));
+      },
+      (err) => {
+        const status = err instanceof HttpError ? err.status : 500;
+        const code = err instanceof HttpError ? err.code : 'internal';
+        res.writeHead(status, { 'Content-Type': 'application/json' });
+        res.end(JSON.stringify({ error: code }));
+      },
+    );
+  });
+
+  await new Promise((resolve) => server.listen(0, '127.0.0.1', () => resolve(undefined)));
+  try {
+    const address = server.address();
+    const port = address && typeof address === 'object' ? address.port : 0;
+    const body = JSON.stringify({ a: 'x'.repeat(50) });
+
+    const response = await fetch(`http://127.0.0.1:${port}/`, {
+      method: 'POST',
+      headers: { 'Content-Type': 'application/json' },
+      body,
+    });
+
+    assert.equal(response.status, 413);
+    assert.deepEqual(await response.json(), { error: 'payload_too_large' });
+  } finally {
+    await new Promise((resolve) => server.close(() => resolve(undefined)));
+  }
 });
