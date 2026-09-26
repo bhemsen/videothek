@@ -1,0 +1,3 @@
+{
+  "secret": "must never be reachable through the static handler — path traversal sentinel"
+}

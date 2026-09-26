@@ -661,3 +661,39 @@ compared with the exports):
   also get `year: null` — "ignore tags for group display" is read to cover
   the tag-derived year like it covers title/artist, not just the two fields
   the row names explicitly.
+- 2026-09-27: issue #71 implementation (`public/js/audio/{queue,player,format}.js`)
+  — verified the Phase 4 `progress.js` merged on main: `stopTracker` sets
+  `stopped`, clears the interval and removes every listener before calling
+  `report()` (unawaited), so `stop()` dispatches its report and detaches
+  listeners/timers synchronously before its first await exactly as this
+  issue requires; no Phase 4 fix needed. `createQueue`'s `startIndex` rule
+  ("a non-playable start item → the next playable one") is read as a forward
+  search from `startIndex` that wraps to the start of `items` when no
+  playable item follows, so a queue always has a current item whenever any
+  member is playable — the row does not name this edge case. The player's
+  bounded switch is implemented as `raceWithTimeout(outgoing.stop(), 1000)`
+  (a manual race that clears the 1 s timer once `stop()` wins) rather than
+  the row's literal `Promise.race([prev.stop(), delay(1000)])`, to avoid
+  leaking a pending timer on every fast switch; behaviour (wait for `stop()`,
+  capped at 1 s, old handle never called again) is unchanged and covered by
+  the never-resolving-`stop()` test. `formatPercent(null)` — not named in the
+  "German formatting" row — returns `'–'` (no `%`), matching the `–:–`
+  placeholder style of `formatDuration`/`formatTotal`.
+- 2026-09-27: PR #126 review resolutions (issue #71) — blocking: `goTo`'s
+  in-flight switch is now guarded by a monotonic `switchToken` rather than by
+  reading `state.handle === null` as "first play"; `state.handle` keeps
+  pointing at the outgoing handle for the whole bounded wait (it is no longer
+  cleared up front), so a second switch requested inside that window (a
+  double next/previous, a row click, `playQueue`, or the outgoing item's own
+  `ended`/`error` firing mid-wait) is never mistaken for the page's first
+  play, and a switch superseded before its wait settles starts nothing —
+  it creates no handle, so none is left unstopped. Non-blocking, applied:
+  `onError` re-reads `state.queue`/`current()` after its `HEAD` `await` and
+  drops a stale error (the user having switched away meanwhile) instead of
+  advancing from, or showing a message for, the wrong item; `formatPercent`
+  rounds to 1e-4 of a percentage point before flooring, since
+  `Math.floor(fraction * 100)` (the row's literal formula) mid-floors an
+  exact fraction on a binary-float artefact (e.g. `0.29 * 100 ===
+  28.999999999999996`) — the visible contract (floored whole percent) is
+  unchanged, only the float rounding underneath it; `defaultHeadMedia` gained
+  direct test coverage via a stubbed `globalThis.fetch`.
