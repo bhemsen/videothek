@@ -3,9 +3,13 @@ import { isAbsolute, relative, resolve, sep } from 'node:path';
 
 /**
  * @typedef {object} Config
- * @property {string|null} mediaRoot - Absolute path to the read-only media
- *   library, or `null` when `requireMediaRoot` was `false` and no usable
- *   value was configured.
+ * @property {string} mediaRoot - Absolute path to the read-only media
+ *   library. Under `requireMediaRoot` (the default) this is always a
+ *   validated, non-empty absolute path — `loadConfig` throws otherwise. Under
+ *   `requireMediaRoot: false` (CLI tools that must keep working with the
+ *   media disk unmounted) it is `''` when no usable value was configured; a
+ *   sentinel, not a filesystem path, so callers on that path must check for
+ *   `''` before using it.
  * @property {string} dataDir - Absolute path for the SQLite database
  *   directory (not created here — `openDatabase` does that).
  * @property {string} host - HTTP bind address.
@@ -70,33 +74,37 @@ function isReadableDirectory(path) {
 }
 
 /**
- * Resolves and validates `MEDIA_ROOT`. The returned value, when not `null`,
- * has always passed through `path.resolve` (normalized, no trailing `.`/`..`
- * segments) so downstream containment checks can compare it directly. When
+ * Resolves and validates `MEDIA_ROOT`. A non-empty return value has always
+ * passed through `path.resolve` (normalized, no trailing `.`/`..` segments)
+ * so downstream containment checks can compare it directly. When
  * `requireMediaRoot` is `false` (CLI tools that must keep working with the
  * media disk unmounted) no problem is ever raised: a usable absolute value
- * is resolved and returned, anything else yields `null`.
+ * is resolved and returned, anything else yields `''` — a sentinel, never a
+ * real (relative-root) path, so it cannot be mistaken for one. Under
+ * `requireMediaRoot: true`, `''` is likewise only ever returned alongside a
+ * pushed problem, so the caller's `problems.length > 0` throw always fires
+ * before it could reach the public `Config`.
  * @param {NodeJS.ProcessEnv} env
  * @param {string[]} problems
  * @param {boolean} requireMediaRoot
- * @returns {string|null}
+ * @returns {string}
  */
 function resolveMediaRoot(env, problems, requireMediaRoot) {
   const raw = readVar(env, 'MEDIA_ROOT');
   if (!requireMediaRoot) {
-    return raw !== undefined && isAbsolute(raw) ? resolve(raw) : null;
+    return raw !== undefined && isAbsolute(raw) ? resolve(raw) : '';
   }
   if (raw === undefined) {
     problems.push('MEDIA_ROOT: required');
-    return null;
+    return '';
   }
   if (!isAbsolute(raw)) {
     problems.push('MEDIA_ROOT: must be an absolute path');
-    return null;
+    return '';
   }
   if (!isReadableDirectory(raw)) {
     problems.push('MEDIA_ROOT: must be a readable directory');
-    return null;
+    return '';
   }
   return resolve(raw);
 }
@@ -121,7 +129,8 @@ function isInside(parent, child) {
  * the "MEDIA_ROOT checks" that mode skips), checks it does not lie inside
  * `mediaRoot`.
  * @param {NodeJS.ProcessEnv} env
- * @param {string|null} mediaRoot
+ * @param {string} mediaRoot - `''` means no valid value (see
+ *   {@link resolveMediaRoot}); the containment check is skipped for it.
  * @param {string[]} problems
  * @param {boolean} requireMediaRoot
  * @returns {string}
@@ -129,7 +138,7 @@ function isInside(parent, child) {
 function resolveDataDir(env, mediaRoot, problems, requireMediaRoot) {
   const raw = readVar(env, 'DATA_DIR') ?? './data';
   const dataDir = resolve(process.cwd(), raw);
-  if (requireMediaRoot && mediaRoot !== null && isInside(mediaRoot, dataDir)) {
+  if (requireMediaRoot && mediaRoot !== '' && isInside(mediaRoot, dataDir)) {
     problems.push('DATA_DIR: must not be inside MEDIA_ROOT');
   }
   return dataDir;

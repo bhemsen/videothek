@@ -717,6 +717,8 @@ Chromium and Firefox, mobile ≤ 767 px and desktop ≥ 1024 px viewport):
   "inside `MEDIA_ROOT`" containment check — and passes through an absolute
   `MEDIA_ROOT` value uncontained/unverified so `reset-password` keeps working
   with the media disk unmounted; a relative or unset value yields
-  `mediaRoot: null` in that mode. `PORT`/`RESCAN_INTERVAL_MIN` accept only a
-  bare non-negative integer literal (`^\d+$`, no sign, decimal or whitespace)
-  before the range check.
+  `mediaRoot: ''` in that mode, keeping `Config.mediaRoot` a plain `string`
+  (matching this table's row) so every other phase's `string`-typed
+  parameters accept it without a cast. `PORT`/`RESCAN_INTERVAL_MIN` accept
+  only a bare non-negative integer literal (`^\d+$`, no sign, decimal or
+  whitespace) before the range check.

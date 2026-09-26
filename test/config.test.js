@@ -232,7 +232,7 @@ test('never includes a variable value in a problem message', () => {
 
 test('requireMediaRoot: false skips MEDIA_ROOT checks when unset', () => {
   const config = loadConfig({}, { requireMediaRoot: false });
-  assert.equal(config.mediaRoot, null);
+  assert.equal(config.mediaRoot, '');
 });
 
 test('requireMediaRoot: false skips MEDIA_ROOT checks for a relative value', () => {
@@ -240,7 +240,7 @@ test('requireMediaRoot: false skips MEDIA_ROOT checks for a relative value', () 
     { MEDIA_ROOT: 'relative/media' },
     { requireMediaRoot: false },
   );
-  assert.equal(config.mediaRoot, null);
+  assert.equal(config.mediaRoot, '');
 });
 
 test('requireMediaRoot: false skips MEDIA_ROOT checks for a nonexistent absolute value', () => {
