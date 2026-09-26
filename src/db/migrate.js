@@ -87,8 +87,8 @@ export function migrate(db, { dir = DEFAULT_DIR, log } = {}) {
   for (const file of files) {
     if (appliedVersions.has(file.version)) continue;
     const sql = readFileSync(file.path, 'utf8');
-    db.exec('BEGIN IMMEDIATE');
     try {
+      db.exec('BEGIN IMMEDIATE');
       db.exec(sql);
       insertVersion.run(file.version, file.name, Date.now());
       db.exec('COMMIT');
@@ -96,7 +96,7 @@ export function migrate(db, { dir = DEFAULT_DIR, log } = {}) {
       try {
         db.exec('ROLLBACK');
       } catch {
-        // The transaction may already be gone (e.g. BEGIN itself failed); the
+        // No transaction to roll back, e.g. BEGIN itself failed; the
         // original error below is what matters.
       }
       const versionLabel = String(file.version).padStart(3, '0');
