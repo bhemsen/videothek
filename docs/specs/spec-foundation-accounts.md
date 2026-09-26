@@ -682,14 +682,6 @@ Chromium and Firefox, mobile ≤ 767 px and desktop ≥ 1024 px viewport):
   and `/404` not routable, page `no-store`; home copy "Willkommen"; admin
   status/error copy; CLI `requireMediaRoot: false`; `AUTOINCREMENT` user ids;
   JSON `Cache-Control: no-store` on every JSON response.
-- 2026-09-26: Issue #26 (`README.md`/`.env.example`) implemented — README
-  covers install, the config table, first start, a systemd unit
-  (`Restart=on-failure`), Caddy and nginx reverse-proxy snippets (both
-  preserving `Host` and setting `X-Forwarded-Proto`), backup (stop, copy
-  `videothek.db*`) and recovery via `npm run reset-password -- <username>`;
-  `.env.example` already listed all seven variables with English comments and
-  no real secrets from the greenfield seed, so it was left unchanged. No new
-  design decisions.
 - 2026-09-26: Spec-acceptance review findings resolved (D5 additive):
   `ApiError.retryAfterSec` from `Retry-After` for the throttle minute count;
   `login.js` uses `redirectOn401: false`; P1 icon set adds `users`, `logout`,
@@ -698,3 +690,12 @@ Chromium and Firefox, mobile ≤ 767 px and desktop ≥ 1024 px viewport):
   scan scoped to css/js/html with a token-colour check for `favicon.svg`;
   401 guarantee worded for registered routes; prior session revoked only after
   a successful login; missing exports for home/404/dialogs noted.
+- 2026-09-26: Issue #26 (`README.md`/`.env.example`) implemented — README
+  covers install, the config table (incl. `ADMIN_USER`/`ADMIN_PASSWORD`
+  validation and the `config_invalid`/`admin_missing` failure paths), first
+  start, a systemd unit (`Restart=on-failure`), Caddy and nginx reverse-proxy
+  snippets (both preserving the host and setting `X-Forwarded-Proto`), backup
+  (stop, copy `videothek.db*`) and recovery via
+  `npm run reset-password -- <username>`; `.env.example` blanks
+  `ADMIN_PASSWORD` so copying it unedited fails loudly instead of creating an
+  admin with a known password. No new design decisions.
