@@ -1,0 +1,880 @@
+<!DOCTYPE html>
+<html lang="de">
+<head>
+  <meta charset="UTF-8">
+  <meta name="viewport" content="width=device-width, initial-scale=1.0">
+  <title>P5 Hörbücher Übersicht – desktop</title>
+  <style>
+    /* Design Tokens */
+    :root {
+      --bg: #0f1115;
+      --fg: #e8eaed;
+      --primary: #ff7a1a;
+      --secondary: #1c2029;
+      --secondary-hover: #252b37;
+      --accent: #4fb3ff;
+      --muted: #9aa0aa;
+      --border: #2a2f3a;
+      --destructive: #ff5c5c;
+      --font-sans: system-ui, -apple-system, BlinkMacSystemFont, 'Segoe UI', Roboto, Helvetica, Arial, sans-serif;
+      --radius-sm: 4px;
+      --radius-md: 8px;
+      --radius-full: 9999px;
+      --shadow-sm: 0 2px 8px rgba(0, 0, 0, 0.4);
+    }
+
+    * {
+      box-sizing: border-box;
+      margin: 0;
+      padding: 0;
+    }
+
+    body {
+      background-color: var(--bg);
+      color: var(--fg);
+      font-family: var(--font-sans);
+      min-height: 100vh;
+      display: flex;
+      flex-direction: column;
+      -webkit-font-smoothing: antialiased;
+      padding-bottom: 96px; /* space for fixed player */
+    }
+
+    /* Top Navigation Bar */
+    .topbar {
+      height: 64px;
+      border-bottom: 1px solid var(--border);
+      background-color: var(--bg);
+      display: flex;
+      align-items: center;
+      justify-content: space-between;
+      padding: 0 32px;
+      position: sticky;
+      top: 0;
+      z-index: 40;
+    }
+
+    .topbar-left {
+      display: flex;
+      align-items: center;
+      gap: 36px;
+    }
+
+    .brand {
+      display: flex;
+      align-items: center;
+      gap: 10px;
+      font-weight: 700;
+      font-size: 18px;
+      letter-spacing: -0.2px;
+      color: var(--fg);
+      text-decoration: none;
+      cursor: pointer;
+    }
+
+    .brand-icon {
+      width: 24px;
+      height: 24px;
+      color: var(--primary);
+    }
+
+    .nav-links {
+      display: flex;
+      align-items: center;
+      gap: 4px;
+      list-style: none;
+    }
+
+    .nav-item a {
+      display: inline-flex;
+      align-items: center;
+      padding: 8px 16px;
+      min-height: 44px;
+      font-size: 15px;
+      font-weight: 500;
+      color: var(--muted);
+      text-decoration: none;
+      border-radius: var(--radius-sm);
+      transition: color 0.15s ease;
+      position: relative;
+    }
+
+    .nav-item a:hover {
+      color: var(--fg);
+    }
+
+    .nav-item.active a {
+      color: var(--primary);
+      font-weight: 600;
+    }
+
+    .nav-item.active a::after {
+      content: '';
+      position: absolute;
+      bottom: -12px;
+      left: 16px;
+      right: 16px;
+      height: 3px;
+      background-color: var(--primary);
+      border-radius: 3px 3px 0 0;
+    }
+
+    .topbar-right {
+      display: flex;
+      align-items: center;
+      gap: 16px;
+    }
+
+    .btn-logout {
+      background: transparent;
+      border: none;
+      color: var(--muted);
+      font-size: 14px;
+      font-family: inherit;
+      cursor: pointer;
+      display: inline-flex;
+      align-items: center;
+      gap: 8px;
+      padding: 8px 12px;
+      min-height: 44px;
+      border-radius: var(--radius-sm);
+      transition: color 0.15s ease, background-color 0.15s ease;
+    }
+
+    .btn-logout:hover {
+      color: var(--fg);
+      background-color: var(--secondary);
+    }
+
+    /* Main Container */
+    .container {
+      width: 100%;
+      max-width: 1200px;
+      margin: 0 auto;
+      padding: 36px 32px 48px;
+      flex: 1;
+    }
+
+    /* Page Header */
+    .page-header {
+      display: flex;
+      align-items: baseline;
+      gap: 16px;
+      margin-bottom: 28px;
+    }
+
+    .page-title {
+      font-size: 32px;
+      font-weight: 700;
+      letter-spacing: -0.5px;
+      color: var(--fg);
+    }
+
+    .items-count {
+      font-size: 15px;
+      color: var(--muted);
+      font-weight: 400;
+    }
+
+    /* Grid of Audiobooks */
+    .media-grid {
+      display: grid;
+      grid-template-columns: repeat(auto-fill, minmax(160px, 1fr));
+      gap: 24px 16px;
+    }
+
+    /* Audiobook Card */
+    .book-card {
+      display: flex;
+      flex-direction: column;
+      cursor: pointer;
+      border-radius: var(--radius-md);
+      transition: transform 0.15s ease;
+      text-decoration: none;
+      color: inherit;
+      outline: none;
+    }
+
+    .book-card:focus-visible {
+      outline: 2px solid var(--primary);
+      outline-offset: 4px;
+    }
+
+    .book-card:hover .cover-wrapper {
+      background-color: var(--secondary-hover);
+      border-color: #3b4252;
+    }
+
+    .cover-wrapper {
+      position: relative;
+      width: 100%;
+      aspect-ratio: 1 / 1;
+      background-color: var(--secondary);
+      border-radius: var(--radius-md);
+      box-shadow: var(--shadow-sm);
+      border: 1px solid var(--border);
+      display: flex;
+      align-items: center;
+      justify-content: center;
+      overflow: hidden;
+      transition: background-color 0.15s ease, border-color 0.15s ease;
+    }
+
+    .cover-icon {
+      width: 52px;
+      height: 52px;
+      color: #3a4253;
+      stroke-width: 1.6;
+    }
+
+    /* Progress bar on bottom edge of cover */
+    .cover-progress-track {
+      position: absolute;
+      bottom: 0;
+      left: 0;
+      right: 0;
+      height: 4px;
+      background-color: var(--border);
+    }
+
+    .cover-progress-fill {
+      height: 100%;
+      background-color: var(--primary);
+    }
+
+    /* Card Details */
+    .card-meta {
+      margin-top: 10px;
+      display: flex;
+      flex-direction: column;
+      gap: 3px;
+    }
+
+    .card-title {
+      font-size: 15px;
+      font-weight: 600;
+      color: var(--fg);
+      white-space: nowrap;
+      overflow: hidden;
+      text-overflow: ellipsis;
+      line-height: 1.3;
+    }
+
+    .card-author-line {
+      font-size: 14px;
+      color: var(--muted);
+      line-height: 1.3;
+      white-space: nowrap;
+      overflow: hidden;
+      text-overflow: ellipsis;
+      display: flex;
+      align-items: center;
+      gap: 6px;
+    }
+
+    .author-name {
+      overflow: hidden;
+      text-overflow: ellipsis;
+    }
+
+    .progress-text {
+      color: var(--muted);
+      flex-shrink: 0;
+    }
+
+    .status-badge-finished {
+      display: inline-flex;
+      align-items: center;
+      gap: 4px;
+      color: var(--muted);
+      flex-shrink: 0;
+    }
+
+    .status-badge-finished svg {
+      width: 13px;
+      height: 13px;
+      stroke: var(--muted);
+      stroke-width: 2.2;
+    }
+
+    /* Persistent Bottom Player Bar */
+    .player-bar {
+      position: fixed;
+      bottom: 0;
+      left: 0;
+      right: 0;
+      height: 80px;
+      background-color: var(--secondary);
+      border-top: 1px solid var(--border);
+      z-index: 50;
+      display: flex;
+      align-items: center;
+      justify-content: space-between;
+      padding: 0 28px;
+    }
+
+    /* Left Player Info */
+    .player-left {
+      display: flex;
+      align-items: center;
+      gap: 14px;
+      width: 320px;
+      min-width: 240px;
+    }
+
+    .player-thumb {
+      width: 56px;
+      height: 56px;
+      border-radius: var(--radius-md);
+      background-color: var(--bg);
+      border: 1px solid var(--border);
+      display: flex;
+      align-items: center;
+      justify-content: center;
+      flex-shrink: 0;
+    }
+
+    .player-thumb svg {
+      width: 26px;
+      height: 26px;
+      color: var(--muted);
+      stroke-width: 1.7;
+    }
+
+    .player-info {
+      display: flex;
+      flex-direction: column;
+      overflow: hidden;
+      gap: 2px;
+    }
+
+    .player-title {
+      font-size: 14px;
+      font-weight: 600;
+      color: var(--fg);
+      white-space: nowrap;
+      overflow: hidden;
+      text-overflow: ellipsis;
+    }
+
+    .player-sub {
+      font-size: 12px;
+      color: var(--muted);
+      white-space: nowrap;
+      overflow: hidden;
+      text-overflow: ellipsis;
+    }
+
+    /* Center Player Controls & Seek */
+    .player-center {
+      display: flex;
+      flex-direction: column;
+      align-items: center;
+      gap: 6px;
+      flex: 1;
+      max-width: 620px;
+    }
+
+    .controls-row {
+      display: flex;
+      align-items: center;
+      gap: 16px;
+    }
+
+    .ctrl-btn {
+      background: transparent;
+      border: none;
+      color: var(--fg);
+      cursor: pointer;
+      display: inline-flex;
+      align-items: center;
+      justify-content: center;
+      width: 44px;
+      height: 44px;
+      border-radius: var(--radius-full);
+      position: relative;
+      transition: color 0.15s ease, background-color 0.15s ease;
+    }
+
+    .ctrl-btn:hover {
+      background-color: rgba(255, 255, 255, 0.06);
+    }
+
+    .ctrl-btn:focus-visible {
+      outline: 2px solid var(--primary);
+    }
+
+    .ctrl-btn svg {
+      width: 20px;
+      height: 20px;
+    }
+
+    /* Skip buttons with badge number */
+    .btn-skip {
+      position: relative;
+    }
+
+    .btn-skip svg {
+      width: 24px;
+      height: 24px;
+    }
+
+    .btn-skip .skip-label {
+      position: absolute;
+      font-size: 9px;
+      font-weight: 700;
+      color: var(--fg);
+      top: 50%;
+      left: 50%;
+      transform: translate(-50%, -46%);
+      pointer-events: none;
+    }
+
+    /* Orange Play Button (Paused state showing Play icon) */
+    .btn-play {
+      width: 48px;
+      height: 48px;
+      background-color: var(--primary);
+      color: #0f1115;
+      border: none;
+      border-radius: var(--radius-full);
+      display: inline-flex;
+      align-items: center;
+      justify-content: center;
+      cursor: pointer;
+      box-shadow: 0 2px 8px rgba(255, 122, 26, 0.35);
+      transition: transform 0.1s ease, filter 0.15s ease;
+    }
+
+    .btn-play:hover {
+      filter: brightness(1.08);
+      background-color: var(--primary);
+    }
+
+    .btn-play:active {
+      filter: brightness(0.95);
+      transform: scale(0.96);
+    }
+
+    .btn-play svg {
+      width: 22px;
+      height: 22px;
+      fill: #0f1115;
+      margin-left: 2px; /* optical center */
+    }
+
+    /* Seek Slider */
+    .seek-bar-row {
+      display: flex;
+      align-items: center;
+      gap: 12px;
+      width: 100%;
+      max-width: 480px;
+    }
+
+    .time-label {
+      font-size: 12px;
+      color: var(--muted);
+      font-variant-numeric: tabular-nums;
+      min-width: 38px;
+    }
+
+    .time-left {
+      text-align: right;
+    }
+
+    .time-right {
+      text-align: left;
+    }
+
+    .slider-track {
+      flex: 1;
+      height: 4px;
+      background-color: var(--border);
+      border-radius: var(--radius-full);
+      position: relative;
+      cursor: pointer;
+    }
+
+    .slider-fill {
+      width: 40%;
+      height: 100%;
+      background-color: var(--primary);
+      border-radius: var(--radius-full);
+      position: relative;
+    }
+
+    .slider-thumb {
+      position: absolute;
+      right: -5px;
+      top: -4px;
+      width: 12px;
+      height: 12px;
+      background-color: var(--primary);
+      border-radius: var(--radius-full);
+      box-shadow: 0 1px 4px rgba(0, 0, 0, 0.4);
+      opacity: 0;
+      transition: opacity 0.15s ease;
+    }
+
+    .slider-track:hover .slider-thumb {
+      opacity: 1;
+    }
+
+    /* Player Right Placeholder (Volume) */
+    .player-right {
+      display: flex;
+      align-items: center;
+      justify-content: flex-end;
+      gap: 12px;
+      width: 320px;
+      min-width: 240px;
+    }
+
+    .btn-volume {
+      background: transparent;
+      border: none;
+      color: var(--muted);
+      cursor: pointer;
+      display: inline-flex;
+      align-items: center;
+      justify-content: center;
+      width: 44px;
+      height: 44px;
+      border-radius: var(--radius-full);
+      transition: color 0.15s ease;
+    }
+
+    .btn-volume:hover {
+      color: var(--fg);
+    }
+
+    .btn-volume svg {
+      width: 20px;
+      height: 20px;
+    }
+
+    .volume-slider-track {
+      width: 90px;
+      height: 4px;
+      background-color: var(--border);
+      border-radius: var(--radius-full);
+      position: relative;
+      cursor: pointer;
+    }
+
+    .volume-slider-fill {
+      width: 75%;
+      height: 100%;
+      background-color: var(--muted);
+      border-radius: var(--radius-full);
+    }
+  </style>
+</head>
+<body>
+
+  <!-- Top Navigation Bar -->
+  <header class="topbar">
+    <div class="topbar-left">
+      <a href="#" class="brand" aria-label="Videothek Startseite">
+        <!-- Play / Videothek Orange Icon -->
+        <svg class="brand-icon" viewBox="0 0 24 24" fill="currentColor">
+          <polygon points="5 3 19 12 5 21 5 3"></polygon>
+        </svg>
+        <span>Videothek</span>
+      </a>
+
+      <nav aria-label="Hauptnavigation">
+        <ul class="nav-links">
+          <li class="nav-item"><a href="#">Filme</a></li>
+          <li class="nav-item"><a href="#">Serien</a></li>
+          <li class="nav-item"><a href="#">Musik</a></li>
+          <li class="nav-item active"><a href="#" aria-current="page">Hörbücher</a></li>
+          <li class="nav-item"><a href="#">Bilder</a></li>
+        </ul>
+      </nav>
+    </div>
+
+    <div class="topbar-right">
+      <button class="btn-logout" type="button" aria-label="Abmelden">
+        <svg width="18" height="18" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round">
+          <path d="M9 21H5a2 2 0 0 1-2-2V5a2 2 0 0 1 2-2h4"></path>
+          <polyline points="16 17 21 12 16 7"></polyline>
+          <line x1="21" y1="12" x2="9" y2="12"></line>
+        </svg>
+        <span>Abmelden</span>
+      </button>
+    </div>
+  </header>
+
+  <!-- Main Content Container -->
+  <main class="container">
+    <div class="page-header">
+      <h1 class="page-title">Hörbücher</h1>
+      <span class="items-count">8 Hörbücher</span>
+    </div>
+
+    <!-- Responsive Grid -->
+    <div class="media-grid">
+
+      <!-- Card 1: Started (34%) -->
+      <a href="#" class="book-card" aria-label="Hörbuch: Die Reise zum Mittelpunkt von Jules Beispiel, 34 % gehört">
+        <div class="cover-wrapper">
+          <svg class="cover-icon" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-linecap="round" stroke-linejoin="round">
+            <path d="M4 19.5A2.5 2.5 0 0 1 6.5 17H20"></path>
+            <path d="M6.5 2H20v20H6.5A2.5 2.5 0 0 1 4 19.5v-15A2.5 2.5 0 0 1 6.5 2z"></path>
+            <line x1="9" y1="7" x2="15" y2="7"></line>
+            <line x1="9" y1="11" x2="13" y2="11"></line>
+          </svg>
+          <div class="cover-progress-track">
+            <div class="cover-progress-fill" style="width: 34%;"></div>
+          </div>
+        </div>
+        <div class="card-meta">
+          <span class="card-title" title="Die Reise zum Mittelpunkt">Die Reise zum Mittelpunkt</span>
+          <div class="card-author-line">
+            <span class="author-name">Jules Beispiel</span>
+            <span>·</span>
+            <span class="progress-text">34 %</span>
+          </div>
+        </div>
+      </a>
+
+      <!-- Card 2: Finished (Gehört) -->
+      <a href="#" class="book-card" aria-label="Hörbuch: Der kleine Leuchtturm von Maria Muster, Gehört">
+        <div class="cover-wrapper">
+          <svg class="cover-icon" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-linecap="round" stroke-linejoin="round">
+            <path d="M4 19.5A2.5 2.5 0 0 1 6.5 17H20"></path>
+            <path d="M6.5 2H20v20H6.5A2.5 2.5 0 0 1 4 19.5v-15A2.5 2.5 0 0 1 6.5 2z"></path>
+            <line x1="9" y1="7" x2="15" y2="7"></line>
+            <line x1="9" y1="11" x2="13" y2="11"></line>
+          </svg>
+        </div>
+        <div class="card-meta">
+          <span class="card-title" title="Der kleine Leuchtturm">Der kleine Leuchtturm</span>
+          <div class="card-author-line">
+            <span class="author-name">Maria Muster</span>
+            <span>·</span>
+            <span class="status-badge-finished">
+              <svg viewBox="0 0 24 24" fill="none" stroke-linecap="round" stroke-linejoin="round">
+                <polyline points="20 6 9 17 4 12"></polyline>
+              </svg>
+              <span>Gehört</span>
+            </span>
+          </div>
+        </div>
+      </a>
+
+      <!-- Card 3: Not started -->
+      <a href="#" class="book-card" aria-label="Hörbuch: Winterwald von Tom Probe">
+        <div class="cover-wrapper">
+          <svg class="cover-icon" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-linecap="round" stroke-linejoin="round">
+            <path d="M4 19.5A2.5 2.5 0 0 1 6.5 17H20"></path>
+            <path d="M6.5 2H20v20H6.5A2.5 2.5 0 0 1 4 19.5v-15A2.5 2.5 0 0 1 6.5 2z"></path>
+            <line x1="9" y1="7" x2="15" y2="7"></line>
+            <line x1="9" y1="11" x2="13" y2="11"></line>
+          </svg>
+        </div>
+        <div class="card-meta">
+          <span class="card-title" title="Winterwald">Winterwald</span>
+          <div class="card-author-line">
+            <span class="author-name">Tom Probe</span>
+          </div>
+        </div>
+      </a>
+
+      <!-- Card 4: Started (72%) -->
+      <a href="#" class="book-card" aria-label="Hörbuch: Das Archiv von Lena Test, 72 % gehört">
+        <div class="cover-wrapper">
+          <svg class="cover-icon" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-linecap="round" stroke-linejoin="round">
+            <path d="M4 19.5A2.5 2.5 0 0 1 6.5 17H20"></path>
+            <path d="M6.5 2H20v20H6.5A2.5 2.5 0 0 1 4 19.5v-15A2.5 2.5 0 0 1 6.5 2z"></path>
+            <line x1="9" y1="7" x2="15" y2="7"></line>
+            <line x1="9" y1="11" x2="13" y2="11"></line>
+          </svg>
+          <div class="cover-progress-track">
+            <div class="cover-progress-fill" style="width: 72%;"></div>
+          </div>
+        </div>
+        <div class="card-meta">
+          <span class="card-title" title="Das Archiv">Das Archiv</span>
+          <div class="card-author-line">
+            <span class="author-name">Lena Test</span>
+            <span>·</span>
+            <span class="progress-text">72 %</span>
+          </div>
+        </div>
+      </a>
+
+      <!-- Card 5: Not started -->
+      <a href="#" class="book-card" aria-label="Hörbuch: Sternenhimmel von Maria Muster">
+        <div class="cover-wrapper">
+          <svg class="cover-icon" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-linecap="round" stroke-linejoin="round">
+            <path d="M4 19.5A2.5 2.5 0 0 1 6.5 17H20"></path>
+            <path d="M6.5 2H20v20H6.5A2.5 2.5 0 0 1 4 19.5v-15A2.5 2.5 0 0 1 6.5 2z"></path>
+            <line x1="9" y1="7" x2="15" y2="7"></line>
+            <line x1="9" y1="11" x2="13" y2="11"></line>
+          </svg>
+        </div>
+        <div class="card-meta">
+          <span class="card-title" title="Sternenhimmel">Sternenhimmel</span>
+          <div class="card-author-line">
+            <span class="author-name">Maria Muster</span>
+          </div>
+        </div>
+      </a>
+
+      <!-- Card 6: Not started -->
+      <a href="#" class="book-card" aria-label="Hörbuch: Ein Sommer am Meer von Jules Beispiel">
+        <div class="cover-wrapper">
+          <svg class="cover-icon" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-linecap="round" stroke-linejoin="round">
+            <path d="M4 19.5A2.5 2.5 0 0 1 6.5 17H20"></path>
+            <path d="M6.5 2H20v20H6.5A2.5 2.5 0 0 1 4 19.5v-15A2.5 2.5 0 0 1 6.5 2z"></path>
+            <line x1="9" y1="7" x2="15" y2="7"></line>
+            <line x1="9" y1="11" x2="13" y2="11"></line>
+          </svg>
+        </div>
+        <div class="card-meta">
+          <span class="card-title" title="Ein Sommer am Meer">Ein Sommer am Meer</span>
+          <div class="card-author-line">
+            <span class="author-name">Jules Beispiel</span>
+          </div>
+        </div>
+      </a>
+
+      <!-- Card 7: Started (8%) -->
+      <a href="#" class="book-card" aria-label="Hörbuch: Nebelhorn von Tom Probe, 8 % gehört">
+        <div class="cover-wrapper">
+          <svg class="cover-icon" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-linecap="round" stroke-linejoin="round">
+            <path d="M4 19.5A2.5 2.5 0 0 1 6.5 17H20"></path>
+            <path d="M6.5 2H20v20H6.5A2.5 2.5 0 0 1 4 19.5v-15A2.5 2.5 0 0 1 6.5 2z"></path>
+            <line x1="9" y1="7" x2="15" y2="7"></line>
+            <line x1="9" y1="11" x2="13" y2="11"></line>
+          </svg>
+          <div class="cover-progress-track">
+            <div class="cover-progress-fill" style="width: 8%;"></div>
+          </div>
+        </div>
+        <div class="card-meta">
+          <span class="card-title" title="Nebelhorn">Nebelhorn</span>
+          <div class="card-author-line">
+            <span class="author-name">Tom Probe</span>
+            <span>·</span>
+            <span class="progress-text">8 %</span>
+          </div>
+        </div>
+      </a>
+
+      <!-- Card 8: Not started -->
+      <a href="#" class="book-card" aria-label="Hörbuch: Die letzte Fähre von Lena Test">
+        <div class="cover-wrapper">
+          <svg class="cover-icon" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-linecap="round" stroke-linejoin="round">
+            <path d="M4 19.5A2.5 2.5 0 0 1 6.5 17H20"></path>
+            <path d="M6.5 2H20v20H6.5A2.5 2.5 0 0 1 4 19.5v-15A2.5 2.5 0 0 1 6.5 2z"></path>
+            <line x1="9" y1="7" x2="15" y2="7"></line>
+            <line x1="9" y1="11" x2="13" y2="11"></line>
+          </svg>
+        </div>
+        <div class="card-meta">
+          <span class="card-title" title="Die letzte Fähre">Die letzte Fähre</span>
+          <div class="card-author-line">
+            <span class="author-name">Lena Test</span>
+          </div>
+        </div>
+      </a>
+
+    </div>
+  </main>
+
+  <!-- Persistent Audio Player Bar -->
+  <footer class="player-bar" role="region" aria-label="Audio-Player">
+    
+    <!-- Left: Track info -->
+    <div class="player-left">
+      <div class="player-thumb" aria-hidden="true">
+        <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-linecap="round" stroke-linejoin="round">
+          <path d="M4 19.5A2.5 2.5 0 0 1 6.5 17H20"></path>
+          <path d="M6.5 2H20v20H6.5A2.5 2.5 0 0 1 4 19.5v-15A2.5 2.5 0 0 1 6.5 2z"></path>
+        </svg>
+      </div>
+      <div class="player-info">
+        <div class="player-title">Kapitel 05</div>
+        <div class="player-sub" title="Die Reise zum Mittelpunkt · Jules Beispiel">Die Reise zum Mittelpunkt · Jules Beispiel</div>
+      </div>
+    </div>
+
+    <!-- Center: Playback Controls & Seek bar -->
+    <div class="player-center">
+      <div class="controls-row">
+        <!-- Vorheriges Kapitel -->
+        <button class="ctrl-btn" type="button" aria-label="Vorheriges Kapitel" title="Vorheriges Kapitel">
+          <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round">
+            <polygon points="19 20 9 12 19 4 19 20"></polygon>
+            <line x1="5" y1="19" x2="5" y2="5"></line>
+          </svg>
+        </button>
+
+        <!-- 15 s zurück -->
+        <button class="ctrl-btn btn-skip" type="button" aria-label="15 Sekunden zurück" title="15 Sekunden zurück">
+          <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.8" stroke-linecap="round" stroke-linejoin="round">
+            <path d="M3 12a9 9 0 1 0 9-9 9.75 9.75 0 0 0-6.74 2.74L3 8"></path>
+            <path d="M3 3v5h5"></path>
+          </svg>
+          <span class="skip-label">15</span>
+        </button>
+
+        <!-- Play Button (Orange, in paused state showing Play icon) -->
+        <button class="btn-play" type="button" aria-label="Abspielen" title="Abspielen">
+          <svg viewBox="0 0 24 24">
+            <polygon points="6 4 20 12 6 20 6 4"></polygon>
+          </svg>
+        </button>
+
+        <!-- 30 s vor -->
+        <button class="ctrl-btn btn-skip" type="button" aria-label="30 Sekunden vor" title="30 Sekunden vor">
+          <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.8" stroke-linecap="round" stroke-linejoin="round">
+            <path d="M21 12a9 9 0 1 1-9-9 9.75 9.75 0 0 1 6.74 2.74L21 8"></path>
+            <path d="M21 3v5h-5"></path>
+          </svg>
+          <span class="skip-label">30</span>
+        </button>
+
+        <!-- Nächstes Kapitel -->
+        <button class="ctrl-btn" type="button" aria-label="Nächstes Kapitel" title="Nächstes Kapitel">
+          <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round">
+            <polygon points="5 4 15 12 5 20 5 4"></polygon>
+            <line x1="19" y1="5" x2="19" y2="19"></line>
+          </svg>
+        </button>
+      </div>
+
+      <!-- Seek Slider -->
+      <div class="seek-bar-row">
+        <span class="time-label time-left">12:34</span>
+        <div class="slider-track" role="slider" aria-label="Wiedergabeposition" aria-valuemin="0" aria-valuemax="1865" aria-valuenow="754" tabindex="0">
+          <div class="slider-fill">
+            <div class="slider-thumb"></div>
+          </div>
+        </div>
+        <span class="time-label time-right">31:05</span>
+      </div>
+    </div>
+
+    <!-- Right: Volume control -->
+    <div class="player-right">
+      <button class="btn-volume" type="button" aria-label="Lautstärke" title="Lautstärke">
+        <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round">
+          <polygon points="11 5 6 9 2 9 2 15 6 15 11 19 11 5"></polygon>
+          <path d="M15.54 8.46a5 5 0 0 1 0 7.07"></path>
+          <path d="M19.07 4.93a10 10 0 0 1 0 14.14"></path>
+        </svg>
+      </button>
+      <div class="volume-slider-track" role="slider" aria-label="Lautstärke" aria-valuemin="0" aria-valuemax="100" aria-valuenow="75" tabindex="0">
+        <div class="volume-slider-fill"></div>
+      </div>
+    </div>
+
+  </footer>
+
+</body>
+</html>
