@@ -755,3 +755,21 @@ Chromium and Firefox, mobile ≤ 767 px and desktop ≥ 1024 px viewport):
   in sync; added a regression-guard test after the initial parser silently
   dropped every `color:` entry (each has a trailing `# comment`), which would
   have made the colour-mirror assertions pass vacuously over an empty set.
+- 2026-09-26: Issue #15 (`src/http/{router,respond,cookies,guards}.js`)
+  implementation notes: `router.js` matches path shape independently of
+  method via a literal/param trie, recursively backtracking from a literal
+  child to the param child at each segment when the literal subtree yields
+  no handler or `{ allow }` candidate at the matched path length — "literal
+  beats param" holds only when both would otherwise match the same path
+  (equal segment count), not merely because a literal child exists; `{
+  allow }` is the union of methods across every subtree that fully matches
+  the path, not just the first one found. A duplicate leaf/method collision
+  throws even when the colliding pattern text differs (a stricter superset
+  of the literal `(method, pattern)` rule); a later pattern reusing a trie
+  position under a different `:name` also throws at registration, since one
+  node carries exactly one param name. `respond.js`'s `sendNoContent`/
+  `redirect` additionally send `Cache-Control: no-store` (only `sendJson`/
+  `sendError` were required to) since every call site (`/logout`, deletes,
+  login/page redirects) is session-dependent; `readJson` drains an oversized
+  body with `req.resume()` instead of `req.destroy()`, so the `413` response
+  reaches the client instead of the socket closing first.
