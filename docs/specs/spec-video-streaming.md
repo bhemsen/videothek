@@ -568,3 +568,11 @@ Firefox, desktop and a 390 px phone viewport):
   reading `EXTENSIONS` directly, applying only the fallback to
   `'application/octet-stream'` on top — keeps this module a one-line lookup
   with no extension-table knowledge of its own.
+- 2026-09-26: implementation (#44, `src/db/episodes.js`) — `getNextEpisode`
+  is one prepared statement using a SQLite row-value comparison
+  (`(season, episode, coalesce(episode_end, -1), sort_title, id) > (?, ?, ?,
+  ?, ?)`) against `row`'s own tuple, so ordering and "strictly greater" are
+  both expressed by SQLite itself rather than re-implemented in JS; the
+  regular/specials chain split is a single `CASE WHEN ? = 1 THEN season = 0
+  ELSE season >= 1 END` guard driven by one bound `isSpecial` flag computed
+  from `row.season === 0`, rather than two branches with separate SQL text.

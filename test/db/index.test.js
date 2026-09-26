@@ -65,7 +65,7 @@ test('migrate applies the shipped 001-users-sessions migration with working cons
   const dataDir = makeTempDir();
   const db = openDatabase(dataDir);
   try {
-    assert.deepEqual(migrate(db), [1, 2]);
+    assert.deepEqual(migrate(db), [1, 2, 3, 4]);
 
     const insertUser = db.prepare(
       'INSERT INTO users (username, password_hash, role, created_at) VALUES (?, ?, ?, ?)'

@@ -799,6 +799,19 @@ phone 390 px and desktop 1440 px, compared with the design exports):
   "Gesehen" pill named in tokens (`--text-xs`, `--weight-semibold`);
   pure `nextFocusIndex` extracted and tested; P5's read-only
   `audio-progress.js` join acknowledged in the repository rule.
+- 2026-09-26: implementation (#51) — `upsertProgress` returns the written row
+  via `RETURNING` (not fixed by the spec) so the API layer's `PUT` handler
+  gets the post-write entry without a second `getProgressRow` call;
+  `listContinueRows`/`listStateRows`/`listSeriesProgressRows` select
+  `library_items.*` plus the four progress columns under their own names (no
+  collision, so no aliasing was needed beyond `AS` for clarity); migration
+  003's gap-application (independent of 002) and last-write-wins are
+  additionally exercised against the real `001`/`003` files, not only
+  synthetic ones as in `migrate.test.js`. Adding migration 003 to the shared
+  `src/db/migrations/` directory made two pre-existing tests' hardcoded
+  `migrate(db) === [1, 2]` expectations (`test/db/index.test.js`,
+  `test/db/library-repo.test.js`) stale; updated them to `[1, 2, 3]`, the only
+  edit to files outside this issue's list.
 - 2026-09-26: `public/js/lib/progress.js` implementation (#55) — a stored
   `position` that is `>=` the media's `duration` (with `resume: true`) is
   treated the same as "nothing to resume": reporting arms directly on the
