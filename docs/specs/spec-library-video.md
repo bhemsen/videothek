@@ -1038,3 +1038,14 @@ and desktop 1440 px, compared with the design exports):
   failing with a limit error before any watch exists — is left for `startLibrary`
   (#34)/the scanner (#33) to close, since a `sweep()`-side retry would race
   `watcher.js`'s own root backoff bookkeeping in `rootRetrying`/`attemptRootWatch`.)
+- 2026-09-26 (issue #28): review caught that `cleanName`'s empty-result
+  rescue masked the episode-title fallback rule ("Empty → `episodeCode(...)`")
+  for a suffix that is release tags with real words (e.g.
+  `.German.1080p.WEB.x264`), producing `"German 1080p WEB x264"` instead of
+  the code and breaking the `Dark.S01E03...` QA-fixture line. Fixed in
+  `src/library/parsers/text.js` by splitting `cleanName` into an exported
+  `cutReleaseTokens` step (no rescue) and the rescue itself; the
+  episode-title fallback now checks `cutReleaseTokens` emptiness before the
+  rescue can reintroduce release tags as text. `cleanName`'s own
+  input/output contract is unchanged. The QA fixture's stated title
+  `"S01E03"` stands as originally specified.
