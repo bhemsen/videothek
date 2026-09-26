@@ -1,6 +1,6 @@
 /**
  * @typedef {object} StageHost
- * @property {(node: unknown) => void} append - appends a node to the stage container
+ * @property {(node: any) => void} append - appends a node to the stage container
  */
 
 /**

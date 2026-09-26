@@ -3,6 +3,20 @@ import assert from 'node:assert/strict';
 import { createStage } from '../../public/js/lib/player-stage.js';
 
 /**
+ * Type-only check, never invoked at runtime: confirms that real DOM
+ * elements (as `public/js/player.js` passes them: `createStage(stageEl,
+ * video)`) are assignable to `createStage`'s parameter types under this
+ * project's strict `checkJs`.
+ * @returns {void}
+ */
+function assertRealDomElementsAreAssignable() {
+  /** @type {HTMLElement} */
+  const stageEl = document.createElement('div');
+  const video = document.createElement('video');
+  createStage(stageEl, video);
+}
+
+/**
  * Minimal EventTarget-based fake video element exposing only the surface
  * `createStage` is allowed to touch (`remove`, `load`, `play`,
  * `addEventListener`, `currentTime`), plus call counters and a `src` trap
@@ -117,10 +131,23 @@ test('a rejected play() promise is swallowed', async () => {
   video.playResult = Promise.reject(new Error('boom'));
   const stage = createStage(host, video);
 
+  let unhandledRejectionFired = false;
+  /** @returns {void} */
+  const onUnhandledRejection = () => {
+    unhandledRejectionFired = true;
+  };
+  process.once('unhandledRejection', onUnhandledRejection);
+
   stage.retry(10);
   video.dispatchEvent(new Event('loadedmetadata'));
 
   await flushMicrotasks();
+  process.removeListener('unhandledRejection', onUnhandledRejection);
 
   assert.equal(video.playCalls, 1);
+  assert.equal(
+    unhandledRejectionFired,
+    false,
+    'the rejected play() promise must be caught, never surface as an unhandled rejection'
+  );
 });
