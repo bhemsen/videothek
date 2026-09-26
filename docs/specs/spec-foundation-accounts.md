@@ -690,3 +690,13 @@ Chromium and Firefox, mobile ≤ 767 px and desktop ≥ 1024 px viewport):
   scan scoped to css/js/html with a token-colour check for `favicon.svg`;
   401 guarantee worded for registered routes; prior session revoked only after
   a successful login; missing exports for home/404/dialogs noted.
+- 2026-09-26: Issue #21 (tokens/base/favicon/frontend-rules test) implemented:
+  `favicon.svg` reuses only `--color-secondary` (rounded square) and
+  `--color-primary` (play triangle), matching the exports' wordmark mark.
+  `.visually-hidden` sizes itself with `var(--border-width)` (exactly 1 px)
+  instead of a new raw literal, so the sr-only technique needs no length
+  outside `tokens.css`. `test/frontend-rules.test.js` parses `docs/design.md`'s
+  front matter directly (regex, no dependency) to keep `tokens.css` verifiably
+  in sync; added a regression-guard test after the initial parser silently
+  dropped every `color:` entry (each has a trailing `# comment`), which would
+  have made the colour-mirror assertions pass vacuously over an empty set.
