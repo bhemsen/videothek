@@ -706,3 +706,42 @@ Chromium and Firefox, mobile ≤ 767 px and desktop ≥ 1024 px viewport):
   order. `check()` returns `retryAfterSec: null` when `allowed` is `true`,
   matching the `number | null` convention used elsewhere in this spec
   (`ApiError.retryAfterSec`).
+- 2026-09-26: Issue #22 (`public/js/lib/{dom,icons,api}.js`) implementation
+  choices not fixed elsewhere: `el()` treats `null`/`undefined`/`false` attribute
+  values as omitted and `true` as a boolean attribute (`setAttribute(key, '')`);
+  `class` additionally accepts a `string[]` (falsy entries filtered, joined with
+  a space) for conditional classes; children that are `null`/`undefined`/`false`
+  are silently skipped so callers can write `cond && el(...)`. Icon path data
+  (`icons.js`) is self-authored, minimal, single/double-`<path>` glyphs on the
+  24x24 grid colored via `fill="currentColor"` (no stroke icons), since the
+  Stitch exports show icons only at thumbnail size with no vector handoff;
+  visual fit is confirmed at milestone UI QA once a page mounts them. `api.js`
+  treats any body text that fails `JSON.parse` (2xx or error) as `null` /
+  `'unknown'` respectively rather than throwing, and `Retry-After` is accepted
+  only as a non-negative-integer digit string (`^\d+$`) per the spec's
+  "never sends the HTTP-date form" note.
+- 2026-09-26: Issue #26 (`README.md`/`.env.example`) implemented — README
+  covers install, the config table (incl. `ADMIN_USER`/`ADMIN_PASSWORD`
+  validation and the `config_invalid`/`admin_missing` failure paths), first
+  start, a systemd unit (`Restart=on-failure`), Caddy and nginx reverse-proxy
+  snippets (both preserving the host and setting `X-Forwarded-Proto`), backup
+  (stop, copy `videothek.db*`) and recovery via
+  `npm run reset-password -- <username>`; `.env.example` blanks
+  `ADMIN_PASSWORD` so copying it unedited fails loudly instead of creating an
+  admin with a known password. No new design decisions.
+- 2026-09-26: Issue #9 `src/config.js` implemented. `MEDIA_ROOT` is validated
+  as-given (must already be absolute; unlike `DATA_DIR` it is never resolved
+  against `cwd`), so a relative value is its own problem
+  (`"MEDIA_ROOT: must be an absolute path"`), distinct from missing
+  (`"MEDIA_ROOT: required"`) and from existing-but-invalid
+  (`"MEDIA_ROOT: must be a readable directory"`, covering both non-directory
+  and unreadable/missing-on-disk). `requireMediaRoot: false` (the CLI path)
+  never raises a `MEDIA_ROOT`/`DATA_DIR` problem at all — including the
+  "inside `MEDIA_ROOT`" containment check — and passes through an absolute
+  `MEDIA_ROOT` value uncontained/unverified so `reset-password` keeps working
+  with the media disk unmounted; a relative or unset value yields
+  `mediaRoot: ''` in that mode, keeping `Config.mediaRoot` a plain `string`
+  (matching this table's row) so every other phase's `string`-typed
+  parameters accept it without a cast. `PORT`/`RESCAN_INTERVAL_MIN` accept
+  only a bare non-negative integer literal (`^\d+$`, no sign, decimal or
+  whitespace) before the range check.
