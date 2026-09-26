@@ -1,0 +1,101 @@
+/**
+ * In-process app harness shared by every phase's tests: boots the full
+ * `createApp` stack on `127.0.0.1:0` against temp `DATA_DIR`/`MEDIA_ROOT`
+ * directories, with migrations applied but no admin bootstrap (tests seed
+ * their own users) and a silent logger that captures lines instead of
+ * writing them.
+ */
+
+import { mkdirSync, mkdtempSync, rmSync } from 'node:fs';
+import { tmpdir } from 'node:os';
+import path from 'node:path';
+import { verifyPassword, hashPassword } from '../../src/auth/password.js';
+import { validateUsername } from '../../src/auth/validation.js';
+import { createApp } from '../../src/app.js';
+import { loadConfig } from '../../src/config.js';
+import { migrate, openDatabase } from '../../src/db/index.js';
+import { getUserByUsername, insertUser } from '../../src/db/users.js';
+import { createLogger } from '../../src/log.js';
+
+/** @typedef {'admin' | 'user'} UserRole */
+
+/**
+ * @param {() => number} now
+ * @returns {{ log: import('../../src/log.js').Logger, logLines: string[] }}
+ */
+function createSilentLogger(now) {
+  /** @type {string[]} */
+  const logLines = [];
+  const sink = { write: (/** @type {string} */ chunk) => void logLines.push(chunk) };
+  return { log: createLogger({ out: sink, err: sink, now }), logLines };
+}
+
+/**
+ * Resolves the temp directories: `DATA_DIR` is always our own (removed on
+ * `close`); `MEDIA_ROOT` is the caller's own path when given (never
+ * created or removed here), otherwise an empty temp directory of our own.
+ * @param {string | undefined} mediaRoot
+ * @returns {{ tempRoot: string, dataDir: string, mediaRoot: string }}
+ */
+function resolveDirs(mediaRoot) {
+  const tempRoot = mkdtempSync(path.join(tmpdir(), 'videothek-test-'));
+  const dataDir = path.join(tempRoot, 'data');
+  if (mediaRoot !== undefined) return { tempRoot, dataDir, mediaRoot };
+  const ownMediaRoot = path.join(tempRoot, 'media');
+  mkdirSync(ownMediaRoot, { recursive: true });
+  return { tempRoot, dataDir, mediaRoot: ownMediaRoot };
+}
+
+/**
+ * Starts the app in-process for tests.
+ * @param {{ mediaRoot?: string, now?: () => number, [key: string]: unknown }} [options]
+ * @returns {Promise<{
+ *   baseUrl: string,
+ *   db: import('node:sqlite').DatabaseSync,
+ *   config: import('../../src/config.js').Config,
+ *   deps: import('../../src/app.js').AppDeps & { logLines: string[] },
+ *   createUser: (username: string, password: string, role?: UserRole) => Promise<{ id: number, username: string, role: UserRole }>,
+ *   login: (username: string, password: string) => Promise<string>,
+ *   close: () => Promise<void>,
+ * }>}
+ */
+export async function startTestApp({ mediaRoot, now = Date.now, ...extra } = {}) {
+  const { tempRoot, dataDir, mediaRoot: resolvedMediaRoot } = resolveDirs(mediaRoot);
+  const config = loadConfig({ MEDIA_ROOT: resolvedMediaRoot, DATA_DIR: dataDir });
+  const db = openDatabase(config.dataDir);
+  migrate(db);
+
+  const { log, logLines } = createSilentLogger(now);
+  const { server, deps, close: closeApp } = createApp({ config, db, log, now, ...extra });
+  await new Promise((resolve) => server.listen(0, '127.0.0.1', () => resolve(undefined)));
+  const address = server.address();
+  const port = address && typeof address === 'object' ? address.port : 0;
+
+  return {
+    baseUrl: `http://127.0.0.1:${port}`,
+    db,
+    config,
+    deps: /** @type {import('../../src/app.js').AppDeps & { logLines: string[] }} */ ({ ...deps, logLines }),
+    async createUser(username, password, role = 'user') {
+      const normalized = validateUsername(username);
+      if (normalized === null) throw new Error(`startTestApp.createUser: invalid username ${username}`);
+      const passwordHash = await hashPassword(password);
+      const row = insertUser(db, { username: normalized, passwordHash, role, createdAt: now() });
+      return { id: row.id, username: row.username, role: row.role };
+    },
+    async login(username, password) {
+      const normalized = validateUsername(username) ?? username;
+      const user = getUserByUsername(db, normalized);
+      if (!user || !(await verifyPassword(password, user.password_hash))) {
+        throw new Error(`startTestApp.login: no matching test user ${username}`);
+      }
+      const { token } = deps.sessions.create(user.id);
+      return `vt_session=${token}`;
+    },
+    async close() {
+      await closeApp();
+      db.close();
+      rmSync(tempRoot, { recursive: true, force: true });
+    },
+  };
+}
