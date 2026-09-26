@@ -188,6 +188,7 @@ Implementation notes that override the exports:
 | `src/http/cookies.js` | `parseCookies(header)`, `serializeCookie(name, value, opts)` |
 | `src/http/security.js` | `applySecurityHeaders(res)`, `isHttps(req)`, `isSameOrigin(req)` |
 | `src/http/static.js` | `createStaticHandler({ publicDir })` — assets + page routes (rules below) |
+| `src/http/guards.js` | `requireUser(handler)`, `requireAdmin(handler)` — wrap route handlers; `ctx.user` missing → `401 unauthorized`, not admin → `403 forbidden` |
 | `src/http/routes.js` | `registerRoutes(router, deps)` — calls one `register*Routes` per API module; later phases add one line each |
 | `src/api/health.js` | `registerHealthRoutes` — `/healthz` |
 | `src/api/auth.js` | `registerAuthRoutes` — `/login`, `/logout`, `/api/me` |
