@@ -559,3 +559,11 @@ Firefox, desktop and a 390 px phone viewport):
   check (both groups empty, e.g. `bytes=-` or `bytes=`, falls through to
   `none` alongside non-digit specs like `bytes=abc`), so no separate
   digits-only validation was needed.
+- 2026-09-26: implementation (#44, `src/db/episodes.js`) — `getNextEpisode`
+  is one prepared statement using a SQLite row-value comparison
+  (`(season, episode, coalesce(episode_end, -1), sort_title, id) > (?, ?, ?,
+  ?, ?)`) against `row`'s own tuple, so ordering and "strictly greater" are
+  both expressed by SQLite itself rather than re-implemented in JS; the
+  regular/specials chain split is a single `CASE WHEN ? = 1 THEN season = 0
+  ELSE season >= 1 END` guard driven by one bound `isSpecial` flag computed
+  from `row.season === 0`, rather than two branches with separate SQL text.
