@@ -983,6 +983,19 @@ and desktop 1440 px, compared with the design exports):
   `onScanComplete` not fired for aborted runs; `sort` default and invalid
   URL values; file-size format; "Folgen 1–2" label; season-less series meta;
   README section "Medienordner".
+- 2026-09-26 (#27): `src/db/library-repo.js`'s write functions take/return
+  plain objects whose keys are the table's snake_case column names verbatim
+  (`rel_path`, `mtime_ms`, …), not a camelCase JS-side shape — so
+  `item-builder.js`'s (#32) `buildItem()` result can be passed into
+  `upsertItem()` unchanged, and a loaded row can be passed into
+  `toItemJson()` unchanged. `playable` is accepted as a JS boolean and
+  coerced to `0`/`1` at the bind boundary (`node:sqlite` cannot bind a JS
+  `boolean`). The upsert functions use `... ON CONFLICT ... RETURNING id` in
+  one round trip instead of a separate lookup `SELECT`.
+- 2026-09-26 (#27): added `deleteItem(db, relPath)` (exact single-row delete)
+  alongside the range-form `deleteItemsUnderDir(db, dir)` the issue names —
+  needed by the planned `reconcile.js` (#33) for a single vanished/
+  unplayable/skipped file, distinct from a whole-subtree delete.
 - 2026-09-26 (#29): `sniffMp4Codecs(absPath)` is async (`Promise<SniffedCodecs
   | null>`) — the spec's arrow notation left this implicit; callers (P2's
   item builder) must `await` it. Within one `trak`, a missing `mdia`, `hdlr`,
@@ -1025,3 +1038,28 @@ and desktop 1440 px, compared with the design exports):
   failing with a limit error before any watch exists — is left for `startLibrary`
   (#34)/the scanner (#33) to close, since a `sweep()`-side retry would race
   `watcher.js`'s own root backoff bookkeeping in `rootRetrying`/`attemptRootWatch`.)
+- 2026-09-26 (issue #28): review caught that `cleanName`'s empty-result
+  rescue masked the episode-title fallback rule ("Empty → `episodeCode(...)`")
+  for a suffix that is release tags with real words (e.g.
+  `.German.1080p.WEB.x264`), producing `"German 1080p WEB x264"` instead of
+  the code and breaking the `Dark.S01E03...` QA-fixture line. Fixed in
+  `src/library/parsers/text.js` by splitting `cleanName` into an exported
+  `cutReleaseTokens` step (no rescue) and the rescue itself; the
+  episode-title fallback now checks `cutReleaseTokens` emptiness before the
+  rescue can reintroduce release tags as text. `cleanName`'s own
+  input/output contract is unchanged. The QA fixture's stated title
+  `"S01E03"` stands as originally specified.
+- 2026-09-26 (#36): `library-format.js` exports one generic
+  `pluralize(n, singular, plural)` (covers Titel/Titel, Serie/Serien,
+  Staffel/Staffeln, Folge/Folgen) instead of one function per word, and
+  `formatFileSize(bytes)` for the 1024-based B/KB/MB/GB rule;
+  `episodeNumber`/`episodeCode`/`episodeLabel` all take the same
+  `{ season, episode, episodeEnd }` shape `LibraryItem` already carries, plus
+  `title` for `episodeLabel`. `media-card.js` exports
+  `createPosterTile`/`createUnplayableBadge`/`createMovieCard`/
+  `createSeriesCard`/`createEpisodeRow`: series cards are always links (the
+  badge shows only when `playableCount` is 0), movie cards and episode rows
+  become a non-interactive `<div>` with the German title attribute when
+  unplayable. `library-api.js`'s `getCategory`/`getSeries` return the parsed
+  JSON typed via JSDoc (`CategoryItemsResponse | CategorySeriesResponse`,
+  `SeriesDetail`) for later phases to consume directly.

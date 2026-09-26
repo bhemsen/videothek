@@ -800,6 +800,30 @@ Chromium and Firefox, mobile ≤ 767 px and desktop ≥ 1024 px viewport):
   interleaving is not exercisable against a synchronous `node:sqlite` handle
   in a single-threaded test process; the two-connection form still proves the
   guard reads committed DB state rather than an in-process cache.
+- 2026-09-26: Issue #23 (app shell, nav, home, category placeholders, 404)
+  implementation notes: the empty state on placeholder pages ships without
+  the exports' icon-in-circle graphic — `createEmptyState({ title, text })`
+  (#22, frozen) takes no icon parameter and `base.css`'s `.empty-state`
+  (#21, frozen) has no card surface, and this issue's Files list adds no CSS
+  file a placeholder page could use to introduce one, so the exports' card
+  is treated as layout reference only, not part of the fixed component. The
+  account-menu button's accessible name comes from an `aria-label` ("Konto
+  von {username} ({role label})") set once `/api/me` resolves, not from the
+  visible username text, since that text is `display: none` below 768 px;
+  the visible avatar-initial/username spans are `aria-hidden` to avoid a
+  double announcement on desktop. The disclosure's outside-click listener is
+  registered on `document` with `capture: true` specifically so opening the
+  menu (which registers the listener) cannot also close it on the same
+  click, and it tests `button.contains(event.target)` rather than
+  `=== button` so a click on the button's own icon does not read as
+  "outside". `public/404.html` ships with neither a `<script>` nor a
+  `<noscript>` line: it is fully static and works without JavaScript (Module
+  layout lists no `404.js`), so the page-skeleton's per-page-script rule does
+  not apply to it. The live Chromium/Firefox walk-through this issue's
+  acceptance checklist asks for is deferred to the milestone QA gate, as its
+  own wording allows ("at latest at milestone QA") — `src/app.js`/
+  `src/server.js` (issue #17) are not yet merged, so nothing can be started
+  and served yet on this branch.
 - 2026-09-26 (#14): `src/auth/{sessions,bootstrap}.js` implemented. Both
   `createSessionStore({ db, now })` and `ensureAdmin({ ..., now })` default
   `now` to `Date.now`, matching the `now = Date.now` convention already used
