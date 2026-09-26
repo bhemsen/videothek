@@ -1,0 +1,91 @@
+<!DOCTYPE html>
+<html lang="de" class="h-full">
+<head>
+  <meta charset="UTF-8">
+  <meta name="viewport" content="width=device-width, initial-scale=1.0">
+  <title>P1 Login – desktop</title>
+  <script src="https://cdn.tailwindcss.com"></script>
+  <style>
+    :root {
+      --bg: #0f1115;
+      --fg: #e8eaed;
+      --primary: #ff7a1a;
+      --surface: #1c2029;
+      --accent: #4fb3ff;
+      --muted: #9aa0aa;
+      --border: #2a2f3a;
+      --destructive: #ff5c5c;
+    }
+    body {
+      background-color: var(--bg);
+      color: var(--fg);
+      font-family: system-ui, -apple-system, BlinkMacSystemFont, 'Segoe UI', Roboto, 'Helvetica Neue', Arial, sans-serif;
+    }
+  </style>
+</head>
+<body class="min-h-screen flex flex-col items-center justify-center p-6 selection:bg-[#ff7a1a] selection:text-[#0f1115]">
+  <main class="w-full max-w-[400px] flex flex-col items-center">
+    <!-- Brand / Wordmark -->
+    <header class="flex items-center gap-3 mb-8 select-none">
+      <div class="w-9 h-9 rounded-lg bg-[#ff7a1a]/10 flex items-center justify-center text-[#ff7a1a]">
+        <svg class="w-5 h-5 fill-[#ff7a1a] translate-x-0.5" viewBox="0 0 24 24">
+          <path d="M8 5v14l11-7z" />
+        </svg>
+      </div>
+      <span class="text-[32px] font-bold tracking-tight text-[#e8eaed]">Videothek</span>
+    </header>
+
+    <!-- Login Card -->
+    <section class="w-full bg-[#1c2029] border border-[#2a2f3a] rounded-[16px] p-8 shadow-[0_8px_24px_rgba(0,0,0,0.5)]">
+      <h1 class="text-[24px] font-semibold text-[#e8eaed] mb-6">Anmelden</h1>
+
+      <form class="flex flex-col gap-5" onsubmit="event.preventDefault();">
+        <!-- Benutzername -->
+        <div class="flex flex-col gap-2">
+          <label for="username" class="text-sm font-medium text-[#e8eaed]">Benutzername</label>
+          <input 
+            type="text" 
+            id="username" 
+            name="username" 
+            value="anna" 
+            class="w-full h-11 px-3.5 bg-[#14171e] text-[#e8eaed] text-base rounded-[8px] border border-[#2a2f3a] focus:outline-none focus:border-[#ff7a1a] focus:ring-2 focus:ring-[#ff7a1a]/20 transition-colors"
+          />
+        </div>
+
+        <!-- Passwort with Error State -->
+        <div class="flex flex-col gap-2">
+          <label for="password" class="text-sm font-medium text-[#e8eaed]">Passwort</label>
+          <input 
+            type="password" 
+            id="password" 
+            name="password" 
+            value="••••••••••••" 
+            class="w-full h-11 px-3.5 bg-[#14171e] text-[#e8eaed] text-base rounded-[8px] border border-[#ff5c5c] focus:outline-none focus:border-[#ff5c5c] focus:ring-2 focus:ring-[#ff5c5c]/20 transition-colors"
+          />
+          <div class="flex items-center gap-1.5 text-xs text-[#ff5c5c] mt-1" role="alert">
+            <svg class="w-4 h-4 shrink-0 stroke-current fill-none" viewBox="0 0 24 24" stroke-width="2" stroke-linecap="round" stroke-linejoin="round">
+              <circle cx="12" cy="12" r="10"></circle>
+              <line x1="12" y1="8" x2="12" y2="12"></line>
+              <line x1="12" y1="16" x2="12.01" y2="16"></line>
+            </svg>
+            <span>Benutzername oder Passwort falsch.</span>
+          </div>
+        </div>
+
+        <!-- Submit Button -->
+        <button 
+          type="submit" 
+          class="w-full h-12 mt-2 bg-[#ff7a1a] hover:bg-[#e96f17] active:bg-[#d16415] text-[#0f1115] font-bold text-base rounded-[8px] transition-colors focus:outline-none focus:ring-2 focus:ring-[#ff7a1a] focus:ring-offset-2 focus:ring-offset-[#1c2029] flex items-center justify-center cursor-pointer"
+        >
+          Anmelden
+        </button>
+      </form>
+    </section>
+
+    <!-- Footer Note -->
+    <p class="mt-6 text-sm text-[#9aa0aa] text-center">
+      Konten werden von der Verwaltung angelegt.
+    </p>
+  </main>
+</body>
+</html>
