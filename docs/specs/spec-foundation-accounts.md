@@ -729,3 +729,19 @@ Chromium and Firefox, mobile ≤ 767 px and desktop ≥ 1024 px viewport):
   `npm run reset-password -- <username>`; `.env.example` blanks
   `ADMIN_PASSWORD` so copying it unedited fails loudly instead of creating an
   admin with a known password. No new design decisions.
+- 2026-09-26: Issue #9 `src/config.js` implemented. `MEDIA_ROOT` is validated
+  as-given (must already be absolute; unlike `DATA_DIR` it is never resolved
+  against `cwd`), so a relative value is its own problem
+  (`"MEDIA_ROOT: must be an absolute path"`), distinct from missing
+  (`"MEDIA_ROOT: required"`) and from existing-but-invalid
+  (`"MEDIA_ROOT: must be a readable directory"`, covering both non-directory
+  and unreadable/missing-on-disk). `requireMediaRoot: false` (the CLI path)
+  never raises a `MEDIA_ROOT`/`DATA_DIR` problem at all — including the
+  "inside `MEDIA_ROOT`" containment check — and passes through an absolute
+  `MEDIA_ROOT` value uncontained/unverified so `reset-password` keeps working
+  with the media disk unmounted; a relative or unset value yields
+  `mediaRoot: ''` in that mode, keeping `Config.mediaRoot` a plain `string`
+  (matching this table's row) so every other phase's `string`-typed
+  parameters accept it without a cast. `PORT`/`RESCAN_INTERVAL_MIN` accept
+  only a bare non-negative integer literal (`^\d+$`, no sign, decimal or
+  whitespace) before the range check.
