@@ -53,7 +53,7 @@ export async function listSubtitles(mediaRoot, row) {
 
   const dir = path.dirname(itemPath);
   const relDir = path.dirname(row.rel_path);
-  const baseLower = path.basename(itemPath, path.extname(itemPath)).normalize('NFC').toLowerCase();
+  const baseLower = path.basename(row.rel_path, path.extname(row.rel_path)).normalize('NFC').toLowerCase();
 
   let entries;
   try {
@@ -74,18 +74,19 @@ export async function listSubtitles(mediaRoot, row) {
  *
  * @param {import('node:fs').Dirent[]} entries
  * @param {string} baseLower - NFC-normalised, lower-cased video basename.
- * @returns {Array<{ name: string, middle: string | null }>}
+ * @returns {Array<{ name: string, rawName: string, middle: string | null }>}
  */
 function collectCandidates(entries, baseLower) {
   const candidates = [];
   for (const entry of entries) {
     if (!entry.isFile()) continue;
-    const name = entry.name.normalize('NFC');
+    const rawName = entry.name;
+    const name = rawName.normalize('NFC');
     if (!name.toLowerCase().endsWith('.vtt')) continue;
     const stem = name.slice(0, -'.vtt'.length);
     const middle = matchMiddle(stem, baseLower);
     if (middle === undefined) continue;
-    candidates.push({ name, middle });
+    candidates.push({ name, rawName, middle });
   }
   return candidates;
 }
@@ -118,13 +119,13 @@ function matchMiddle(stem, baseLower) {
  * @param {string} mediaRoot
  * @param {string} relDir - directory of the item, relative to `mediaRoot`
  *   (`'.'` when the item sits directly in `mediaRoot`).
- * @param {Array<{ name: string, middle: string | null }>} candidates
+ * @param {Array<{ name: string, rawName: string, middle: string | null }>} candidates
  * @returns {Promise<SubtitleTrack[]>}
  */
 async function buildTracks(mediaRoot, relDir, candidates) {
   const tracks = [];
-  for (const { name, middle } of candidates) {
-    const relPath = relDir === '.' ? name : `${relDir}/${name}`;
+  for (const { rawName, middle } of candidates) {
+    const relPath = relDir === '.' ? rawName : `${relDir}/${rawName}`;
     const sidecarPath = await resolveMediaPath(mediaRoot, relPath);
     if (sidecarPath === null) continue;
     tracks.push({

@@ -121,6 +121,25 @@ test('listSubtitles: matches across NFC/NFD-normalised names, case-insensitively
   assert.deepEqual(stripPaths(result), [{ index: 0, lang: 'de', label: 'de' }]);
 });
 
+test('listSubtitles: an NFD sidecar on disk is found and resolves to its own on-disk name', async (t) => {
+  const root = await makeTempDir('vt-subs-');
+  t.after(() => cleanup(root));
+  // Built from an explicit combining-mark escape (not a typed accented
+  // character) so the on-disk name is guaranteed NFD regardless of how this
+  // source file itself normalises Unicode literals.
+  const nfd = 'café'; // "café" as e + combining acute accent
+  assert.equal(nfd.normalize('NFD'), nfd, 'precondition: the literal itself is NFD');
+  const videoPath = await writeFile(root, `${nfd}.mp4`);
+  const sidecarPath = await writeFile(root, `${nfd}.de.vtt`); // NFD sidecar, same on-disk form
+  assert.equal(videoPath.normalize('NFD'), videoPath, 'precondition: temp dir kept the NFD spelling');
+  assert.equal(sidecarPath.normalize('NFD'), sidecarPath, 'precondition: temp dir kept the NFD spelling');
+
+  const result = await listSubtitles(root, { kind: 'video', rel_path: `${nfd}.mp4` });
+
+  assert.deepEqual(stripPaths(result), [{ index: 0, lang: 'de', label: 'de' }]);
+  assert.equal(result[0].path, await fs.realpath(sidecarPath));
+});
+
 test('listSubtitles: a non-video row returns []', async (t) => {
   const root = await makeTempDir('vt-subs-');
   t.after(() => cleanup(root));
