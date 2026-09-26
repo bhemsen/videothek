@@ -40,6 +40,64 @@ const CTRL_C = '\u0003';
 const BACKSPACE_CHARS = new Set(['\u007f', '\b']);
 
 /**
+ * Mutable state shared between `createPromptReader` and its module-level
+ * keystroke/end handlers.
+ * @typedef {{
+ *   buffer: string,
+ *   ended: boolean,
+ *   waiting: ((line: string) => void) | null,
+ * }} ReaderState
+ */
+
+/**
+ * Applies one TTY keystroke to `state`: Backspace/Delete edit the buffer,
+ * Enter resolves the call currently waiting on `readNext()` with the buffered
+ * line, Ctrl+C restores echo and aborts the process, anything else is
+ * appended. Split out of `createPromptReader` to keep that function short;
+ * called once per character of a chunk, since a pasted password arrives as
+ * one multi-char chunk rather than one keystroke per chunk.
+ * @param {ReaderState} state
+ * @param {CliInput} input
+ * @param {string} ch a single character/code point from a TTY data chunk
+ * @returns {void}
+ */
+function onKeystroke(state, input, ch) {
+  if (ch === CTRL_C) {
+    input.setRawMode?.(false);
+    process.exit(1);
+    return;
+  }
+  if (ch === '\r' || ch === '\n') {
+    const resolve = state.waiting;
+    const line = state.buffer;
+    state.buffer = '';
+    state.waiting = null;
+    resolve?.(line);
+    return;
+  }
+  state.buffer = BACKSPACE_CHARS.has(ch) ? state.buffer.slice(0, -1) : state.buffer + ch;
+}
+
+/**
+ * Marks `state` ended (idempotent — both `'end'` and `'close'` call this) and,
+ * if a call is still waiting on `readNext()`, resolves it with whatever is
+ * left in the buffer (possibly `''`) instead of hanging forever. Split out of
+ * `createPromptReader` to keep that function short.
+ * @param {ReaderState} state
+ * @returns {void}
+ */
+function onEnd(state) {
+  if (state.ended) return;
+  state.ended = true;
+  if (!state.waiting) return;
+  const resolve = state.waiting;
+  const line = state.buffer;
+  state.buffer = '';
+  state.waiting = null;
+  resolve(line);
+}
+
+/**
  * Creates a persistent reader over `input` that hands out one line/secret
  * per call. A single `'data'` listener stays attached for the whole prompt
  * sequence and buffers internally, so bytes that arrive together — a piped
@@ -50,88 +108,57 @@ const BACKSPACE_CHARS = new Set(['\u007f', '\b']);
  * leaving the CLI waiting forever on input that would never arrive).
  * Non-TTY: chunks are appended verbatim and sliced on the next newline (no
  * echo control needed). TTY: each chunk's characters are replayed one at a
- * time through `onKeystroke` (a pasted password arrives as one multi-char
- * chunk, not one keystroke per chunk) with echo disabled — Backspace/Delete
- * edit the buffer, Enter submits, Ctrl+C aborts the process. If `input` ends
- * (EOF/closed) while a call is still waiting — empty/closed stdin, or a
- * final line with no trailing newline — that call resolves with whatever is
- * left in the buffer (possibly `''`) instead of hanging forever; any later
- * call resolves the same way immediately, since no more data can arrive.
+ * time through `onKeystroke` with echo disabled. If `input` ends (EOF/closed)
+ * while a call is still waiting — empty/closed stdin, or a final line with no
+ * trailing newline — that call resolves via `onEnd` instead of hanging
+ * forever; any later call resolves the same way immediately, since no more
+ * data can arrive.
  * @param {CliInput} input
  * @param {boolean} isTTY
  * @returns {() => Promise<string>} resolves the next queued line
  */
 function createPromptReader(input, isTTY) {
-  let buffer = '';
-  let ended = false;
-  /** @type {((line: string) => void) | null} */
-  let waiting = null;
+  /** @type {ReaderState} */
+  const state = { buffer: '', ended: false, waiting: null };
 
   const tryResolveLine = () => {
-    const end = buffer.indexOf('\n');
-    if (end === -1 || !waiting) return;
-    const line = buffer.slice(0, end).replace(/\r$/, '');
-    buffer = buffer.slice(end + 1);
-    const resolve = waiting;
-    waiting = null;
+    const end = state.buffer.indexOf('\n');
+    if (end === -1 || !state.waiting) return;
+    const line = state.buffer.slice(0, end).replace(/\r$/, '');
+    state.buffer = state.buffer.slice(end + 1);
+    const resolve = state.waiting;
+    state.waiting = null;
     resolve(line);
-  };
-
-  /** @param {string} ch a single character/code point from a TTY data chunk */
-  const onKeystroke = (ch) => {
-    if (ch === CTRL_C) {
-      input.setRawMode?.(false);
-      process.exit(1);
-      return;
-    }
-    if (ch === '\r' || ch === '\n') {
-      const resolve = waiting;
-      const line = buffer;
-      buffer = '';
-      waiting = null;
-      resolve?.(line);
-      return;
-    }
-    buffer = BACKSPACE_CHARS.has(ch) ? buffer.slice(0, -1) : buffer + ch;
   };
 
   /** @param {unknown} chunk */
   const onData = (chunk) => {
     const text = String(chunk);
     if (isTTY) {
-      for (const ch of text) onKeystroke(ch);
+      for (const ch of text) onKeystroke(state, input, ch);
     } else {
-      buffer += text;
+      state.buffer += text;
       tryResolveLine();
     }
   };
 
-  const onEnd = () => {
-    if (ended) return;
-    ended = true;
-    if (!waiting) return;
-    const resolve = waiting;
-    const line = buffer;
-    buffer = '';
-    waiting = null;
-    resolve(line);
-  };
+  const handleEnd = () => onEnd(state);
 
   input.setRawMode?.(isTTY);
   input.setEncoding?.('utf8');
   input.on('data', onData);
-  input.on('end', onEnd);
-  input.on('close', onEnd);
+  input.on('end', handleEnd);
+  input.on('close', handleEnd);
   input.resume?.();
 
   return () => new Promise((resolveLine) => {
-    if (ended) {
-      const line = buffer;
-      buffer = '';
+    if (state.ended) {
+      const line = state.buffer;
+      state.buffer = '';
       resolveLine(line);
       return;
     }
-    waiting = resolveLine;
+    state.waiting = resolveLine;
     if (!isTTY) tryResolveLine();
   });
 }
@@ -155,19 +182,30 @@ async function promptSecret(label, output, readNext) {
  * Never throws: every failure is reported on `errorOutput` (stderr in
  * `main()`) in German and reflected in the returned exit code; `output`
  * (stdout in `main()`) only ever carries the prompts and the success line.
+ * `errorOutput` defaults to `process.stderr` so a caller using the fixed
+ * module-layout signature (`{ args, config, db, input, output, log, isTTY }`,
+ * without `errorOutput`) still works; only tests inject a fake for it.
  * @param {{
  *   args: string[],
  *   config: Config,
  *   db: import('node:sqlite').DatabaseSync,
  *   input: CliInput,
  *   output: CliOutput,
- *   errorOutput: CliOutput,
+ *   errorOutput?: CliOutput,
  *   log: Logger,
  *   isTTY: boolean,
  * }} deps
  * @returns {Promise<number>} process exit code
  */
-export async function resetPassword({ args, db, input, output, errorOutput, log, isTTY }) {
+export async function resetPassword({
+  args,
+  db,
+  input,
+  output,
+  errorOutput = process.stderr,
+  log,
+  isTTY,
+}) {
   const rawUsername = args[0];
   if (!rawUsername) {
     errorOutput.write('Benutzername fehlt. Verwendung: npm run reset-password -- <username>\n');
