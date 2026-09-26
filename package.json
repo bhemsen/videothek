@@ -1,0 +1,21 @@
+{
+  "name": "videothek",
+  "version": "0.0.0",
+  "private": true,
+  "description": "Dependency-free self-hosted media streaming for the household",
+  "type": "module",
+  "engines": {
+    "node": ">=24"
+  },
+  "scripts": {
+    "start": "node --env-file-if-exists=.env src/server.js",
+    "typecheck": "tsc --noEmit -p .",
+    "test": "node --test",
+    "verify": "npm run typecheck && npm test"
+  },
+  "license": "MIT",
+  "devDependencies": {
+    "@types/node": "^26.6.3",
+    "typescript": "^7.0.2"
+  }
+}
