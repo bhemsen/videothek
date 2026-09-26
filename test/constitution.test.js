@@ -7,6 +7,10 @@ import { fileURLToPath } from 'node:url';
 // Machine-checked constitution/frontend rules (docs/constitution.md). Plain
 // string/regex scans only — TypeScript 7 ships no compiler API to lint with.
 // Every check must pass on an empty src/ (nothing built there yet).
+// The scans below are intentionally conservative: they also match inside
+// comments and string literals (e.g. a JSDoc line mentioning `console.log`
+// trips the console.* rule), trading occasional false positives for a
+// dependency-free check.
 
 const rootDir = path.resolve(fileURLToPath(new URL('.', import.meta.url)), '..');
 const srcDir = path.join(rootDir, 'src');
@@ -30,6 +34,18 @@ function listFiles(dir) {
 }
 
 /**
+ * Counts lines in file content, ignoring a single trailing newline so a
+ * 300-line file saved with a final `\n` (the normal case) still counts as
+ * 300, not 301.
+ * @param {string} content
+ * @returns {number} the line count
+ */
+function countLines(content) {
+  const lines = content.split('\n');
+  return lines.at(-1) === '' ? lines.length - 1 : lines.length;
+}
+
+/**
  * Extracts static/dynamic import and require specifiers from source text.
  * @param {string} content
  * @returns {string[]} the quoted module specifiers found
@@ -39,6 +55,7 @@ function extractImportSpecifiers(content) {
     /import\s+(?:[^'";]+?\s+from\s+)?['"]([^'"]+)['"]/g,
     /import\s*\(\s*['"]([^'"]+)['"]\s*\)/g,
     /require\(\s*['"]([^'"]+)['"]\s*\)/g,
+    /export\s+(?:[^'";]+?\s+from\s+)['"]([^'"]+)['"]/g,
   ];
   const specifiers = [];
   for (const re of patterns) {
@@ -121,9 +138,16 @@ test('no .js/.css/.html file under src/, public/ or test/ (fixtures excluded) ex
   for (const dir of [srcDir, publicDir, testDir]) {
     for (const file of listFiles(dir).filter((f) => /\.(js|css|html)$/.test(f))) {
       if (dir === testDir && path.relative(testDir, file).split(path.sep)[0] === 'fixtures') continue;
-      const lineCount = readFileSync(file, 'utf8').split('\n').length;
+      const lineCount = countLines(readFileSync(file, 'utf8'));
       if (lineCount > 300) offenders.push(`${path.relative(rootDir, file)}: ${lineCount} lines`);
     }
   }
   assert.deepEqual(offenders, []);
+});
+
+test('countLines does not count a trailing newline as an extra line', () => {
+  const exactly300 = `${Array(300).fill('x').join('\n')}\n`;
+  const exactly301 = `${Array(301).fill('x').join('\n')}\n`;
+  assert.equal(countLines(exactly300), 300);
+  assert.equal(countLines(exactly301), 301);
 });
