@@ -148,7 +148,7 @@ Implementation notes that override the exports:
   "Benutzerverwaltung" (admins only, link `/admin`), "Abmelden" (button).
   Escape or outside click closes it and returns focus to the button.
 - Nav is `<nav aria-label="Kategorien">` of links; active entry carries
-  `aria-current="page"` (amber); Left/Right arrows move focus between entries.
+  `aria-current="page"` (primary, orange); Left/Right arrows move focus between entries.
 - Admin dialogs use native `<dialog>`: delete confirm "„{name}“ wirklich
   löschen? Der Wiedergabefortschritt dieses Kontos geht verloren." with
   "Abbrechen" / "Löschen" (danger); password reset "Neues Passwort für
@@ -346,8 +346,8 @@ Chromium and Firefox, mobile ≤ 767 px and desktop ≥ 1024 px viewport):
       the error; the 6th wrong attempt shows the throttle message; `next`
       is honoured, `next=//evil.example` falls back to `/`.
 - [ ] Shell: bottom nav on mobile, top nav on desktop; each category entry opens
-      its placeholder with the entry active in amber; home shows the start
-      placeholder; Tab reaches every control with a visible amber focus ring;
+      its placeholder with the entry active in primary (orange); home shows the start
+      placeholder; Tab reaches every control with a visible primary (orange) focus ring;
       arrows move within the nav; Escape closes the account menu.
 - [ ] Admin: create a user (errors for 7-character password, duplicate name,
       invalid characters), change a role, reset a password (a second browser
