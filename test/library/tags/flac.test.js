@@ -179,6 +179,20 @@ test('readFlac: a leading ID3v2 tag is skipped without importing id3v2.js', asyn
   assert.equal(result.durationMs, 2000);
 });
 
+test('readFlac: a leading ID3v2.2 tag is skipped by its header, not just 2.3/2.4', async () => {
+  const buf = buildFlacFile({
+    leadingId3v2: { version: 2 },
+    sampleRate: 44100,
+    totalSamples: 44100 * 2,
+    includeFrames: false,
+    vorbisComments: { TITLE: 'Behind The v2.2 Tag' },
+  });
+  const result = await readFlac(readAtFromBuffer(buf), buf.length);
+  assert.ok(result);
+  assert.equal(result.fields.TITLE, 'Behind The v2.2 Tag');
+  assert.equal(result.durationMs, 2000);
+});
+
 test('readFlac: a leading ID3v2.4 tag with a footer is skipped correctly', async () => {
   const buf = buildFlacFile({
     leadingId3v2: { version: 4, footer: true },
@@ -218,10 +232,12 @@ test('readFlac: stays within its read budget even with several oversized VORBIS_
   const result = await readFlac(readAt, buf.length);
   assert.ok(result);
   // 6 blocks of ~60 KiB (~366 KiB attempted) comfortably exceed the 256 KiB
-  // budget, so this only holds when reads are actually clamped to it.
+  // budget, so this only holds when reads are actually clamped to it. The
+  // loop stops once budget <= 0, so at most one more 4-byte block header can
+  // be in flight when that happens.
   assert.ok(
-    bytesRead() <= 256 * 1024 + 16,
-    `expected the 256 KiB read budget to be honoured (within a few header bytes), got ${bytesRead()}`,
+    bytesRead() <= 256 * 1024 + 4,
+    `expected the 256 KiB read budget to be honoured (within one header read), got ${bytesRead()}`,
   );
 });
 
@@ -231,6 +247,16 @@ test('readFlac: a truncated file never throws', async () => {
     const truncated = full.subarray(0, cut);
     await assert.doesNotReject(readFlac(readAtFromBuffer(truncated), truncated.length));
   }
+});
+
+test('readFlac: a readAt I/O error (e.g. EIO) rejects instead of resolving null', async () => {
+  const buf = buildFlacFile({ sampleRate: 44100, totalSamples: 44100, includeFrames: false });
+  const okReadAt = readAtFromBuffer(buf);
+  const failingReadAt = async (/** @type {number} */ position, /** @type {number} */ length) => {
+    if (position >= 20) throw new Error('EIO: simulated read error');
+    return okReadAt(position, length);
+  };
+  await assert.rejects(readFlac(failingReadAt, buf.length), /EIO/);
 });
 
 test('readFlac: random bytes never throw and yield null', async () => {

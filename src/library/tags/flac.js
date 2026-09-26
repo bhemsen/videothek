@@ -25,21 +25,17 @@ const PICTURE_MIME_TYPES = new Set(['image/jpeg', 'image/png', 'image/webp']);
  * @returns {Promise<{ fields: Record<string, string>, picture: PictureRef | null, durationMs: number | null } | null>}
  */
 export async function readFlac(readAt, fileSize) {
-  try {
-    let budget = READ_BUDGET;
-    const head = await readAt(0, 10);
-    budget -= head.length;
-    let pos = leadingId3v2Size(head);
+  let budget = READ_BUDGET;
+  const head = await readAt(0, 10);
+  budget -= head.length;
+  let pos = leadingId3v2Size(head);
 
-    const marker = await readAt(pos, 4);
-    budget -= marker.length;
-    if (marker.length < 4 || marker.toString('ascii', 0, 4) !== 'fLaC') return null;
-    pos += 4;
+  const marker = await readAt(pos, 4);
+  budget -= marker.length;
+  if (marker.length < 4 || marker.toString('ascii', 0, 4) !== 'fLaC') return null;
+  pos += 4;
 
-    return await readMetadataBlocks(readAt, pos, fileSize, budget);
-  } catch {
-    return null;
-  }
+  return readMetadataBlocks(readAt, pos, fileSize, budget);
 }
 
 /**
@@ -49,7 +45,7 @@ export async function readFlac(readAt, fileSize) {
 function leadingId3v2Size(head) {
   if (head.length < 10) return 0;
   const isId3 = head[0] === 0x49 && head[1] === 0x44 && head[2] === 0x33;
-  if (!isId3 || (head[3] !== 3 && head[3] !== 4)) return 0;
+  if (!isId3 || head[3] < 2 || head[3] > 4) return 0;
   const size =
     ((head[6] & 0x7f) << 21) | ((head[7] & 0x7f) << 14) | ((head[8] & 0x7f) << 7) | (head[9] & 0x7f);
   const hasFooter = head[3] === 4 && (head[5] & 0x10) !== 0; // ID3v2.4 footer flag adds 10 bytes
@@ -67,7 +63,7 @@ function leadingId3v2Size(head) {
  * @returns {Promise<{ fields: Record<string, string>, picture: PictureRef | null, durationMs: number | null }>}
  */
 async function readMetadataBlocks(readAt, pos, fileSize, budget) {
-  const fields = {};
+  const fields = Object.create(null);
   let frontPicture = null;
   let firstPicture = null;
   let streamInfo = null;
@@ -141,7 +137,7 @@ function parseStreamInfo(buf) {
  * @returns {Record<string, string>}
  */
 function parseVorbisComments(buf) {
-  const fields = {};
+  const fields = Object.create(null);
   if (buf.length < 4) return fields;
   const vendorLen = buf.readUInt32LE(0);
   let offset = 4 + vendorLen;
@@ -170,7 +166,7 @@ function parseVorbisComments(buf) {
  */
 function mergeMissing(target, source) {
   for (const [key, value] of Object.entries(source)) {
-    if (!(key in target)) target[key] = value;
+    if (!Object.hasOwn(target, key)) target[key] = value;
   }
 }
 
@@ -183,7 +179,7 @@ function addVorbisEntry(fields, raw) {
   if (eq <= 0) return;
   const key = raw.slice(0, eq).toUpperCase();
   const value = raw.slice(eq + 1).split('\0')[0].trim();
-  if (value === '' || key in fields) return;
+  if (value === '' || Object.hasOwn(fields, key)) return;
   fields[key] = value;
 }
 

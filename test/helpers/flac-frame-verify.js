@@ -26,6 +26,7 @@ const CRC16_TABLE = buildCrcTable(0x8005, 16);
 /**
  * CRC-8 (poly 0x07, init 0), matching FLAC's frame header CRC.
  * @param {Buffer} buf
+ * @returns {number}
  */
 export function crc8(buf) {
   let crc = 0;
@@ -36,6 +37,7 @@ export function crc8(buf) {
 /**
  * CRC-16 (poly 0x8005, init 0), matching FLAC's frame footer CRC.
  * @param {Buffer} buf
+ * @returns {number}
  */
 export function crc16(buf) {
   let crc = 0;
