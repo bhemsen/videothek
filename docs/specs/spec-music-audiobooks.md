@@ -355,6 +355,7 @@ QA-only, optional:
 | **Frontend file layout (declared deviation):** the two pages `public/music.html` and `public/audiobooks.html` share one module tree `public/js/audio/` (entry `app.js`) and `public/css/audio.css`, `audio-music.css`, `audio-books.css`, instead of Phase 1's per-page `public/js/<page>.js` / `public/css/<page>.css` convention; recorded in `docs/architecture.md` by the metadata-pass issue. | One shell and one persistent player must serve both pages (D14/H8); per-page entry modules would duplicate it and break playback continuity across `pushState` navigation. | 2026-09-26 |
 | **Custom control bar over a hidden `<audio>` (declared deviation from design.md's Player line "native `<video>`/`<audio>` controls"):** the `<audio>` element has no `controls` attribute; the bar's own buttons, seek slider and time labels drive it. Video (Phase 3) keeps native controls. Recorded in `docs/architecture.md`. | Native audio controls offer no previous/next or 15/30 s skip and cannot show the queue's title/cover; the bar must stay visible and stable across view changes. | 2026-09-26 |
 | **Docs edits:** `docs/prior-art.md` gets the two Phase 5 concerns in this spec PR; `docs/architecture.md` component map and key flows are edited by the metadata-pass issue (D13). The Subsonic play-queue reference is dropped. | D13; H7 removed the music-session design the Subsonic reference supported. | 2026-09-26 |
+| **Migration 004 / `audio-meta-repo.js` (#63) implementation notes:** `listStaleAudioItems` returns raw snake_case `library_items` rows (the same `LibraryItemRow` shape as `library-repo.js`'s `getItemsByDir`) via a `LEFT JOIN audio_meta` staleness filter — it feeds the internal metadata pass, not the API, so no camelCase mapping. `listAudioRows`/`listGroupRows`/`getAudioRow` share one `INNER JOIN` projection that aliases columns to camelCase directly in SQL and converts `playable` from its stored 0/1 to a real boolean in JS (SQLite has no boolean type). `upsertAudioMeta`'s input mirrors the table's snake_case columns verbatim, matching `upsertItem`'s convention. Since migration 003 (issue #51) is not yet merged, its "004 applies … with and without 003" test builds two temp migration dirs — one with only 001/002/004, one that adds a synthetic minimal `progress` table standing in for 003 — instead of depending on the real file. | Keeps the pass/API boundary consistent with the existing `library-repo.js` conventions; unblocks the 003/004 independence test without a merge-order dependency on #51. | 2026-09-26 |
 
 ## Tracking
 
@@ -618,6 +619,27 @@ compared with the exports):
   chosen among playable files only; bar offset below 768 px includes
   `env(safe-area-inset-bottom)` like Phase 1's `main` padding; upper-case
   cover extensions rely on Phase 3's lower-casing `mediaTypeFor`.
+- 2026-09-26: implementation (#60, `src/library/tags/flac.js`) — `readFlac`
+  returns Vorbis fields as raw, trimmed strings keyed by the upper-cased tag
+  key exactly as found (e.g. a literal `ALBUM ARTIST` key survives with its
+  space); numeric/`"n/total"`/year normalisation from the "Fields read" row is
+  left to the future `src/library/tags/index.js` mapping (out of this issue's
+  files), matching the Reader interfaces row's `Record<string, string>` type.
+  A repeated Vorbis key keeps its first non-empty value, including across a
+  malformed file's repeated VORBIS_COMMENT blocks (mirrors ID3's multi-value
+  rule without assuming FLAC's `\0`-separation). Each STREAMINFO/
+  VORBIS_COMMENT/PICTURE content read is additionally clamped to the bytes
+  left in the budget (on top of its own per-type cap), so total I/O honours
+  the 256 KiB row exactly bar the handful of fixed 4-byte block-header reads
+  already in flight when the budget crosses zero. PICTURE selection tracks
+  the first type-3 and the first non-type-3
+  block separately and prefers the former, so ordering never matters. The
+  fixture builder (`test/helpers/flac-fixture.js`) writes real, correctly
+  CRC'd (CRC-8/CRC-16, poly `0x07`/`0x8005`) CONSTANT-subframe frames using
+  the "value from STREAMINFO" codes for sample rate and bit depth and the
+  16-bit-follows block-size code, restricted to mono/stereo and
+  `bitsPerSample` a multiple of 8 — sufficient for this issue's silent test
+  fixtures and for reuse by the later `make-audio-fixtures.js` issue.
 - 2026-09-26: issue #61 implementation — `parseMusicPath`/`parseAudiobookPath`
   are fully self-contained (each duplicates its own small `cleanFileName` /
   `discFolderNumber` helpers rather than importing a shared module), since the

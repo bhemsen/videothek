@@ -559,3 +559,30 @@ Firefox, desktop and a 390 px phone viewport):
   check (both groups empty, e.g. `bytes=-` or `bytes=`, falls through to
   `none` alongside non-digit specs like `bytes=abc`), so no separate
   digits-only validation was needed.
+- 2026-09-26: implementation (#40, `src/http/media-types.js`) — `mediaTypeFor`
+  strips one leading dot (if present) before lower-casing, so it accepts both
+  a bare extension (`'mp4'`) and `path.extname()`'s raw `'.mp4'` — required
+  for the documented default `mediaTypeFor(extname(path))` in `sendMedia`
+  (`src/http/stream.js`, #41) to resolve correctly. Reuses P2's
+  `mimeForExtension(ext)` (already `EXTENSIONS[ext]?.mime ?? null`) rather than
+  reading `EXTENSIONS` directly, applying only the fallback to
+  `'application/octet-stream'` on top — keeps this module a one-line lookup
+  with no extension-table knowledge of its own.
+- 2026-09-26: implementation (#44, `src/db/episodes.js`) — `getNextEpisode`
+  is one prepared statement using a SQLite row-value comparison
+  (`(season, episode, coalesce(episode_end, -1), sort_title, id) > (?, ?, ?,
+  ?, ?)`) against `row`'s own tuple, so ordering and "strictly greater" are
+  both expressed by SQLite itself rather than re-implemented in JS; the
+  regular/specials chain split is a single `CASE WHEN ? = 1 THEN season = 0
+  ELSE season >= 1 END` guard driven by one bound `isSpecial` flag computed
+  from `row.season === 0`, rather than two branches with separate SQL text.
+- 2026-09-26: implementation (#48, `public/js/lib/player-format.js`) —
+  `errorStateFor` returns one of the string literals `'file-missing'` |
+  `'codec'` | `'connection-lost'` (not fixed by the spec text, which only
+  names the German copy); the consuming `player-panel.js` issue matches
+  these exact keys to the state table's German copy. `episodeTitleFor` and
+  the internal `episodeHeading` helper destructure `season`/`episode`/
+  `episodeEnd` with `= null` defaults so an item missing those fields
+  (e.g. a movie) normalizes to the same `EpisodeIdentity` shape
+  `episodeCode` expects, satisfying `tsc --strict` without widening
+  `library-format.js`'s own types.

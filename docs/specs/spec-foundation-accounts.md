@@ -773,6 +773,80 @@ Chromium and Firefox, mobile ≤ 767 px and desktop ≥ 1024 px viewport):
   login/page redirects) is session-dependent; `readJson` drains an oversized
   body with `req.resume()` instead of `req.destroy()`, so the `413` response
   reaches the client instead of the socket closing first.
+- 2026-09-26 (#12): `src/db/{users,sessions}.js` implemented. `UserRow`
+  mirrors the raw `users` row verbatim, incl. the snake_case
+  `password_hash`/`created_at` keys (no camelCase mapping in the repository
+  layer — that is `src/api/users.js`'s job); `getSessionWithUser` does map to
+  camelCase (`expiresAt`, nested `user: { id, username, role }`) since it is
+  already a joined, computed shape with no single backing row. `node:sqlite`'s
+  `StatementSync.get()`/`.all()` type as `Record<string, SQLOutputValue>`
+  (a union of `null | number | bigint | string | Uint8Array`), so every column
+  read is narrowed to its concrete field type with a per-field JSDoc `@type`
+  cast rather than one whole-row cast, to stay correct regardless of
+  `Record`-to-named-type assignability in a given TypeScript version.
+  `setRoleGuarded`/`deleteUserGuarded` share a `countOtherAdmins(db, id)`
+  helper and guard only the case that actually removes the last admin (current
+  role `admin`, target role/`DELETE` non-admin, zero *other* admins) — a
+  same-role update (incl. the sole admin re-confirming `admin`) is therefore
+  never refused, matching the API's "same role = no-op 200". Both guards
+  follow `migrate.js`'s rollback shape: `BEGIN IMMEDIATE` inside the `try`, a
+  nested `try/catch` around `ROLLBACK` so a failed `BEGIN` itself cannot mask
+  the original error. `deleteExpiredSessions` treats `expires_at <= now` as
+  expired (inclusive) — a session expiring at exactly `now` is purged rather
+  than kept for one more tick. "Last-admin refusal incl. concurrent demotion"
+  is tested by driving the guard from two separate `DatabaseSync` connections
+  opened on the same `DATA_DIR` (one demotes/deletes and commits, the other
+  then attempts the same on the last remaining admin) — real thread-level
+  interleaving is not exercisable against a synchronous `node:sqlite` handle
+  in a single-threaded test process; the two-connection form still proves the
+  guard reads committed DB state rather than an in-process cache.
+- 2026-09-26: Issue #23 (app shell, nav, home, category placeholders, 404)
+  implementation notes: the empty state on placeholder pages ships without
+  the exports' icon-in-circle graphic — `createEmptyState({ title, text })`
+  (#22, frozen) takes no icon parameter and `base.css`'s `.empty-state`
+  (#21, frozen) has no card surface, and this issue's Files list adds no CSS
+  file a placeholder page could use to introduce one, so the exports' card
+  is treated as layout reference only, not part of the fixed component. The
+  account-menu button's accessible name comes from an `aria-label` ("Konto
+  von {username} ({role label})") set once `/api/me` resolves, not from the
+  visible username text, since that text is `display: none` below 768 px;
+  the visible avatar-initial/username spans are `aria-hidden` to avoid a
+  double announcement on desktop. The disclosure's outside-click listener is
+  registered on `document` with `capture: true` specifically so opening the
+  menu (which registers the listener) cannot also close it on the same
+  click, and it tests `button.contains(event.target)` rather than
+  `=== button` so a click on the button's own icon does not read as
+  "outside". `public/404.html` ships with neither a `<script>` nor a
+  `<noscript>` line: it is fully static and works without JavaScript (Module
+  layout lists no `404.js`), so the page-skeleton's per-page-script rule does
+  not apply to it. The live Chromium/Firefox walk-through this issue's
+  acceptance checklist asks for is deferred to the milestone QA gate, as its
+  own wording allows ("at latest at milestone QA") — `src/app.js`/
+  `src/server.js` (issue #17) are not yet merged, so nothing can be started
+  and served yet on this branch.
+- 2026-09-26 (#14): `src/auth/{sessions,bootstrap}.js` implemented. Both
+  `createSessionStore({ db, now })` and `ensureAdmin({ ..., now })` default
+  `now` to `Date.now`, matching the `now = Date.now` convention already used
+  by `rate-limit.js`/`log.js`, even though the module-layout table's
+  shorthand omits the default — every real caller and every test still
+  injects its own clock. `resolve()`'s expiry check reuses
+  `deleteExpiredSessions`'s inclusive rule (`expiresAt <= now` = expired) for
+  consistency, but does not itself delete the expired row — that stays
+  `purgeExpired()`'s (and the startup/hourly timer's) job, so `resolve` stays
+  a pure read-or-refresh path. The "at most one write per session per day"
+  property needs no extra bookkeeping: since a session refreshes only when
+  fewer than 29 of its 30-day lifetime remain, a refresh always pushes
+  `expiresAt` back out to a full 30 days, so a second resolve on the same day
+  can never again drop under the 29-day threshold. `ensureAdmin` independently
+  validates `adminUser`/`adminPassword` with `validateUsername`/
+  `validatePassword` even though `src/config.js` already requires the pair to
+  be both-set-or-both-unset — `loadConfig` never checks their *format*, so an
+  invalid username or a too-short password reaching `ensureAdmin` on an empty
+  database is exactly the "invalid vars" `BootstrapError` case the acceptance
+  criteria name. `admin_missing` logs at `error` (it precedes the process
+  exiting 1); `admin_env_ignored` logs at `warn` (non-fatal, but flags a
+  configuration the operator should probably clean up); `admin_bootstrapped`
+  logs at `info`.
 - 2026-09-26 (#16): `src/http/{security,static}.js` implemented.
   `createStaticHandler`'s returned function matches the module table's
   `Promise<boolean>` contract exactly: `false` — nothing served — for a
