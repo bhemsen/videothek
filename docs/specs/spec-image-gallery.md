@@ -2,38 +2,49 @@
 
 > Created: 2026-09-26
 
-Roadmap phase 6: every picture under the image category root is browsable as a
-folder gallery with EXIF-embedded thumbnails and opens in a keyboard- and
-touch-friendly lightbox — without server-side decoding, resizing or any runtime
-dependency. This spec carries no lifecycle state — acceptance is the spec merged
-on the default branch with a milestone and issues, and all progress (in
-progress, done, blocked) lives in the GitHub issues and milestone. A completed
-spec is moved to `docs/specs/archive/`.
+Roadmap phase 6: every picture (and every video) under the `images` category
+roots is browsable at `/images` as a folder gallery with EXIF-embedded
+thumbnails and opens in a keyboard- and touch-friendly lightbox that shows
+pictures and plays videos inline — without server-side decoding, resizing or any
+runtime dependency. This spec carries no lifecycle state — acceptance is the
+spec merged on the default branch with a milestone and issues, and all progress
+(in progress, done, blocked) lives in the GitHub issues and milestone. A
+completed spec is moved to `docs/specs/archive/`.
 
 ## Outcome
 
-- [ ] The "Bilder" nav entry opens `/gallery.html`, which shows the folder tree
-      below the image category root: breadcrumb, a "Ordner" section with
-      subfolder tiles (cover, name, file count) and a "Bilder" section with 1:1
-      image cards (filename, date).
-- [ ] JPEG files with an EXIF IFD1 thumbnail render their tile from
-      `GET /media/:id/thumb` (bytes ≤ 64 KiB, cacheable); every other displayable
-      image renders its tile from the original via `loading="lazy"`.
+- [ ] The "Bilder" nav entry (P1 shell, `active: 'images'`) opens `/images`,
+      which shows the merged folder tree below all `images` category roots:
+      breadcrumb, an "Ordner" section with subfolder tiles (cover, name, file
+      count) and a "Bilder" section with 1:1 tiles (file name, date or
+      "Video"). `/images?folder=<key>` opens a subfolder; browser back/forward
+      move between folders.
+- [ ] Displayable JPEG files with an EXIF IFD1 thumbnail render their tile from
+      `GET /media/:id/thumb` (≤ 64 KiB, immutable-cacheable); every other
+      displayable image renders its tile from the original `GET /media/:id`
+      with `loading="lazy"`; videos render a play-glyph placeholder tile.
 - [ ] Tiles and the lightbox show EXIF-rotated photos upright (thumbnail
       orientation applied by CSS, originals by the browser).
-- [ ] Files in HEIC/HEIF/TIFF/JPEG XL/camera-RAW formats are listed with a
-      "Nicht anzeigbar" badge, are not clickable and are skipped by the lightbox.
-- [ ] Items are ordered by capture date (EXIF `DateTimeOriginal`, fallback file
-      mtime), oldest first; folders by natural name order.
-- [ ] Clicking an image opens a full-viewport lightbox with the original,
-      position counter, filename and date; ←/→ and prev/next buttons navigate,
-      Escape / close button / browser back close it and return focus to the tile;
-      horizontal swipe navigates on touch devices.
-- [ ] A new image copied into a folder under the image root appears in the
-      gallery without restart (within the scanner's freshness bound), and its
-      thumbnail is served once its metadata has been read.
+- [ ] Image files the browser cannot display (HEIC/HEIF/TIFF/JPEG XL/SVG and
+      any other non-playable image row of `compat.js`) are listed with a
+      "Nicht anzeigbar" badge; non-playable videos (e.g. `.mov`, `.mkv`) with a
+      "Nicht abspielbar" badge; neither is focusable nor part of the lightbox
+      sequence.
+- [ ] Items are ordered by capture date (EXIF `DateTimeOriginal`, fallback
+      `DateTime`, fallback file mtime), oldest first; folders by natural name
+      order.
+- [ ] Clicking an image or playable video opens a full-viewport lightbox with
+      position counter, file name and date; images show the original, videos
+      play inline in a native `<video controls>` (no autoplay, paused when
+      navigating away). ←/→ and prev/next buttons navigate, Escape / close
+      button / browser or Android back close it and return focus to the tile of
+      the last shown item; horizontal swipe navigates on touch devices.
+- [ ] A picture or video copied into a folder under an image root appears in
+      the gallery without restart within the P2 freshness bound plus one
+      metadata batch; its thumbnail is served once its EXIF header has been
+      read. Deleted files disappear with their index row (cascade).
 - [ ] No client-supplied value is ever turned into a filesystem path: folders
-      are addressed by validated folder keys looked up in the index; media by
+      are addressed by folder keys only compared against the index; media by
       index id through the P3 path guard.
 - [ ] `npm run verify` is green; `npm ls --omit=dev --all` shows no packages.
 
@@ -41,36 +52,60 @@ spec is moved to `docs/specs/archive/`.
 
 ### In scope
 
-- Image category parser rules: which extensions under the image root are
-  indexed, which are displayable, which entries are skipped.
-- EXIF reader `src/library/tags/exif.js` (JPEG APP1 only): orientation,
-  capture date, IFD1 JPEG thumbnail location.
-- Migration `005-image-meta.sql` and repository `src/db/image-meta.js`.
-- Metadata sync `src/library/image-meta.js`, run after every completed scan
-  pass (startup, watcher, periodic rescan).
-- Thumbnail route `GET /media/:id/thumb` (`src/http/thumb.js`).
-- Gallery API `GET /api/gallery?folder=<key>` (`src/api/gallery.js`, pure
-  shaping in `src/library/gallery.js`).
-- Gallery page `public/gallery.html` + `public/js/gallery.js` +
-  `public/js/gallery-helpers.js` + `public/css/gallery.css`; lightbox
-  `public/js/lightbox.js` + `public/css/lightbox.css`; switching the shared
-  nav's "Bilder" entry from the placeholder to `/gallery.html`.
-- Synthetic fixtures under `test/fixtures/media/Bilder/` and an EXIF/JPEG test
-  helper.
-- Video files inside image folders — handling per OPEN-1 (recommended: tile
-  that opens the P3 player).
+- Admitting videos under the `images` category (H9): one edit of P2's
+  `src/library/categories.js` (see Prior decisions) plus its test
+  `test/library/images-kinds.test.js`.
+- EXIF reader `src/library/tags/exif.js` (JPEG APP1 only): orientation, capture
+  date, IFD1 JPEG thumbnail location, JPEG SOI check.
+- Migration `src/db/migrations/005-image-meta.sql` and repository
+  `src/db/image-meta.js`.
+- Folder keys `src/library/image-folders.js` and pure response shaping
+  `src/library/gallery.js`.
+- Metadata sync `src/library/image-meta.js` (`createImageMetaSync`), registered
+  on P2's `onScanComplete` with one line in `src/server.js`.
+- Thumbnail route `GET /media/:id/thumb` (`src/api/thumb.js`,
+  `registerThumbRoutes`) and gallery API `GET /api/gallery?folder=<key>`
+  (`src/api/gallery.js`, `registerGalleryRoutes`); one registration line each
+  in `src/http/routes.js`.
+- Gallery page at `/images`: `public/images.html` (replaces P1's placeholder),
+  `public/js/images.js`, `public/js/image-tiles.js`, `public/js/image-format.js`,
+  `public/js/image-icons.js`, `public/css/images.css`; lightbox
+  `public/js/lightbox.js`, `public/js/lightbox-gestures.js`,
+  `public/css/lightbox.css`.
+- Tests: `test/library/tags/exif.test.js`, `test/db/image-meta.test.js`,
+  `test/library/image-folders.test.js`, `test/library/gallery.test.js`,
+  `test/library/image-meta.test.js`, `test/library/images-kinds.test.js`,
+  `test/api/thumb.test.js`, `test/api/gallery.test.js`,
+  `test/public/image-format.test.js`, `test/public/lightbox-gestures.test.js`;
+  fixture builder `test/helpers/exif-jpeg.js`; QA fixture trees
+  `test/fixtures/media/Bilder/**` and `test/fixtures/media/Photos/**`.
+- `docs/architecture.md` edits (D13, made by the docs/fixtures issue, not in
+  this spec PR): component map rows "Tag/EXIF readers" (name `exif.js`), new
+  rows "Image metadata sync" (`src/library/image-meta.js`) and "Gallery
+  shaping" (`src/library/image-folders.js`, `src/library/gallery.js`); "API
+  handlers" row gains `/api/gallery` and `/media/:id/thumb`; "Frontend" row
+  names `/images` + lightbox; new key flow "Image metadata" (scan completes →
+  `onScanComplete` → stub rows → sequential EXIF header reads → `image_meta`).
+- `README.md`: one additive section "Bilder" (supported formats, HEIC advice:
+  iOS camera "Maximale Kompatibilität" or export as JPEG; videos in picture
+  folders play inline).
 
 ### Out of scope
 
 - Server-side decoding, resizing, re-encoding or transcoding of any kind
-  (vision "Out"; constitution "no child processes").
+  (vision "Out"; constitution "no child processes"); video thumbnails or poster
+  frames.
 - EXIF from PNG `eXIf`, WebP, AVIF or HEIF containers; XMP; GPS/maps; camera
-  details panel.
+  details panel; video duration (unknown, not shown).
 - Zoom/pan inside the lightbox (native pinch-zoom of the page stays usable),
   slideshow, download, rotate, delete, sharing, favourites, albums, search.
 - User-selectable sort order; server-side pagination.
-- Progress/resume for pictures (P4 covers video/audio only).
-- Custom arrow-key roving focus inside the grid (see Prior decisions).
+- Progress/resume for pictures and for videos under `images` (P4 answers
+  `400 not_resumable` for category `images`); P3's player page stays
+  movies/series-only.
+- Custom arrow-key roving focus inside the grid.
+- Edits of P1's nav/shell/icons/tokens, P2's media card/`library.css`, P3's
+  stream/player files, any P4/P5 file.
 
 ## Design
 
@@ -87,28 +122,43 @@ HTML exports next to each PNG (`*.html`). Working reference (not durable):
 Stitch project `videothek`, screens "P6 Bilder Ordneransicht Desktop/Mobile",
 "P6 Lightbox Desktop", "P6 Lightbox Mobile – 390px Viewport".
 
-Where the mocks and this spec differ, the spec wins: tile count label is
-"N Dateien" (mock: "Bilder"); a focused card shows only the 2 px `primary`
-outline (the desktop mock also tints the filename); cover/tile artwork in the
-mocks is placeholder art — real tiles show thumbnails.
+Where the mocks and this spec differ, the spec wins:
+
+- The app bar/nav belong to P1's shell (`mountShell({ active: 'images' })`); the
+  mock's "Abmelden" button stands in for P1's account menu.
+- Folder tile count label is "N Dateien" (mock: "Bilder").
+- A focused tile shows only the 2 px `primary` outline with 2 px offset (the
+  desktop mock also tints the file name).
+- Tile artwork is placeholder art — real tiles show thumbnails/originals.
+- Off-token shades in the exports (`#262c38`, `#3b4252`) map to the derived
+  state tokens (`--color-secondary-hover`, `--color-secondary-active`) and
+  `--color-border` from P1's `tokens.css`.
+- The mobile lightbox mock is drawn inside a rounded phone frame; the real
+  lightbox is full-viewport with the same arrangement (counter + close top,
+  caption, then prev · hint · next at the bottom).
+- No mock shows a video slide: it uses the image slide layout with a native
+  `<video controls>` in place of the `<img>`.
 
 German UI copy (exact):
 
 | Where | Text |
 |---|---|
-| Page title / root heading | `Bilder` |
-| Section headings | `Ordner`, `Bilder` (hidden when the section is empty) |
-| Header meta | `{n} Ordner · {m} Dateien` (singular `1 Datei`) |
+| Page heading at root / `document.title` | `Bilder` / `Bilder – Videothek`; in a folder: heading = folder name, title `<Name> – Bilder – Videothek` |
+| Breadcrumb root / `aria-label` of breadcrumb nav | `Bilder` / `Pfad` |
+| Section headings | `Ordner`, `Bilder` (each hidden when its section is empty) |
+| Header meta | non-zero parts of `{n} Ordner` and `{m} Dateien` (singular `1 Datei`), joined by ` · `; no meta when both are 0 |
 | Folder tile meta | `{n} Dateien` / `1 Datei` |
-| Badge | `Nicht anzeigbar` |
-| Video tile meta (OPEN-1 B/C) | `Video` |
-| Empty folder / empty root | `Keine Bilder in diesem Ordner.` / `Noch keine Bilder vorhanden.` |
-| Unknown folder (API 404) | `Ordner nicht gefunden.` + link `Zu Bilder` |
-| Load error | `Bilder konnten nicht geladen werden.` |
-| Lightbox buttons (aria-label + title) | `Schließen`, `Vorheriges Bild`, `Nächstes Bild` |
-| Lightbox dialog aria-label | `Bildansicht` |
-| Lightbox hint | desktop `← → Blättern · Esc Schließen`; coarse pointer `Wischen zum Blättern` |
-| Lightbox image load error | `Bild konnte nicht geladen werden.` |
+| Image tile meta | date `DD.MM.YYYY, HH:MM` |
+| Video tile meta | `Video` |
+| Badges | images `Nicht anzeigbar`; videos `Nicht abspielbar` |
+| Empty root (P1 `createEmptyState({ title, text })`) | title `Noch keine Bilder`, text `Lege Bilder im Ordner „Bilder“ ab – neue Dateien erscheinen nach wenigen Sekunden automatisch.` |
+| Unknown folder (API 404) | `Ordner nicht gefunden.` + link `Zu Bilder` (`/images`) |
+| Load error | `Bilder konnten nicht geladen werden.` + button `Erneut versuchen` |
+| Lightbox buttons (`aria-label` + `title`) | `Schließen`, `Vorheriges Bild`, `Nächstes Bild` |
+| Lightbox dialog `aria-label` | `Bildansicht` |
+| Lightbox hint | fine pointer `← → Blättern · Esc Schließen`; coarse pointer `Wischen zum Blättern` |
+| Lightbox image / video load error | `Bild konnte nicht geladen werden.` / `Video konnte nicht abgespielt werden.` |
+| Tile accessible names | image `<file name>`; video `<file name>, Video` |
 
 ## Constraints
 
@@ -116,23 +166,60 @@ German UI copy (exact):
   (files opened with flag `r` only), path containment → `404`, SQL only in
   `src/db/` via prepared statements, ≤ 60 lines/function, ≤ 300 lines/file,
   JSDoc on every export, one `test/*.test.js` per new `src/` module, JSON errors
-  `{ "error": "<code>" }` on `/api/*`, no `innerHTML` with unescaped data
-  (build tiles with `createElement`/`textContent`).
+  `{ "error": "<code>" }` on `/api/*`, no `innerHTML` with data (DOM via
+  P1's `el()`/`createIcon` or `createElement`/`textContent`), no `console.*` in modules
+  (injected `log`, D4).
 - Architecture boundaries: `src/library/` has no HTTP knowledge; `src/api/`
-  has no file-format knowledge (EXIF lives in `src/library/tags/exif.js`);
-  only `src/media/paths.js` (P3) maps index rows to absolute paths.
-- Cross-phase contract (shared brief): P6 depends on P3 (path guard,
-  `GET /media/:id` streaming images with correct MIME) and on P2 (index
-  `library_items`, scanner, `compat.js`, the image category constant). P6 runs
-  in parallel with P4 and must not edit P4-owned files (`003` migration,
-  progress API, `public/js/lib/progress.js`, player page, and the P2 shared media card that P4 extends).
-- Shared files P6 touches, with small additive changes only:
-  `src/http/routes.js` (two registration calls), the shared nav module in
-  `public/js/lib/` ("Bilder" link target), and — only if P2/P3 did not already
-  provide them — the image rows in `compat.js` / the MIME map and a post-scan
-  hook in the scanner (see Prior decisions).
-- Design tokens only via `public/css/tokens.css`; grid per design.md
-  (min column 160 px, gap 16 px); touch targets ≥ 44×44 px; WCAG 2.1 AA.
+  has no file-format knowledge (EXIF and the JPEG SOI check live in
+  `src/library/tags/exif.js`); only `src/media/paths.js` (P3,
+  `resolveMediaPath(mediaRoot, relPath) → Promise<string | null>`) maps index
+  rows to absolute paths — also for the metadata sync's reads.
+- Consumed contracts (exact, from the cross-phase decisions):
+  - P1 (D4/D5): `handler(req, res, ctx)`, `ctx = { user, params, url }`;
+    `register<X>Routes(router, deps)`, `deps = { config, db, log, now }`;
+    `Config.mediaRoot`; router whole-segment matching (`/media/:id` ≠
+    `/media/:id/thumb`), HEAD runs the GET handler with `req.method === 'HEAD'`;
+    `requireUser` from `src/http/guards.js` (`401 {"error":"unauthorized"}`);
+    `sendJson`/`sendError` from `src/http/respond.js`; `/api/*` gets
+    `Cache-Control: no-store` from P1; `test/helpers/app.js`
+    `startTestApp({ mediaRoot?, now?, ...extra })` → `{ baseUrl, db, config,
+    deps, createUser, login, close }`; logger `log.info|warn|error(event,
+    fields?)`; migration runner applies every unapplied file ascending (gaps
+    allowed); `PRAGMA foreign_keys=ON`; frontend `public/js/lib/api.js`
+    `request(method, path, opts) → { status, data }` throwing
+    `ApiError { status, code }` (`code: 'network'` on network failure, `401`
+    redirects to login); `public/js/lib/shell.js` `mountShell({ active }) →
+    { main, setActive, me }`; `public/js/lib/dom.js` `el(tag, attrs, ...children)`
+    and `createEmptyState({ title, text })`; `public/js/lib/icons.js`
+    `createIcon(paths, opts)`, `icon(name)` (never edited); tokens incl.
+    `--grid-min`, `--focus-width`, `--focus-offset`, `--tap-min`,
+    `--border-width`, `--space-*`, `--color-secondary-{hover,active}`; CSP
+    forbids `style=""` (dynamic values via `el.style.setProperty`); a page links
+    its own `public/css/<page>.css` + `public/js/<page>.js`.
+  - P2 (D3/D6/D9): `library_items` (`id`, `rel_path`, `dir`, `category`,
+    `kind`, `ext`, `playable`, `size`, `mtime_ms` = `Math.trunc(stat.mtimeMs)`);
+    `CATEGORIES`, `kindsFor(category)` and the `KINDS` map in
+    `src/library/categories.js`; `EXTENSIONS` rows
+    `{ kind, playable, sniff, mime }` in `src/library/parsers/compat.js` (sole
+    owner of extensions and MIME); in `src/server.js`
+    `const library = startLibrary({ db, config, log, now })` →
+    `{ onScanComplete(listener) → unsubscribe, requestFull(), stop(), status() }`,
+    listener called with `{ kind, stats, completedAt }` after every completed
+    run, not awaited, throws logged. Skip rules (hidden names, `@eaDir`, …)
+    are P2's; P6 adds none.
+  - P3 (D10): `GET /media/:id` streams playable items (incl. `images` videos)
+    with the compat MIME and `Cache-Control: private, no-cache`; non-playable →
+    404; `resolveMediaPath` from `src/media/paths.js`; `sendMedia(req, res,
+    { path, contentType?, cacheControl?, idleTimeoutMs?, slice?: { offset,
+    length }, openFile? })` from `src/http/stream.js`.
+- P6 runs in parallel with P4/P5 and edits only its own files plus the shared
+  one-line/section additions named in Scope (`src/server.js`,
+  `src/http/routes.js`, `src/library/categories.js`, `docs/architecture.md`,
+  `README.md`).
+- Design tokens only via `public/css/tokens.css`; literal lengths only as the
+  D5 exceptions (breakpoints 768/1024 in `@media`, `%`, `vh`/`dvh`/`vw`, `fr`,
+  `0`, `env(...)`; machine-checked by P1); touch
+  targets ≥ 44×44 px; WCAG 2.1 AA.
 
 ## Prior art
 
@@ -142,47 +229,55 @@ German UI copy (exact):
   libvips / Immich / PhotoPrism. Not cloned: the IFD layout is the published
   EXIF 2.3 / TIFF 6.0 structure and no decision here depends on exifr internals.
 - [Direct-play compatibility detection (Phase 2)](../prior-art.md#direct-play-compatibility-detection-phase-2)
-  — static extension table, no client-side capability probe; P6 adds the image
-  rows on the same principle (HEIC stays "not displayable" even though Safari
-  renders it).
+  — static extension table (P2's `compat.js`), no client-side capability probe;
+  HEIC stays "not displayable" even though Safari renders it; videos under
+  `images` get the same playability verdict (incl. codec sniff) as in `movies`.
 - [Detecting new files without restart (Phase 2)](../prior-art.md#detecting-new-files-without-restart-phase-2)
-  — freshness comes from the P2 watcher + periodic rescan; P6 only hooks a
-  metadata sync after each completed pass and stays correct if the watcher is
-  silent.
+  — freshness comes from the P2 watcher + periodic rescan; P6 only listens for
+  completed scans and stays correct if the watcher is silent.
 
 ## Human prerequisites
 
-none — all fixtures are synthetic and generated/committed by the implementer.
-(Optional for the QA gate, not blocking: a real phone-photo folder on a local
-`MEDIA_ROOT`, including portrait/EXIF-rotated JPEGs and a HEIC file.)
+none — all fixtures are synthetic and generated/committed by the implementer;
+nothing blocks implementation. QA-only and optional (the human waived the
+gates): a real phone-photo folder on a local `MEDIA_ROOT` including
+portrait/EXIF-rotated JPEGs, a HEIC file and a phone MP4 (H.264/AAC) to confirm
+inline video playback with real media; access to the Raspberry Pi 4 for the
+optional RSS line.
 
 ## Prior decisions
 
 | Decision | Rationale | Date |
 |---|---|---|
-| **Indexed extensions under the image root** (case-insensitive). Displayable: `.jpg .jpeg .jfif .png .gif .webp .avif .bmp`. Listed as not displayable: `.heic .heif .tif .tiff .jxl .dng .cr2 .cr3 .nef .arw .orf .rw2 .raf`. Everything else (incl. `.svg`, sidecars, `Thumbs.db`) is not indexed. Video extensions per OPEN-1. | Static table (prior art, P2 compat principle). First set renders in current Chromium, Firefox and Safari; the second renders nowhere or Safari-only, and transcoding is out of scope (vision). SVG excluded: served same-origin from `/media/:id` it could run script when opened directly, and it is not a photo format. | 2026-09-26 |
-| MIME for displayable images: `image/jpeg` (jpg/jpeg/jfif), `image/png`, `image/gif`, `image/webp`, `image/avif`, `image/bmp`. P6 relies on P3's MIME map; if a row is missing, P6 adds only that row. | `/media/:id` streams any playable item (shared brief); a wrong type breaks `<img>` in Firefox with `nosniff`. | 2026-09-26 |
-| Skip any path with a segment starting with `.` or equal to `@eaDir` (case-insensitive) below the image root. | Hidden dirs and Synology thumbnail caches would otherwise flood the gallery with duplicates. | 2026-09-26 |
-| **Folder key** = the item's `rel_path` minus its first segment (the category root folder, whichever alias) minus the file name, `/`-separated, `''` = root. Alias roots (e.g. `Bilder/` and `Photos/`) merge into one virtual tree. | Keeps API free of raw/absolute paths; the key is never turned into a filesystem path — only compared against the index (architecture boundary). Merging is the only consistent reading of "one category, several aliases". | 2026-09-26 |
-| **Folder key validation** (`?folder=`): absent → root; else must be a string ≤ 4096 chars, no NUL, no `\`, no leading/trailing `/`, no empty, `.` or `..` segment; and must exist (some `image_meta.folder` equals it or starts with `key + '/'`). Any violation → `404 {"error":"not_found"}`. Root always exists. Clients only reuse keys the API returned. | Constitution: path violations → 404. Existence check by index lookup means traversal strings can never reach `fs`. | 2026-09-26 |
-| **Migration 005** creates `image_meta(item_id INTEGER PRIMARY KEY REFERENCES library_items(id) ON DELETE CASCADE, folder TEXT NOT NULL, taken_at TEXT, orientation INTEGER, thumb_offset INTEGER, thumb_length INTEGER, source_size INTEGER, source_mtime_ms INTEGER)` + `CREATE INDEX image_meta_folder ON image_meta(folder)`. `source_*` NULL = EXIF not read yet. Depends only on 002. | Capture-date sort and thumbnail offsets must be stored (reading headers per request is too slow on a Pi HDD). Separate table: no change to P2's table/queries, derived and rebuildable (constitution). Fixed number 005 (shared brief). | 2026-09-26 |
-| **Metadata sync** (`syncImageMeta`) runs after every completed scan pass, single-flight (a trigger during a run schedules exactly one follow-up run). Phase 1: insert stub rows (`folder` only) for image items without a row — pure string work, one transaction. Phase 2: for rows whose `source_size`/`source_mtime_ms` differ from the item's `size`/`mtime_ms` (or are NULL): JPEGs → read header + parse EXIF; other types → set `source_*` without I/O. Sequential, one file at a time, one reused 128 KiB buffer. Phase 3: delete orphan rows (`item_id` not in `library_items`) in case FK enforcement is off. Read errors (ENOENT/EACCES/…) leave the row stale for the next pass; one summary log line per run (counts + duration, no file contents). | Items become visible in the gallery immediately after the scan (phase 1) while slow I/O fills in later. Staleness is checked against the index, so rows indexed before P6 shipped are backfilled automatically and the sync is independent of the scanner's own change detection. Sequential reads protect concurrent streams on a Pi. | 2026-09-26 |
-| **Post-scan hook**: P6 subscribes `syncImageMeta` through the scanner's completion notification provided by P2. If P2's accepted scanner exposes none, P6 adds a minimal `onScanComplete(listener)` to `scanner.js` (additive, ≤ 15 lines). | Keeps P6 out of the scan walk; see Risks for the P5 collision. | 2026-09-26 |
-| **EXIF reader scope**: JPEG only (`FF D8` at offset 0), header window = first 131,072 bytes. Walk markers from offset 2 over APPn/COM segments; stop at SOS (`FFDA`), EOI, a non-marker byte or the window end. First APP1 whose payload starts `Exif\0\0` → TIFF header (`II`/`MM`, magic 42). Read IFD0 `0x0112` Orientation (1–8, else null), `0x8769` → Exif IFD `0x9003` DateTimeOriginal, fallback IFD0 `0x0132` DateTime; IFD1 (next-IFD of IFD0) `0x0201`/`0x0202` JPEG thumbnail offset/length, accepted only if IFD1 `0x0103` Compression is absent or 6, `0 < length ≤ 65,535`, the range lies inside the APP1 segment's declared length, and — when its start lies inside the window — it begins `FF D8`. Stored `thumb_offset` is absolute in the file. Every read is bounds-checked; IFD offsets visited once (cycle guard); ≤ 512 entries per IFD; malformed input yields `null` fields, never a throw. | Prior art ADOPT; an APP1 segment is ≤ 64 KiB by format, so APP0 + APP1 fit in 128 KiB; only the IFD structures (not the thumbnail bytes) need to be in the window. Uncompressed TIFF thumbnails are rare and not servable as JPEG. | 2026-09-26 |
-| **Capture date** stored as `YYYY-MM-DDTHH:MM:SS` (camera wall-clock, no timezone) when the EXIF value matches `YYYY:MM:DD HH:MM:SS` with month 1–12, day 1–31, year ≥ 1900; otherwise NULL (e.g. `0000:00:00 00:00:00`). API `date` = `taken_at` or, when NULL, the item's `mtime_ms` formatted in the server's local time in the same shape. The client formats it by string slicing to `DD.MM.YYYY, HH:MM`, e.g. `14.07.2024, 18:03` (no `Date` parsing, no TZ shift). | EXIF has no reliable offset; wall-clock is what the photographer saw. String formatting avoids timezone drift between server and browsers. | 2026-09-26 |
-| **Sort**: items by (`date` asc, file name via `Intl.Collator('de', {numeric: true, sensitivity: 'base'})`, `id`); folders by the same collator on name. Sorting happens server-side in `src/library/gallery.js`. | Chronological order is the album convention and fixes mixed camera prefixes (`IMG_`/`DSC_`); one comparator, unit-testable, trivial to flip later. | 2026-09-26 |
-| **Thumbnail route** `GET /media/:id/thumb`: same auth behaviour as `GET /media/:id` (P3). `id` must match `^[1-9]\d{0,15}$` else 404. 404 when the item is unknown, not in the image category, has no thumbnail, its path fails the P3 guard, the file's current size/mtime (normalised exactly as P2 stores `mtime_ms`) differ from `source_size`/`source_mtime_ms`, or the read bytes do not start `FF D8`. Otherwise read exactly `thumb_length` bytes at `thumb_offset` with a `FileHandle` (flag `r`) and answer `200`, `Content-Type: image/jpeg`, `Content-Length`, `Cache-Control: private, max-age=31536000, immutable`, `X-Content-Type-Options: nosniff`. `Range` is ignored; query string ignored. | The bounded ≤ 64 KiB slice is not "a media file read fully into memory" (constitution) and needs no range support for `<img>`. Versioned URL (below) makes immutable caching safe; `private` because content is behind auth. | 2026-09-26 |
-| **Thumbnail fallback is decided by the API, not by a 404 round-trip**: `thumbUrl` = `/media/:id/thumb?v=<mtime_ms>` when a thumbnail is recorded, else `/media/:id` (original). Client `onerror` on a thumb URL switches once to the original; on an original, shows the placeholder icon. | No wasted request per EXIF-less image; the `onerror` path covers files edited between scans. | 2026-09-26 |
-| **Orientation**: originals rely on the browser default `image-orientation: from-image`. Embedded thumbnails carry no EXIF, so the API returns `thumbOrientation` (1–8 from IFD0; 1 when `thumbUrl` is the original) and the client applies a CSS class: 2 `scaleX(-1)`, 3 `rotate(180deg)`, 4 `scaleY(-1)`, 5 `rotate(270deg) scaleX(-1)`, 6 `rotate(90deg)`, 7 `rotate(90deg) scaleX(-1)`, 8 `rotate(270deg)`. The `<img>` fills a square box with `object-fit: cover`, so 90° rotations keep the tile square. | Without this, portrait phone photos show sideways tiles. Transform table follows the exiftool naming of EXIF orientation values. | 2026-09-26 |
-| **Gallery API** `GET /api/gallery?folder=<key>` (auth: `requireUser`, 401 JSON otherwise). Response: `{ key, name, breadcrumb: [{name, key}] /* ancestors incl. root "Bilder", excl. current */, folders: [{ key, name, count, cover: {thumbUrl, thumbOrientation} \| null }], items: [{ id, name, kind: "image"\|"video", displayable, date, url: "/media/:id"\|null, thumbUrl\|null, thumbOrientation }] }`. At the root: `key: ""`, `name: "Bilder"`, `breadcrumb: []`. `items` = direct children only; `count` = all indexed files in the subfolder's subtree; `cover` = first displayable `kind: "image"` item in the subtree in (`folder`, `rel_path`) binary order. Non-displayable items: `url` and `thumbUrl` null. | A dedicated route avoids pattern ambiguity with P2's `/api/library/:category` and fits the tree shape the generic list cannot express; the whole folder in one response keeps lightbox navigation trivial. | 2026-09-26 |
-| **No server-side pagination.** The client renders tiles in batches of 120 (first batch immediately, next batch when a sentinel after the grid comes within 800 px of the viewport via `IntersectionObserver`). Every `<img>` has `loading="lazy" decoding="async"`. | A 5,000-item folder is ~1 MB JSON on a LAN; batching bounds DOM size and memory on phones/TVs; one list keeps "12 / 148" counters and prev/next exact. | 2026-09-26 |
-| **Tiles**: own markup and styles in `public/js/gallery.js` / `public/css/gallery.css`, visually following the design.md Media card (1:1, radius `md`, `shadow-sm`, title 1 line ellipsis, meta `muted`). Folder tile = `<a href="/gallery.html?folder=…">`; image tile = `<button>` with `aria-label` = file name and `<img alt="">`; non-displayable tile = non-interactive `<div>` with icon + badge. Grid keyboard: native Tab/Enter; if P1/P2 ship a shared grid arrow-key helper in `public/js/lib/`, reuse it, otherwise none. | Avoids editing P2's shared media card while P4 adds progress bars to it (parallel-phase collision). Folder links give native back/forward and bookmarkable URLs. | 2026-09-26 |
-| Badge text `Nicht anzeigbar` (the design.md badge component with image wording). | "abspielbar" is wrong for a still picture; same token, shape and colour. | 2026-09-26 |
-| **Lightbox**: native `<dialog>` + `showModal()`, backdrop fully `--color-background`, `html` scroll locked while open. Image = original via `url`, scaled down to fit (never upscaled), `object-fit: contain`. Only displayable images form the sequence; no wrap-around — prev disabled on first, next on last (disabled = 40 % opacity). Preload only the previous and next original. Initial focus on `Schließen`; on close focus returns to the opening tile. Keys: ArrowLeft/ArrowRight navigate; Escape closes (via `cancel`). Swipe: pointer events on the stage with `touch-action: pan-y pinch-zoom`; horizontal distance ≥ 50 px and > 1.5 × vertical distance → swipe left = next, swipe right = previous. | Native dialog gives focus trapping and Escape for free; bounded preloading protects bandwidth and memory. | 2026-09-26 |
-| **Lightbox history**: opening pushes a history entry with hash `#bild-<id>`; navigating replaces it; close button / Escape call `history.back()`; `popstate` without the lightbox state closes the dialog. Loading the page with `#bild-<id>` of a displayable item in the folder opens it (first `replaceState` to the plain URL, then push the lightbox entry) so Back still closes it. | Android back gesture and browser back must close the viewer, not leave the folder. | 2026-09-26 |
-| Frontend pure helpers (`formatDate`, `orientationClass`, `classifySwipe`, count labels) live in `public/js/gallery-helpers.js` without DOM access and are unit-tested from `test/public/gallery-helpers.test.js`. | Keeps the fiddly logic under `node --test`; importing a DOM-free frontend module from a test does not violate the server/frontend import rule. | 2026-09-26 |
-| Fixtures: tiny synthetic JPEGs (≤ 2 KiB, ≤ 64 px, created once with any local encoder, e.g. PowerShell `System.Drawing` or a browser canvas) are embedded as base64 in `test/helpers/exif-jpeg.js`, which builds EXIF-wrapped buffers (both byte orders, thumbnail, orientation, dates, malformed variants) for unit tests and, via `node test/helpers/exif-jpeg.js --write`, the committed tree under `test/fixtures/media/Bilder/`. Base images carry an asymmetric marker band so orientation is visually verifiable. Tests needing specific mtimes copy fixtures to a temp dir first. | Shared brief: synthetic, never real media; one generator keeps unit and QA fixtures consistent. | 2026-09-26 |
-| OPEN-1 — Video files (`.mp4 .m4v .webm .mov`) inside image folders: **A)** not indexed (invisible), **B)** indexed as `kind: "video"`, shown as a play-icon tile that links to the P3 player page for that id (playability per P2 `compat.js`; not in the lightbox sequence), **C)** like B but played inline in the lightbox with native `<video controls>`. Recommended: **B**. | resolved at the spec-acceptance gate | — |
+| **Page URL** `/images` = `public/images.html` (replaces P1's placeholder file of the same name) + `public/js/images.js`; subfolders `/images?folder=<key>` (key encoded with `URLSearchParams`); lightbox hash `#bild-<id>`. No nav edit — P1's "Bilder" entry already points to `/images`; the page calls `mountShell({ active: 'images' })`. | Cross-phase consolidation D1: `GET /<name>` serves `public/<name>.html`, `*.html` URLs are 404, owning phase replaces its placeholder, nobody edits the nav. Supersedes the draft's `/gallery.html` and nav edit. | 2026-09-26 |
+| **Indexed files under `images`** come solely from P2's `compat.js` (no P6 table). Images, displayable (`playable = 1`): `jpg jpeg jfif png gif webp avif bmp`; indexed but "Nicht anzeigbar": `heic heif tif tiff jxl svg` and any further non-playable image row `compat.js` carries (e.g. camera RAW). Videos: every `EXTENSIONS` row with `kind: 'video'`, playability incl. MP4 codec sniff exactly as in `movies`. "Displayable" ≡ `library_items.playable`. MIME comes from `compat.js` via P3. `svg` is never served (`/media/:id` 404 for non-playable). | Cross-phase consolidation D9 (single owner of extensions/MIME) + gate decision H9 (videos in `Bilder` = C). Supersedes the draft's own extension/MIME rows and its "SVG not indexed". | 2026-09-26 |
+| **Videos under `images` (H9 = C):** P6 changes the `images` entry of the `KINDS` map in `src/library/categories.js` to `['image', 'video']` (one line; `kindsFor('images')` then returns both). P2's scanner and item builder are kind-generic: each file's `kind` comes from its `EXTENSIONS` row and it is indexed iff that kind is admitted by its category. Rows get `category = 'images'`, `kind = 'video'`. No `SCAN_VERSION` bump: previously ignored files have no row and are inserted as new files by the next scan (P2 states the same). | Human decision at spec-acceptance gate (H9); D15 names the `categories.js` edit explicitly; P2's spec defines `KINDS`/`kindsFor` for exactly this edit. A bump would needlessly re-parse every row. | 2026-09-26 |
+| Video items: tile with an inline-SVG play glyph on the placeholder surface and meta `Video` (no thumbnail, no duration); playable ones join the lightbox sequence and play inline with `<video controls preload="metadata" playsinline src="/media/<id>">` — no `autoplay`, no progress reporting; on leaving the slide or closing: `pause()`, `removeAttribute('src')`, `load()` (releases the stream). Non-playable videos: "Nicht abspielbar" tile, skipped. Thumb route unchanged (never video thumbs). | Human decision at spec-acceptance gate (H9). Releasing `src` frees the server file handle immediately instead of waiting for P3's 60 s idle timeout. | 2026-09-26 |
+| **Folder key** = the item's `dir` minus its first segment (the category root folder, whichever alias), `/`-separated, `''` = root (`folderKeyForDir(dir)` in `src/library/image-folders.js`). Alias roots (`Bilder/`, `Pictures/`, `Photos/`) merge into one virtual tree; keys are case-sensitive (`Bilder/urlaub` and `Photos/Urlaub` stay two folders). A key never changes for an item id (a move is delete + insert in P2). | Keeps API free of raw paths; the key is only compared against the index (architecture boundary). Merging is the only consistent reading of "one category, several aliases". | 2026-09-26 |
+| **Folder key validation** (`?folder=`): absent or empty → root (the client links the root as plain `/images` and subfolders as `'/images?' + new URLSearchParams({ folder: key })`); else must be ≤ 4096 UTF-16 units, contain no NUL, no leading/trailing `/`, no empty, `.` or `..` segment (split on `/`), and must exist (`folder = key` or in the range `folder >= key || '/' AND folder < key || '0'` — never `LIKE`). `\` is allowed (a legal file-name character on Linux; the key never reaches `fs`). Any violation → `404 {"error":"not_found"}`. Root always exists (200 even on an empty library). | Constitution: path violations → 404; existence by index lookup means traversal strings can never reach `fs`. Range form per P2 (`_`/`%` common in names). | 2026-09-26 |
+| **Migration `005-image-meta.sql`** (STRICT, no BEGIN/COMMIT, depends only on 002): `image_meta(item_id INTEGER PRIMARY KEY REFERENCES library_items(id) ON DELETE CASCADE, folder TEXT NOT NULL, taken_at TEXT, orientation INTEGER, thumb_offset INTEGER, thumb_length INTEGER, source_size INTEGER, source_mtime_ms INTEGER, meta_version INTEGER) STRICT` + `CREATE INDEX image_meta_folder ON image_meta (folder)`. One row per `images` item (images and videos). `source_*`/`meta_version` NULL = header not processed yet. | Cross-phase consolidation D12 (005 = P6, STRICT, one transaction per file by the runner) and D6 (meta table cascades on `library_items`, so no orphan-delete code). Capture-date sort and thumbnail offsets must be stored — reading headers per request is too slow on a Pi HDD. | 2026-09-26 |
+| **Scan extension point:** `src/server.js` gets exactly one line directly after P2's `const library = startLibrary({ db, config, log, now })`: `library.onScanComplete(createImageMetaSync({ db, mediaRoot: config.mediaRoot, log }).syncImageMeta);`. `scanner.js`/`watcher.js` are not edited; no shutdown line is added (P2 awaits `library.stop()` before the DB closes, and a still-running pass stops at the next `db.isOpen` check). | Cross-phase consolidation D6 (`onScanComplete`, P6 registers `syncImageMeta` with one line). Supersedes the draft's conditional scanner edit. | 2026-09-26 |
+| **`createImageMetaSync({ db, mediaRoot, log, now? })` → `{ syncImageMeta(event?) → Promise<void>, idle() → Promise<void> }`** (module also exports `IMAGE_META_VERSION = 1`). Single-flight: a call while a pass runs sets `rerun` and returns the running promise; after the pass, one more pass runs if `rerun` was set. A pass = (1) **stubs**: select `images` items without a meta row (`id > cursor`, chunks of 500), compute `folderKeyForDir(dir)`, insert `(item_id, folder)` with `ON CONFLICT(item_id) DO NOTHING`, one transaction per chunk, no `await` between select and insert; (2) **headers**: keyset-walk stale rows (`item_id > cursor ORDER BY item_id LIMIT 50`; stale = `source_size IS NULL` or ≠ `library_items.size`, `source_mtime_ms` ≠ `mtime_ms`, or `meta_version` ≠ `IMAGE_META_VERSION` = 1). For `ext ∈ JPEG_EXTENSIONS` and `size > 0`: `resolveMediaPath` → `open(path, 'r')` → one `read` of ≤ 131,072 bytes at 0 into one reused buffer → `parseExif` → save. Other rows: save NULL EXIF fields without I/O. `source_size`/`source_mtime_ms` are the index values read with the row. Between batches, if `rerun` is set, run step (1) again so new files appear within one batch. | D6 listener contract (single-flight, coalesced rerun, stale detection by `source_size`/`source_mtime_ms`, backfill of rows indexed before P6, not blocking the scan queue). Keyset cursor makes a failing file impossible to loop on within a pass; stub refresh between batches keeps the ≤ 10 s freshness during a long initial backfill. `meta_version` lets a later reader fix reach existing rows. | 2026-09-26 |
+| Sync failure handling: a per-file error (guard `null`, ENOENT, EACCES, EISDIR, short read) leaves the row stale → retried on the next pass (next completed scan, at the latest the periodic rescan). An item deleted mid-pass updates 0 rows (harmless). A pass ends quietly when `db.isOpen` is false (shutdown); any other thrown error ends the pass and is logged `image_meta_failed { error }`. One log line `image_meta_synced { stubs, read, skipped, failed, durationMs }` per pass that changed or failed anything; no file contents or paths beyond counts. | D6 (retry after failure, deleted items tolerated), D4 logging (injected JSON logger, no `console.*`). `db.isOpen` avoids a second shutdown line in `server.js`. | 2026-09-26 |
+| **EXIF reader** `src/library/tags/exif.js` exports `EXIF_WINDOW_BYTES = 131072`, `JPEG_EXTENSIONS = ['jpg','jpeg','jfif']`, `isJpegStart(buf) → boolean` (`FF D8 FF`… first two bytes `FF D8`), `parseExif(buf) → { orientation, takenAt, thumbOffset, thumbLength }` (each `number \| string \| null`). JPEG only (`FF D8` at 0). Walk markers from offset 2 over APPn/COM segments; stop at SOS (`FFDA`), EOI, a non-marker byte or the window end. First APP1 whose payload starts `Exif\0\0` → TIFF header (`II`/`MM`, magic 42). IFD0 `0x0112` Orientation (1–8, else null); `0x8769` → Exif IFD `0x9003` DateTimeOriginal, fallback IFD0 `0x0132` DateTime; IFD1 (next-IFD of IFD0) `0x0201`/`0x0202` thumbnail offset/length, accepted only if IFD1 `0x0103` Compression is absent or 6, `0 < length ≤ 65,535`, the range lies inside the APP1 segment's declared length, and — when its first two bytes lie inside the window — they are `FF D8`. `thumbOffset` is absolute in the file. Every read bounds-checked; IFD offsets visited once (cycle guard); ≤ 512 entries per IFD; malformed input yields `null` fields, never a throw. | Prior art ADOPT; APP1 ≤ 64 KiB by format, so APP0 + APP1 IFD structures fit in 128 KiB; uncompressed TIFF thumbnails are rare and not servable as JPEG. D10 places the SOI check in `exif.js`. | 2026-09-26 |
+| **Capture date** stored as `YYYY-MM-DDTHH:MM:SS` (camera wall-clock, no offset) when the EXIF value's first 19 chars match `YYYY:MM:DD HH:MM:SS` with year ≥ 1900, month 1–12, day 1–31, hour 0–23, minute/second 0–59; else NULL (e.g. `0000:00:00 00:00:00`). API `takenAt` = `taken_at` or, when NULL (also every video/PNG/HEIC), `mtime_ms` formatted in the server's local time in the same shape. The client formats `DD.MM.YYYY, HH:MM` by string slicing (no `Date` parsing). | EXIF has no reliable offset; wall-clock is what the photographer saw; string handling avoids TZ drift. Deliberate deviation from D4's "ISO instant": `takenAt` is an ISO-8601 local date-time without offset. | 2026-09-26 |
+| **Sort** (server-side, `src/library/gallery.js`): items by (`takenAt` string asc, file name via `Intl.Collator('de', { numeric: true, sensitivity: 'base' })`, `id`); folders by the same collator on name, tie by key (binary). | Chronological order is the album convention and fixes mixed camera prefixes; one comparator, unit-testable. | 2026-09-26 |
+| **Thumbnail route** `GET /media/:id/thumb` in `src/api/thumb.js` (`registerThumbRoutes(router, deps)`), wrapped in `requireUser` (unauthenticated → `401 {"error":"unauthorized"}`, like `/media/:id`). `id` must match `^[1-9][0-9]{0,15}$` and be a safe integer. Pre-checks, each failing with `404 {"error":"not_found"}`: id malformed or unknown (`getThumbSource`), category ≠ `images`, `kind` ≠ `image`, not playable, no recorded thumbnail, `resolveMediaPath` → null, then one short-lived `open(path, 'r')` whose `handle.stat()` `size`/`Math.trunc(mtimeMs)` must equal `source_size`/`source_mtime_ms` and whose 2-byte read at `thumb_offset` must pass `isJpegStart` (handle closed in `finally`). Then P3's `sendMedia(req, res, { path, contentType: 'image/jpeg', cacheControl: 'private, max-age=31536000, immutable', slice: { offset: thumb_offset, length: thumb_length } })` serves the bytes (200 with `Content-Length`, `nosniff`, `Accept-Ranges`; `Range` within the slice → 206; `HEAD` without body; slice past EOF → 404). The query string (`?v=`) is ignored. | D10 (route, file, `cacheControl` pass-through, SOI check in `exif.js`); P3's `sendMedia` `slice` option serves byte windows with the same range/streaming logic (`fs.createReadStream(realPath, { fd: handle, start, end })`), so P6 needs no streaming code. The pre-check open is needed because the staleness and SOI checks must run before headers are sent. Versioned URL makes `immutable` safe. | 2026-09-26 |
+| **Thumbnail choice is decided by the API:** `thumbUrl` = `/media/<id>/thumb?v=<mtime_ms>` when kind `image`, playable, a thumbnail is recorded and `source_size`/`source_mtime_ms` equal the item's `size`/`mtime_ms`; else `/media/<id>` for playable images; `null` for videos and non-playable items. Client `onerror` on a thumb URL switches once to `url` (orientation class reset to 1); on an original it hides the `<img>` and shows the image icon. | No wasted request per EXIF-less image; `onerror` covers files edited between scans. | 2026-09-26 |
+| **Orientation**: originals rely on the browser default `image-orientation: from-image`. The API returns `thumbOrientation` = stored orientation (1–8, NULL → 1) when `thumbUrl` is the thumb, else 1; the client maps it to a CSS class: 2 `scaleX(-1)`, 3 `rotate(180deg)`, 4 `scaleY(-1)`, 5 `rotate(270deg) scaleX(-1)`, 6 `rotate(90deg)`, 7 `rotate(90deg) scaleX(-1)`, 8 `rotate(270deg)`. The `<img>` fills a square box with `object-fit: cover`, so 90° rotations keep the tile square. | Embedded thumbnails carry no EXIF; without this, portrait photos show sideways tiles. Table follows exiftool's naming of EXIF orientation values. | 2026-09-26 |
+| **Gallery API** `GET /api/gallery?folder=<key>` in `src/api/gallery.js` (`registerGalleryRoutes(router, deps)`, `requireUser`). `200 { key, name, breadcrumb: [{ key, name }], folders: [{ key, name, count, cover: { thumbUrl, thumbOrientation } \| null }], items: [{ id, name, kind: 'image' \| 'video', playable, takenAt, url: '/media/<id>' \| null, thumbUrl, thumbOrientation }] }`. At the root `key: ''`, `name: ''`, `breadcrumb: []`; elsewhere `name` = last key segment and `breadcrumb` = ancestors below the root (root and current excluded) — the client renders the root label "Bilder". `items` = direct children only; `name` = last segment of `rel_path`; `count` = all indexed files (images + videos, incl. non-playable) in the subfolder's subtree; `cover` = first playable `kind: 'image'` item in the subtree in (`folder`, `rel_path`) binary order, `null` if none. `url` null for non-playable. Errors: 404 `not_found` (key), 401. No `rel_path`/`dir` in the response. | A dedicated route avoids ambiguity with P2's `/api/library/:category` and expresses the tree; one response per folder keeps lightbox navigation exact. The server stays free of German strings (P2 precedent), so the root label is client-side. camelCase per D4. | 2026-09-26 |
+| Repository `src/db/image-meta.js` exports: `listItemsWithoutMeta(db, afterId, limit) → [{ id, dir }]`, `insertMetaStubs(db, rows: [{ itemId, folder }])`, `listStaleMeta(db, afterId, limit, metaVersion) → [{ itemId, relPath, ext, size, mtimeMs }]`, `saveMeta(db, itemId, { takenAt, orientation, thumbOffset, thumbLength, sourceSize, sourceMtimeMs, metaVersion })`, `folderExists(db, key) → boolean`, `listFolderItems(db, key) → rows`, `listSubtreeFolderCounts(db, key) → [{ folder, count }]`, `findFolderCover(db, key) → row \| null`, `getThumbSource(db, itemId) → { relPath, category, kind, playable, thumbOffset, thumbLength, sourceSize, sourceMtimeMs } \| null`. All prepared statements; joins to `library_items` read-only. | Constitution: SQL only in `src/db/`; names fixed so the sync, API and route issues build in parallel. | 2026-09-26 |
+| **No server-side pagination.** Folder tiles render at once; item tiles render in batches of 120 (first batch immediately, next when a sentinel after the grid comes within 800 px via `IntersectionObserver` `rootMargin`). Every `<img>` has `loading="lazy" decoding="async"`. | A 5,000-item folder is ~1 MB JSON on a LAN; batching bounds DOM size and memory on phones/TVs; one list keeps counters and prev/next exact. | 2026-09-26 |
+| **Grid**: `grid-template-columns: repeat(auto-fill, minmax(min(var(--grid-min), calc(50% - var(--space-2))), 1fr)); gap: var(--space-4)` in `public/css/images.css`. | Human decision at spec-acceptance gate (H3): always ≥ 2 columns on phones. `var(--space-2)` (8 px) replaces the literal `8px` because D5 forbids literal lengths outside `tokens.css`. | 2026-09-26 |
+| **Tiles**: own markup in `public/js/image-tiles.js` and styles in `public/css/images.css`, visually following the design.md Media card (1:1, radius `md`, `shadow-sm`, title 1 line ellipsis, meta `muted`). Folder tile = `<a href="/images?folder=…">` (cover `<img alt="">` or folder icon, small folder badge bottom-left); image tile = `<button type="button" data-item-id aria-label="<name>">` with `<span>` children and `<img alt="">`; playable video tile = same `<button>` with play glyph, `aria-label="<name>, Video"`; non-playable tile = non-interactive `<div>` with icon + badge (pill, `destructive` text and 1 px border on `background`, 12 px semibold). Elements are built with P1's `el()` (`public/js/lib/dom.js`); page-private inline-SVG icons (folder, play, image-off, chevron-left/right, close) live in `public/js/image-icons.js`, built with P1's `createIcon(paths)`; the folder-less "Bilder" glyph may reuse P1's `icon('images')`. Grid keyboard: native Tab/Enter/Space. | Avoids editing P2's shared media card (P4 extends it in parallel); P1 forbids edits of `icons.js` and prescribes `createIcon` for phase icons (D5). Folder links give native back/forward and bookmarkable URLs. | 2026-09-26 |
+| Header, breadcrumb and states: breadcrumb `<nav aria-label="Pfad"><ol>` — "Bilder" + ancestors as links, current as `<span aria-current="page">`, separator `›` `aria-hidden`; each link ≥ 44 px hit area (`min-block-size: var(--tap-min)`, inline-flex). Header meta counts direct subfolders and direct items only. Root with no folders and no items → empty state (no first-scan state; a reload shows new files). A non-root folder cannot be empty (it exists only through indexed items), so no subfolder empty state. API 404 → "Ordner nicht gefunden." + link; any other error → load error + "Erneut versuchen" (re-runs the fetch). `401` → P1's `request` redirects to login. | Review findings (header counts, breadcrumb targets); dead UI states removed in the pre-mortem. | 2026-09-26 |
+| **Lightbox** (`public/js/lightbox.js`, `createLightbox({ items, onClose }) → { open(itemId), close() }`, `items` = the API items, `onClose(lastItemId)` lets the page restore focus): native `<dialog aria-label="Bildansicht">` + `showModal()`, full viewport (`100vw` × `100dvh`, no margin/border), `::backdrop` and stage on `--color-background`, `html` scroll locked via a class while open. Sequence = playable items (images and videos) in API order; counter `i / n` over that sequence. Images: original via `url`, `max-inline-size: 100%; max-block-size: 100%; object-fit: contain` (never upscaled). No wrap-around — prev disabled on first, next on last (40 % opacity). Preload only previous and next when they are images (`new Image().src`); videos never preloaded. Initial focus on `Schließen`. Keys (from `lightbox-gestures.js` `keyAction`): ArrowLeft/ArrowRight navigate unless the event target is the `<video>` (native seek); Escape = native dialog close. Swipe: pointer events on the stage with `touch-action: pan-y pinch-zoom`; ignored when the pointer started on the `<video>`; `classifySwipe(dx, dy)`: `\|dx\| ≥ 50` and `\|dx\| > 1.5 × \|dy\|` → `dx < 0` next, `dx > 0` previous, else none. Caption (file name · formatted `takenAt`, for videos too) in an `aria-live="polite"` region. Layout per mocks: desktop counter top-left, close top-right, prev/next vertically centred at the sides, caption bottom-left, hint bottom-right; < 768 px counter + close top, caption, then prev · hint · next at the bottom. Buttons 44 px round on `secondary` with `border`. | Native dialog gives focus trapping and Escape; bounded preloading protects bandwidth; keeping native video controls usable avoids gesture/key conflicts (H9 inline playback). | 2026-09-26 |
+| **Lightbox history**: open → `history.pushState({ lightbox: id }, '', '#bild-<id>')`; navigating → `replaceState`; the close button calls `dialog.close()`; one `close` handler pauses/releases a video, unlocks scroll, restores focus and — if `history.state?.lightbox` is still current — calls `history.back()`; `popstate` without lightbox state closes the dialog if open. On page load with `#bild-<id>` of a playable item in the folder: `replaceState` to the plain URL, render batches up to that item, then open it (push) so Back closes it; unknown/non-playable id → hash dropped, no dialog. Focus returns to the tile of the last shown item (batches rendered up to it, `scrollIntoView({ block: 'nearest' })`). | Browser back and the Android back gesture (which closes a modal dialog via the close-watcher without navigating) must both leave history consistent and close the viewer, not the folder. | 2026-09-26 |
+| Frontend pure helpers without DOM access: `public/js/image-format.js` (`formatTakenAt(s)`, `orientationClass(n)`, `countLabel(n)`, `headerMeta(folders, items)`) and `public/js/lightbox-gestures.js` (`classifySwipe(dx, dy)`, `keyAction({ key, targetTag, altKey, ctrlKey, metaKey })` → `'prev' \| 'next' \| null`), unit-tested from `test/public/`. | Keeps the fiddly logic under `node --test`; importing a DOM-free frontend module from a test does not violate the server/frontend import rule. | 2026-09-26 |
+| Fixtures: tiny synthetic JPEGs (≤ 2 KiB, ≤ 64 px, created once with any local encoder, e.g. a browser canvas) are embedded as base64 in `test/helpers/exif-jpeg.js`, which builds EXIF-wrapped buffers (both byte orders, thumbnail, orientation, dates, malformed variants) for unit tests. `node test/helpers/exif-jpeg.js --write` (re)writes the committed QA tree below with fixed mtimes (`fs.utimes`, because git does not keep mtimes); `--bulk <n> <dir>` writes `n` copies for the large-folder check. Base images carry an asymmetric marker band so orientation is visually verifiable. The playable video fixture `VID_0433.webm` (≤ 50 KiB, 2 s, VP8/VP9, synthetic content: solid background + moving marker) is created once with any local encoder — a browser's `MediaRecorder` on a canvas, or `ffmpeg` if installed (a dev-time tool, not a runtime dependency) — and committed as a file; if the implementing agent has no encoder available, the file is omitted and the QA step uses any H.264 MP4 copied into that folder (QA-only); all other non-JPEG fixtures are a few synthetic bytes. Tests needing specific mtimes use temp dirs. | Never real media; one generator keeps unit and QA fixtures consistent; a canvas recording is synthetic yet decodable, so inline playback is QA-able without a human prerequisite. | 2026-09-26 |
+| QA fixture tree (`MEDIA_ROOT=test/fixtures/media`): `Bilder/Urlaub 2024/Italien/` with `IMG_0412.jpg` (II, thumb, orientation 1, DateTimeOriginal 2024-07-14 09:14), `IMG_0415.jpg` (MM, thumb, orientation 6, 10:28), `IMG_0419.jpg` (thumb, orientation 8, 11:45), `IMG_0424.jpg` (no EXIF), `IMG_0431.heic`, `VID_0433.webm` (playable), `VID_0434.mov` (not playable), `Screenshot 2.png`, `Screenshot 10.png`, subfolders `Tag 1 – Rom/IMG_0501.jpg`, `Tag 2 – Florenz/IMG_0601.jpg`; `Bilder/Familie/geburtstag.jpg` (IFD0 DateTime only); `Bilder/root.gif`; `Bilder/.versteckt.jpg` and `Bilder/@eaDir/x.jpg` (skipped by P2); `Photos/Familie/alias.jpg` (merges into `Familie`). | Covers every visible rule once; P2's QA tree (`Filme/`, `Serien/`) sits beside it. | 2026-09-26 |
+| Category id `images` (plural) everywhere — SQL filters, tests, API; imported from `CATEGORIES`, not re-spelled where the module is available. | Cross-phase consolidation D3. | 2026-09-26 |
+| No progress for anything under `images`: the lightbox never loads P4's `progress.js`. | Cross-phase consolidation D11 / H9: P4 returns `not_resumable` for category `images`. | 2026-09-26 |
 
 ## Tracking
 
@@ -199,64 +294,95 @@ Each issue references this spec path in its body.
 
 Machine (per PR and at QA):
 
-- [ ] `npm run verify` green; `npm ls --omit=dev --all` shows no packages.
+- [ ] `npm run verify` green; `npm ls --omit=dev --all` shows no packages;
+      every new `src/` module has its test file; no function > 60 lines, no
+      file > 300 lines.
 - [ ] `test/library/tags/exif.test.js`: II and MM files yield orientation,
       `takenAt` (DateTimeOriginal preferred over DateTime) and the absolute
       thumbnail offset/length; no-EXIF JPEG, PNG input, Compression ≠ 6, thumb
-      range outside APP1, length 0 / > 65,535, invalid date, IFD offset cycle,
-      out-of-window IFD → `null` fields; feeding every truncation length of a
-      valid sample and random garbage never throws.
-- [ ] `test/library/parsers/image.test.js`: extension table (case-insensitive),
-      `.svg` not indexed, `.heic` indexed not displayable, `.`-prefixed and
-      `@eaDir` paths skipped, folder-key derivation for nested paths, root files
-      and alias roots.
-- [ ] `test/db/image-meta.test.js` + `test/library/image-meta.test.js`: stub
-      insert, stale detection by size/mtime, backfill of pre-existing items,
-      orphan cleanup, single-flight coalescing, ENOENT during sync leaves the row
-      stale, fixture files unchanged (hash + mtime) after a sync.
-- [ ] `test/http/thumb.test.js`: 200 with exact thumbnail bytes, `image/jpeg`,
-      `Content-Length`, immutable `Cache-Control`; 404 for non-numeric id,
-      unknown id, non-image item, item without thumb, changed file
-      (size/mtime), bytes not starting `FF D8`, `rel_path` escaping
-      `MEDIA_ROOT`; unauthenticated → same response as `GET /media/:id`.
-- [ ] `test/api/gallery.test.js`: response shape, breadcrumb, direct-children
-      items only, subtree counts, cover choice, sort order (EXIF date, mtime
-      fallback, natural name tie-break), `thumbUrl`/`thumbOrientation` rules,
-      non-displayable nulls; 404 JSON for `..`, `.`, `//`, leading/trailing `/`,
-      `\`, NUL, > 4096 chars, unknown key; root 200 on an empty library;
-      401 JSON without session; 5,000-item folder returns all items.
-- [ ] `test/public/gallery-helpers.test.js`: date formatting, orientation
-      classes 1–8, swipe classification thresholds, singular/plural labels.
+      range outside APP1, length 0 / > 65,535, thumb not starting `FF D8`,
+      invalid date (`0000:00:00 00:00:00`, month 13), IFD offset cycle,
+      out-of-window IFD → `null` fields; every truncation length of a valid
+      sample and random garbage never throw; `isJpegStart` true/false cases.
+- [ ] `test/library/images-kinds.test.js` (temp tree, P2 `createScanner({ db, mediaRoot, log, now })` → `requestFull()` → `idle()`): `.mp4` and
+      `.webm` under `Bilder/` are indexed with `category 'images'`,
+      `kind 'video'`; `.mov` indexed not playable; `.svg` and `.heic` indexed
+      not playable; `.jfif` playable; `.mp4` under `Musik/` still ignored.
+- [ ] `test/db/image-meta.test.js`: 005 applies after 002 (also when 003/004 are
+      absent), table is STRICT; stub insert; stale detection by size, mtime and
+      `meta_version`; deleting a `library_items` row cascades; folder existence
+      and subtree counts with `_`/`%` in names use exact ranges; cover order.
+- [ ] `test/library/image-folders.test.js` + `test/library/gallery.test.js`:
+      key derivation for nested dirs, root files, alias roots, case
+      sensitivity; key validation (`..`, `.`, `//`, leading/trailing `/`, NUL,
+      > 4096, `\` allowed); breadcrumb; child folders with subtree counts; sort
+      (EXIF date, mtime fallback in local time, natural name tie-break, id);
+      `thumbUrl`/`thumbOrientation` rules incl. stale source; video and
+      non-playable nulls.
+- [ ] `test/library/image-meta.test.js`: stubs appear for new items; backfill of
+      pre-existing items; JPEG rows read, PNG/video rows marked without I/O
+      (open spy); single-flight: 3 triggers during a pass → exactly one rerun;
+      a trigger mid-pass makes a new item's stub visible before the pass ends;
+      ENOENT and a guard `null` leave the row stale and do not loop; a closed DB
+      ends the pass quietly; fixture files unchanged (hash + mtime) after a sync.
+- [ ] `test/api/thumb.test.js` (`startTestApp`): 200 with exact thumbnail bytes,
+      `image/jpeg`, `Content-Length`, immutable `Cache-Control`, `nosniff`;
+      `HEAD` headers without body; `Range: bytes=0-1` → 206 inside the slice;
+      `?v=123` ignored; 404 for `abc`, `0`, `01`,
+      17-digit id, unknown id, non-image item, video item, non-playable image,
+      no thumb, changed size/mtime, bytes not starting `FF D8`, `rel_path`
+      escaping `MEDIA_ROOT`; unauthenticated → 401 JSON; the pre-check handle
+      is closed on every path (open spy).
+- [ ] `test/api/gallery.test.js` (`startTestApp`): response shape, breadcrumb,
+      direct-children items only, subtree counts incl. videos and non-playable,
+      cover choice, alias merge, sort order, no `relPath`/`dir` keys; 404 JSON
+      for `..`, `.`, `//`, leading/trailing `/`, NUL, > 4096 chars, unknown key;
+      a key containing `\` of an existing folder → 200; root 200 on an empty
+      library; 401 JSON without session; a 5,000-item folder returns all items.
+- [ ] `test/public/image-format.test.js` + `test/public/lightbox-gestures.test.js`:
+      date formatting, orientation classes 1–8 (+ unknown → none), count and
+      header-meta labels (singular/plural, zero parts omitted), swipe thresholds
+      (49/50 px, ratio 1.5 boundary, vertical), key mapping incl. `VIDEO`
+      target and modifiers → `null`.
 
-Human QA (Chromium + Firefox; desktop and 390 px mobile emulation; app on
-`test/fixtures/media/`):
+Human QA (Chromium + Firefox; desktop 1280 px and 390 px mobile emulation;
+`node test/helpers/exif-jpeg.js --write` then `MEDIA_ROOT=test/fixtures/media`):
 
-- [ ] Nav "Bilder" opens the gallery root: folders with cover + "N Dateien",
-      no hidden or `@eaDir` entries; mobile shows the bottom nav with "Bilder"
-      active — matches the committed mocks.
+- [ ] Nav "Bilder" opens `/images` with "Bilder" active: folders "Familie" and
+      "Urlaub 2024" with cover + "N Dateien"; `root.gif` as item; no hidden or
+      `@eaDir` entries; `Photos/Familie/alias.jpg` appears inside "Familie";
+      two columns at 390 px — matches the committed mocks.
 - [ ] Folder navigation: breadcrumb `Bilder › Urlaub 2024 › Italien`, browser
-      back/forward move between folders, heading + meta line correct.
+      back/forward move between folders, heading, `document.title` and meta
+      line (`2 Ordner · 9 Dateien`) correct.
 - [ ] Network panel: EXIF JPEG tiles load `/media/<id>/thumb?v=…` (200,
-      `image/jpeg`, ≤ 64 KiB, cached on reload); PNG / EXIF-less JPEG tiles load
-      `/media/<id>` lazily (not all at once).
+      `image/jpeg`, ≤ 64 KiB, served from cache on reload); PNG / EXIF-less JPEG
+      tiles load `/media/<id>` lazily (not all at once).
 - [ ] Orientation-6 and -8 fixtures show the marker band at the top in the tile
       and in the lightbox.
-- [ ] HEIC fixture shows "Nicht anzeigbar", is not focusable/clickable and is
-      skipped by lightbox navigation; video fixture behaves per OPEN-1.
-- [ ] Order: EXIF-dated fixtures in capture order, EXIF-less by mtime.
-- [ ] Lightbox: opens on click/Enter with counter, filename, date
+- [ ] HEIC shows "Nicht anzeigbar", `.mov` shows "Nicht abspielbar"; neither is
+      focusable/clickable and both are skipped by lightbox navigation.
+- [ ] `VID_0433.webm` shows the play tile with "Video"; in the lightbox it plays
+      only after pressing play, ←/→ with focus on the video seek natively,
+      navigating away stops playback (no further `/media/` traffic), swipe on
+      the video does not change slides.
+- [ ] Order: EXIF-dated fixtures in capture order, EXIF-less by mtime,
+      "Screenshot 2" before "Screenshot 10".
+- [ ] Lightbox: opens on click/Enter with counter, file name, date
       `DD.MM.YYYY, HH:MM`; ←/→ and buttons navigate; buttons disabled at the
       ends; Escape, close button and browser back close it and focus returns
-      to the tile; reload with `#bild-<id>` reopens that image, Back closes it.
+      to the tile of the last shown item; reload with `#bild-<id>` reopens that
+      item, Back closes it and stays in the folder.
 - [ ] Mobile emulation (touch): horizontal swipe navigates, vertical scroll and
       pinch are not hijacked, hint "Wischen zum Blättern" visible.
-- [ ] `/gallery.html?folder=..%2F..` shows "Ordner nicht gefunden." with link
-      "Zu Bilder"; `/api/gallery?folder=../..` returns 404 JSON.
+- [ ] `/images?folder=..%2F..` shows "Ordner nicht gefunden." with link
+      "Zu Bilder"; `/api/gallery?folder=../..` returns 404 JSON; `/images.html`
+      is 404.
 - [ ] Freshness (temp `MEDIA_ROOT`): copy a JPEG into a subfolder → visible
-      after reload within the P2 freshness bound, thumbnail served afterwards;
-      delete it → gone after the next scan.
-- [ ] Large folder (temp `MEDIA_ROOT`, 2,000 copies of a fixture): first tiles
-      appear promptly, more render on scroll, lightbox counter shows `1 / 2000`.
+      after reload within 10 s, its thumbnail served afterwards; copy a `.mp4`
+      → video tile; delete them → gone after the next scan.
+- [ ] Large folder (temp `MEDIA_ROOT`, `--bulk 2000`): first tiles appear
+      promptly, more render on scroll, lightbox counter shows `1 / 2000`.
 - [ ] Keyboard only: every tile, breadcrumb link and lightbox control reachable
       with a visible 2 px `primary` focus outline; touch targets ≥ 44 px.
 - [ ] Optional on the target host (Pi 4): RSS stays < 100 MB after the initial
@@ -266,16 +392,17 @@ Human QA (Chromium + Firefox; desktop and 390 px mobile emulation; app on
 
 | Risk | Mitigation |
 |---|---|
-| P2's scanner exposes no completion hook → P5 (tags) and P6 (EXIF) both add one to `scanner.js` in parallel. | Flagged to the orchestrator; preferred fix is a generic post-scan hook in the P2 spec. Fallback: P6's addition is minimal and additive; whichever lands second rebases onto the first. |
-| Migration 005 may be applied on a DB before 003/004 exist (P4/P6 parallel). | 005 depends only on 002; P1's runner must apply any unapplied migration in ascending order, not only numbers above the max (flagged to P1). |
+| Migration 005 may be applied on a DB before 003/004 exist (P4/P5/P6 parallel). | 005 depends only on 002; P1's runner applies every unapplied file ascending (D12). Test covers it. |
+| Initial backfill of a large library competes with streaming on a Pi HDD and delays new files. | Sequential single reader, one reused 128 KiB buffer, 50-row batches; stubs refreshed between batches keep new files visible; the listener is not awaited by the scan queue (D6). |
+| `/media/:id` sends `Cache-Control: private, no-cache` without validators (P3), so originals used as tile fallback or in the lightbox are re-downloaded on each page visit. | Accepted for v1 on a LAN: in-document memory cache and bfcache cover back/forward within a session; EXIF JPEGs (the bulk of phone photos) use the immutable thumb URL; lazy loading limits traffic. Changing P3's policy is out of scope. |
 | Embedded thumbnails are small (often 160×120) → soft tiles on HiDPI screens; some cameras pad them with black bars. | Accepted trade-off of the prior-art decision (no server resize); `object-fit: cover` crops most padding; the lightbox always shows the original. |
-| Thumbnail orientation mismatches when an editor rotated pixels but left a stale thumbnail/tag. | Rare; the original in the lightbox is correct; no mitigation beyond documenting it. |
-| iPhone households store HEIC → many "Nicht anzeigbar" tiles. | README note (issue acceptance): set iOS camera to "Maximale Kompatibilität" or export as JPEG; transcoding stays out of scope. |
+| Thumbnail orientation mismatches when an editor rotated pixels but left a stale thumbnail/tag. | Rare; the original in the lightbox is correct; documented. |
+| iPhone households store HEIC/MOV (HEVC) → many "Nicht anzeigbar"/"Nicht abspielbar" tiles. | README note (docs issue acceptance): iOS camera "Maximale Kompatibilität" or export as JPEG/H.264; transcoding stays out of scope. |
 | Folders of PNG screenshots without thumbnails → heavy downloads and decode memory on phones/TVs. | `loading="lazy"`, `decoding="async"`, 120-tile batches; originals only fetched when near the viewport. |
-| Initial backfill of a large library competes with streaming on a Pi HDD. | Sequential single-reader sync with a reused 128 KiB buffer; runs once per changed file. |
-| Malicious or corrupt JPEG headers crash or hang the parser. | Bounds checks on every read, cycle guard, entry cap, truncation/garbage tests; parser returns `null` fields instead of throwing; sync catches per-file errors. |
-| A file is edited between scans → stored thumbnail offset is stale. | Thumb route compares current size/mtime with `source_*` and returns 404; client falls back to the original via `onerror`. |
-| `routes.js` / nav module edited by P4/P5 in parallel → merge conflicts. | Additive one-line changes only; trivial rebase. |
+| Malicious or corrupt JPEG headers crash or hang the parser. | Bounds checks on every read, cycle guard, entry cap, truncation/garbage tests; `null` fields instead of throwing; the sync catches per-file errors. |
+| A file is edited between scans → stored thumbnail offset is stale. | Thumb route compares current size/mtime with `source_*` and returns 404; client falls back to the original via `onerror`; `thumbUrl` changes with `mtime_ms`. |
+| A playing inline video keeps a server file handle after the slide changes. | `pause()` + `removeAttribute('src')` + `load()` on leave/close; P3's 60 s idle timeout as backstop. |
+| `routes.js`, `server.js`, `categories.js`, `architecture.md`, `README.md` edited by several phases in parallel → merge conflicts. | One line / one section each; trivial rebase. |
 
 ## Decision log
 
@@ -288,7 +415,7 @@ Human QA (Chromium + Firefox; desktop and 390 px mobile emulation; app on
 - 2026-09-26: Dedicated `GET /api/gallery` instead of extending P2's
   `/api/library/:category` — tree-shaped response and no router ambiguity.
 - 2026-09-26: Thumbnail fallback signalled by the API (`thumbUrl` is the
-  original when no thumbnail exists) plus a client `onerror` safety net —
+  original when no valid thumbnail exists) plus a client `onerror` safety net —
   avoids a 404 round-trip per EXIF-less image.
 - 2026-09-26: Thumbnail orientation fixed client-side by CSS transforms; the
   server never rewrites image bytes (read-only, no re-encoding).
@@ -296,9 +423,43 @@ Human QA (Chromium + Firefox; desktop and 390 px mobile emulation; app on
   by string slicing — avoids TZ shifts between server and clients.
 - 2026-09-26: Chronological (oldest-first) item order and natural folder order
   settled as album convention; not asked at the gate.
-- 2026-09-26: SVG excluded from the index (same-origin script risk via
-  `/media/:id`); HEIC/TIFF/JXL/RAW listed as not displayable (no transcoding).
 - 2026-09-26: Own tile markup instead of P2's shared media card — P4 edits that
   card in parallel.
 - 2026-09-26: exifr/exif-parser not cloned — the EXIF 2.3/TIFF layout is a
   published standard and no decision depended on their internals.
+- 2026-09-26: cross-phase consolidation — page at `/images` (`public/images.html`
+  replaces P1's placeholder, `?folder=<key>`), no nav edit (D1); supersedes
+  `/gallery.html` and the nav-module edit.
+- 2026-09-26: cross-phase consolidation — extensions and MIME owned solely by
+  P2's `compat.js` (D9): `jfif` displayable, `jxl` and `svg` indexed as
+  "Nicht anzeigbar"; P6 keeps no extension table and no `parsers/image.js`.
+- 2026-09-26: cross-phase consolidation — metadata sync registered via P2's
+  `onScanComplete` with one `src/server.js` line (D6); orphan cleanup dropped
+  (FK cascade), scanner untouched.
+- 2026-09-26: cross-phase consolidation — thumbnail route in `src/api/thumb.js`,
+  JPEG SOI check in `src/library/tags/exif.js`, served through P3's
+  `sendMedia` with `cacheControl: 'private, max-age=31536000, immutable'` and
+  its `slice` option (D10); supersedes the draft's own bounded read.
+- 2026-09-26: cross-phase consolidation — migration number 005, STRICT, no
+  transaction statements, depends only on 002 (D12); category id `images`
+  (D3); P1 server/frontend contracts used verbatim (D4/D5), incl. JSON-line
+  logging via the injected `log`.
+- 2026-09-26: cross-phase consolidation — `docs/architecture.md` edits listed in
+  scope and made by the docs/fixtures issue (D13).
+- 2026-09-26: gate decision — videos in `Bilder` = C (H9): indexed under
+  `images` with kind `video` via one `categories.js` edit, video tiles, inline
+  native playback in the lightbox, non-playable videos skipped, no progress,
+  no video thumbs.
+- 2026-09-26: gate decision — phone grid = B (H3): `minmax(min(var(--grid-min),
+  calc(50% - var(--space-2))), 1fr)`, `--space-2` instead of the literal 8 px.
+- 2026-09-26: Pre-mortem — keyset cursor + stub refresh between batches in the
+  sync (no retry loop, freshness during backfill); `meta_version` column for
+  future reader fixes; `db.isOpen` check instead of a shutdown hook; root label
+  and header meta computed client-side; unreachable subfolder empty state
+  removed; lightbox history reconciled in one `close` handler (covers Android
+  back via close-watcher); focus returns to the last shown item; arrow keys and
+  swipes on a `<video>` left to native controls.
+- 2026-09-26: Review findings resolved — breadcrumb hit area ≥ 44 px; header
+  meta counts direct children and omits zero parts; `\` allowed in folder keys;
+  range form instead of `LIKE`; `test/library/gallery.test.js` added; P3's
+  `no-cache` on originals recorded as an accepted risk.
