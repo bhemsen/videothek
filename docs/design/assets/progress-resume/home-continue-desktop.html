@@ -1,0 +1,761 @@
+<!DOCTYPE html>
+<html lang="de">
+<head>
+  <meta charset="UTF-8">
+  <meta name="viewport" content="width=device-width, initial-scale=1.0">
+  <title>P4 Start Weiterschauen – Desktop</title>
+  <style>
+    :root {
+      --color-background: #0f1115;
+      --color-foreground: #e8eaed;
+      --color-primary: #f5b301;
+      --color-secondary: #1c2029;
+      --color-secondary-hover: #262b37;
+      --color-accent: #4fb3ff;
+      --color-muted: #9aa0aa;
+      --color-border: #2a2f3a;
+      --color-destructive: #ff5c5c;
+      --font-sans: system-ui, -apple-system, 'Segoe UI', Roboto, 'Helvetica Neue', Arial, sans-serif;
+    }
+
+    *, *::before, *::after {
+      box-sizing: border-box;
+      margin: 0;
+      padding: 0;
+    }
+
+    body {
+      background-color: var(--color-background);
+      color: var(--color-foreground);
+      font-family: var(--font-sans);
+      line-height: 1.5;
+      min-height: 100vh;
+      -webkit-font-smoothing: antialiased;
+    }
+
+    /* Top Bar */
+    header {
+      height: 64px;
+      border-bottom: 1px solid var(--color-border);
+      background-color: rgba(15, 17, 21, 0.95);
+      position: sticky;
+      top: 0;
+      z-index: 50;
+      backdrop-filter: blur(8px);
+    }
+
+    .header-inner {
+      max-width: 1440px;
+      margin: 0 auto;
+      height: 100%;
+      padding: 0 32px;
+      display: flex;
+      align-items: center;
+      justify-content: space-between;
+    }
+
+    .brand {
+      display: flex;
+      align-items: center;
+      gap: 12px;
+      text-decoration: none;
+      color: var(--color-foreground);
+    }
+
+    .brand-icon {
+      width: 32px;
+      height: 32px;
+      background-color: var(--color-secondary);
+      border: 1px solid var(--color-border);
+      border-radius: 8px;
+      display: flex;
+      align-items: center;
+      justify-content: center;
+    }
+
+    .brand-title {
+      font-size: 20px;
+      font-weight: 700;
+      letter-spacing: -0.02em;
+    }
+
+    nav {
+      display: flex;
+      align-items: center;
+      gap: 32px;
+      height: 100%;
+    }
+
+    .nav-item {
+      position: relative;
+      display: flex;
+      align-items: center;
+      height: 100%;
+      text-decoration: none;
+      color: var(--color-muted);
+      font-size: 15px;
+      font-weight: 500;
+      transition: color 0.15s ease;
+      padding: 0 4px;
+    }
+
+    .nav-item:hover {
+      color: var(--color-foreground);
+    }
+
+    .nav-item.active {
+      color: var(--color-primary);
+      font-weight: 600;
+    }
+
+    .nav-item.active::after {
+      content: '';
+      position: absolute;
+      bottom: 0;
+      left: 0;
+      right: 0;
+      height: 3px;
+      background-color: var(--color-primary);
+      border-radius: 3px 3px 0 0;
+    }
+
+    .user-actions {
+      display: flex;
+      align-items: center;
+      gap: 16px;
+    }
+
+    .user-profile {
+      display: flex;
+      align-items: center;
+      gap: 10px;
+      color: var(--color-foreground);
+      font-size: 14px;
+      font-weight: 500;
+    }
+
+    .user-avatar {
+      width: 32px;
+      height: 32px;
+      border-radius: 9999px;
+      background-color: var(--color-secondary);
+      border: 1px solid var(--color-border);
+      display: flex;
+      align-items: center;
+      justify-content: center;
+      font-weight: 600;
+      font-size: 13px;
+      color: var(--color-primary);
+    }
+
+    .btn-logout {
+      background: none;
+      border: none;
+      color: var(--color-muted);
+      font-family: inherit;
+      font-size: 14px;
+      cursor: pointer;
+      padding: 8px 12px;
+      border-radius: 6px;
+      transition: color 0.15s ease, background-color 0.15s ease;
+    }
+
+    .btn-logout:hover {
+      color: var(--color-foreground);
+      background-color: var(--color-secondary);
+    }
+
+    .btn-logout:focus-visible {
+      outline: 2px solid var(--color-primary);
+      outline-offset: 2px;
+    }
+
+    /* Main Container */
+    main {
+      max-width: 1440px;
+      margin: 0 auto;
+      padding: 36px 32px 64px 32px;
+      overflow-x: hidden;
+    }
+
+    .section-title {
+      font-size: 24px;
+      font-weight: 600;
+      color: var(--color-foreground);
+      margin-bottom: 20px;
+      letter-spacing: -0.01em;
+    }
+
+    /* Section: Weiterschauen */
+    .weiterschauen-section {
+      margin-bottom: 48px;
+    }
+
+    .horizontal-scroll-container {
+      display: flex;
+      gap: 20px;
+      overflow-x: visible;
+      width: 100%;
+      padding-bottom: 4px;
+    }
+
+    .wide-card {
+      flex: 0 0 320px;
+      display: flex;
+      flex-direction: column;
+      text-decoration: none;
+      color: inherit;
+      position: relative;
+    }
+
+    .wide-thumbnail-wrap {
+      width: 100%;
+      aspect-ratio: 16 / 9;
+      background-color: var(--color-secondary);
+      border-radius: 8px;
+      border: 1px solid var(--color-border);
+      position: relative;
+      overflow: hidden;
+      display: flex;
+      align-items: center;
+      justify-content: center;
+      box-shadow: 0 1px 2px rgba(0,0,0,0.4);
+      transition: border-color 0.2s ease, transform 0.2s ease;
+    }
+
+    .wide-card:hover .wide-thumbnail-wrap {
+      border-color: rgba(245, 179, 1, 0.4);
+      transform: translateY(-2px);
+    }
+
+    .placeholder-icon {
+      color: var(--color-muted);
+      opacity: 0.6;
+    }
+
+    .btn-remove {
+      position: absolute;
+      top: 8px;
+      right: 8px;
+      width: 44px;
+      height: 44px;
+      display: flex;
+      align-items: center;
+      justify-content: center;
+      background: none;
+      border: none;
+      cursor: pointer;
+      z-index: 10;
+      border-radius: 9999px;
+    }
+
+    .btn-remove-circle {
+      width: 28px;
+      height: 28px;
+      border-radius: 9999px;
+      background-color: rgba(28, 32, 41, 0.85);
+      border: 1px solid var(--color-border);
+      color: var(--color-muted);
+      display: flex;
+      align-items: center;
+      justify-content: center;
+      transition: background-color 0.15s ease, color 0.15s ease, border-color 0.15s ease;
+    }
+
+    .btn-remove:hover .btn-remove-circle {
+      background-color: var(--color-secondary);
+      color: var(--color-foreground);
+      border-color: var(--color-muted);
+    }
+
+    .btn-remove:focus-visible {
+      outline: 2px solid var(--color-primary);
+      outline-offset: 2px;
+    }
+
+    .pill-badge {
+      position: absolute;
+      bottom: 12px;
+      left: 12px;
+      background-color: rgba(28, 32, 41, 0.9);
+      border: 1px solid var(--color-primary);
+      color: var(--color-primary);
+      font-size: 11px;
+      font-weight: 600;
+      padding: 3px 8px;
+      border-radius: 9999px;
+      letter-spacing: 0.02em;
+      backdrop-filter: blur(4px);
+    }
+
+    .progress-bar-track {
+      position: absolute;
+      bottom: 0;
+      left: 0;
+      right: 0;
+      height: 4px;
+      background-color: rgba(0, 0, 0, 0.5);
+    }
+
+    .progress-bar-fill {
+      height: 100%;
+      background-color: var(--color-primary);
+    }
+
+    .card-info {
+      margin-top: 10px;
+    }
+
+    .card-title {
+      font-size: 15px;
+      font-weight: 600;
+      color: var(--color-foreground);
+      white-space: nowrap;
+      overflow: hidden;
+      text-overflow: ellipsis;
+    }
+
+    .card-meta {
+      font-size: 13px;
+      color: var(--color-muted);
+      margin-top: 2px;
+      white-space: nowrap;
+      overflow: hidden;
+      text-overflow: ellipsis;
+    }
+
+    /* Section: Filme */
+    .filme-grid {
+      display: grid;
+      grid-template-columns: repeat(auto-fill, minmax(160px, 1fr));
+      gap: 16px;
+    }
+
+    .poster-card {
+      display: flex;
+      flex-direction: column;
+      text-decoration: none;
+      color: inherit;
+    }
+
+    .poster-wrap {
+      width: 100%;
+      aspect-ratio: 2 / 3;
+      background-color: var(--color-secondary);
+      border-radius: 8px;
+      border: 1px solid var(--color-border);
+      position: relative;
+      overflow: hidden;
+      display: flex;
+      align-items: center;
+      justify-content: center;
+      box-shadow: 0 1px 2px rgba(0,0,0,0.4);
+      transition: border-color 0.2s ease, transform 0.2s ease;
+    }
+
+    .poster-card:hover .poster-wrap {
+      border-color: rgba(245, 179, 1, 0.4);
+      transform: translateY(-2px);
+    }
+
+    .card-badge {
+      position: absolute;
+      top: 10px;
+      left: 10px;
+      display: flex;
+      align-items: center;
+      gap: 5px;
+      font-size: 11px;
+      font-weight: 600;
+      padding: 3px 8px;
+      border-radius: 4px;
+      backdrop-filter: blur(4px);
+    }
+
+    .badge-seen {
+      background-color: rgba(28, 32, 41, 0.9);
+      border: 1px solid var(--color-border);
+      color: var(--color-foreground);
+    }
+
+    .badge-seen svg {
+      color: var(--color-accent);
+    }
+
+    .badge-unplayable {
+      background-color: rgba(28, 32, 41, 0.95);
+      border: 1px solid var(--color-destructive);
+      color: var(--color-destructive);
+    }
+
+    /* Accessibility Focus styles */
+    a:focus-visible {
+      outline: 2px solid var(--color-primary);
+      outline-offset: 2px;
+      border-radius: 8px;
+    }
+  </style>
+</head>
+<body>
+
+  <!-- Top Bar -->
+  <header>
+    <div class="header-inner">
+      <a href="#" class="brand" aria-label="Videothek Startseite">
+        <div class="brand-icon">
+          <!-- Play icon in amber -->
+          <svg width="14" height="16" viewBox="0 0 14 16" fill="none" xmlns="http://www.w3.org/2000/svg">
+            <path d="M12.5 7.13397C13.1667 7.51887 13.1667 8.48113 12.5 8.86603L2 14.9282C1.33333 15.3131 0.5 14.832 0.5 14.0622L0.5 1.93782C0.5 1.16802 1.33333 0.686895 2 1.0718L12.5 7.13397Z" fill="#f5b301"/>
+          </svg>
+        </div>
+        <span class="brand-title">Videothek</span>
+      </a>
+
+      <!-- Category Navigation -->
+      <nav aria-label="Kategorienavigation">
+        <a href="#" class="nav-item active" aria-current="page">Filme</a>
+        <a href="#" class="nav-item">Serien</a>
+        <a href="#" class="nav-item">Musik</a>
+        <a href="#" class="nav-item">Hörbücher</a>
+        <a href="#" class="nav-item">Bilder</a>
+      </nav>
+
+      <!-- User Info & Logout -->
+      <div class="user-actions">
+        <div class="user-profile">
+          <div class="user-avatar" aria-hidden="true">A</div>
+          <span>Anna</span>
+        </div>
+        <button class="btn-logout" type="button">Abmelden</button>
+      </div>
+    </div>
+  </header>
+
+  <!-- Main Content -->
+  <main>
+    <!-- Section: Weiterschauen -->
+    <section class="weiterschauen-section" aria-labelledby="heading-weiterschauen">
+      <h2 id="heading-weiterschauen" class="section-title">Weiterschauen</h2>
+      <div class="horizontal-scroll-container">
+        
+        <!-- Card 1: Der Name der Rose (20%) -->
+        <div class="wide-card">
+          <div class="wide-thumbnail-wrap">
+            <svg class="placeholder-icon" width="40" height="40" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.5" stroke-linecap="round" stroke-linejoin="round">
+              <rect x="2" y="2" width="20" height="20" rx="2.18" ry="2.18"></rect>
+              <line x1="7" y1="2" x2="7" y2="22"></line>
+              <line x1="17" y1="2" x2="17" y2="22"></line>
+              <line x1="2" y1="12" x2="22" y2="12"></line>
+              <line x1="2" y1="7" x2="7" y2="7"></line>
+              <line x1="2" y1="17" x2="7" y2="17"></line>
+              <line x1="17" y1="17" x2="22" y2="17"></line>
+              <line x1="17" y1="7" x2="22" y2="7"></line>
+            </svg>
+            <button class="btn-remove" type="button" aria-label="Aus Weiterschauen entfernen">
+              <span class="btn-remove-circle" aria-hidden="true">
+                <svg width="12" height="12" viewBox="0 0 12 12" fill="none" stroke="currentColor" stroke-width="1.8" stroke-linecap="round">
+                  <path d="M2 2L10 10M10 2L2 10"/>
+                </svg>
+              </span>
+            </button>
+            <div class="progress-bar-track">
+              <div class="progress-bar-fill" style="width: 20%;"></div>
+            </div>
+          </div>
+          <div class="card-info">
+            <h3 class="card-title">Der Name der Rose</h3>
+            <p class="card-meta">Noch 1 Std. 52 Min.</p>
+          </div>
+        </div>
+
+        <!-- Card 2: Dark (45%) -->
+        <div class="wide-card">
+          <div class="wide-thumbnail-wrap">
+            <svg class="placeholder-icon" width="40" height="40" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.5" stroke-linecap="round" stroke-linejoin="round">
+              <rect x="2" y="2" width="20" height="20" rx="2.18" ry="2.18"></rect>
+              <line x1="7" y1="2" x2="7" y2="22"></line>
+              <line x1="17" y1="2" x2="17" y2="22"></line>
+              <line x1="2" y1="12" x2="22" y2="12"></line>
+              <line x1="2" y1="7" x2="7" y2="7"></line>
+              <line x1="2" y1="17" x2="7" y2="17"></line>
+              <line x1="17" y1="17" x2="22" y2="17"></line>
+              <line x1="17" y1="7" x2="22" y2="7"></line>
+            </svg>
+            <button class="btn-remove" type="button" aria-label="Aus Weiterschauen entfernen">
+              <span class="btn-remove-circle" aria-hidden="true">
+                <svg width="12" height="12" viewBox="0 0 12 12" fill="none" stroke="currentColor" stroke-width="1.8" stroke-linecap="round">
+                  <path d="M2 2L10 10M10 2L2 10"/>
+                </svg>
+              </span>
+            </button>
+            <div class="progress-bar-track">
+              <div class="progress-bar-fill" style="width: 45%;"></div>
+            </div>
+          </div>
+          <div class="card-info">
+            <h3 class="card-title">Dark</h3>
+            <p class="card-meta">S1 · F3 · Noch 24 Min.</p>
+          </div>
+        </div>
+
+        <!-- Card 3: Das Boot (70%) -->
+        <div class="wide-card">
+          <div class="wide-thumbnail-wrap">
+            <svg class="placeholder-icon" width="40" height="40" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.5" stroke-linecap="round" stroke-linejoin="round">
+              <rect x="2" y="2" width="20" height="20" rx="2.18" ry="2.18"></rect>
+              <line x1="7" y1="2" x2="7" y2="22"></line>
+              <line x1="17" y1="2" x2="17" y2="22"></line>
+              <line x1="2" y1="12" x2="22" y2="12"></line>
+              <line x1="2" y1="7" x2="7" y2="7"></line>
+              <line x1="2" y1="17" x2="7" y2="17"></line>
+              <line x1="17" y1="17" x2="22" y2="17"></line>
+              <line x1="17" y1="7" x2="22" y2="7"></line>
+            </svg>
+            <button class="btn-remove" type="button" aria-label="Aus Weiterschauen entfernen">
+              <span class="btn-remove-circle" aria-hidden="true">
+                <svg width="12" height="12" viewBox="0 0 12 12" fill="none" stroke="currentColor" stroke-width="1.8" stroke-linecap="round">
+                  <path d="M2 2L10 10M10 2L2 10"/>
+                </svg>
+              </span>
+            </button>
+            <div class="progress-bar-track">
+              <div class="progress-bar-fill" style="width: 70%;"></div>
+            </div>
+          </div>
+          <div class="card-info">
+            <h3 class="card-title">Das Boot</h3>
+            <p class="card-meta">Noch 38 Min.</p>
+          </div>
+        </div>
+
+        <!-- Card 4: Babylon Berlin (Pill "Nächste Folge") -->
+        <div class="wide-card">
+          <div class="wide-thumbnail-wrap">
+            <svg class="placeholder-icon" width="40" height="40" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.5" stroke-linecap="round" stroke-linejoin="round">
+              <rect x="2" y="2" width="20" height="20" rx="2.18" ry="2.18"></rect>
+              <line x1="7" y1="2" x2="7" y2="22"></line>
+              <line x1="17" y1="2" x2="17" y2="22"></line>
+              <line x1="2" y1="12" x2="22" y2="12"></line>
+              <line x1="2" y1="7" x2="7" y2="7"></line>
+              <line x1="2" y1="17" x2="7" y2="17"></line>
+              <line x1="17" y1="17" x2="22" y2="17"></line>
+              <line x1="17" y1="7" x2="22" y2="7"></line>
+            </svg>
+            <button class="btn-remove" type="button" aria-label="Aus Weiterschauen entfernen">
+              <span class="btn-remove-circle" aria-hidden="true">
+                <svg width="12" height="12" viewBox="0 0 12 12" fill="none" stroke="currentColor" stroke-width="1.8" stroke-linecap="round">
+                  <path d="M2 2L10 10M10 2L2 10"/>
+                </svg>
+              </span>
+            </button>
+            <span class="pill-badge">Nächste Folge</span>
+          </div>
+          <div class="card-info">
+            <h3 class="card-title">Babylon Berlin</h3>
+            <p class="card-meta">S2 · F5</p>
+          </div>
+        </div>
+
+        <!-- Card 5: Metropolis (85%, partially cut off to indicate horizontal overflow) -->
+        <div class="wide-card">
+          <div class="wide-thumbnail-wrap">
+            <svg class="placeholder-icon" width="40" height="40" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.5" stroke-linecap="round" stroke-linejoin="round">
+              <rect x="2" y="2" width="20" height="20" rx="2.18" ry="2.18"></rect>
+              <line x1="7" y1="2" x2="7" y2="22"></line>
+              <line x1="17" y1="2" x2="17" y2="22"></line>
+              <line x1="2" y1="12" x2="22" y2="12"></line>
+              <line x1="2" y1="7" x2="7" y2="7"></line>
+              <line x1="2" y1="17" x2="7" y2="17"></line>
+              <line x1="17" y1="17" x2="22" y2="17"></line>
+              <line x1="17" y1="7" x2="22" y2="7"></line>
+            </svg>
+            <button class="btn-remove" type="button" aria-label="Aus Weiterschauen entfernen">
+              <span class="btn-remove-circle" aria-hidden="true">
+                <svg width="12" height="12" viewBox="0 0 12 12" fill="none" stroke="currentColor" stroke-width="1.8" stroke-linecap="round">
+                  <path d="M2 2L10 10M10 2L2 10"/>
+                </svg>
+              </span>
+            </button>
+            <div class="progress-bar-track">
+              <div class="progress-bar-fill" style="width: 85%;"></div>
+            </div>
+          </div>
+          <div class="card-info">
+            <h3 class="card-title">Metropolis</h3>
+            <p class="card-meta">Noch 22 Min.</p>
+          </div>
+        </div>
+
+      </div>
+    </section>
+
+    <!-- Section: Filme -->
+    <section aria-labelledby="heading-filme">
+      <h2 id="heading-filme" class="section-title">Filme</h2>
+      <div class="filme-grid">
+        
+        <!-- Film 1: Das Cabinet des Dr. Caligari (1920) -->
+        <div class="poster-card">
+          <div class="poster-wrap">
+            <svg class="placeholder-icon" width="36" height="36" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.5" stroke-linecap="round" stroke-linejoin="round">
+              <rect x="2" y="2" width="20" height="20" rx="2.18" ry="2.18"></rect>
+              <line x1="7" y1="2" x2="7" y2="22"></line>
+              <line x1="17" y1="2" x2="17" y2="22"></line>
+              <line x1="2" y1="12" x2="22" y2="12"></line>
+              <line x1="2" y1="7" x2="7" y2="7"></line>
+              <line x1="2" y1="17" x2="7" y2="17"></line>
+              <line x1="17" y1="17" x2="22" y2="17"></line>
+              <line x1="17" y1="7" x2="22" y2="7"></line>
+            </svg>
+          </div>
+          <div class="card-info">
+            <h3 class="card-title" title="Das Cabinet des Dr. Caligari">Das Cabinet des Dr. Caligari</h3>
+            <p class="card-meta">1920</p>
+          </div>
+        </div>
+
+        <!-- Film 2: Lola rennt (1998) - Progress bar -->
+        <div class="poster-card">
+          <div class="poster-wrap">
+            <svg class="placeholder-icon" width="36" height="36" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.5" stroke-linecap="round" stroke-linejoin="round">
+              <rect x="2" y="2" width="20" height="20" rx="2.18" ry="2.18"></rect>
+              <line x1="7" y1="2" x2="7" y2="22"></line>
+              <line x1="17" y1="2" x2="17" y2="22"></line>
+              <line x1="2" y1="12" x2="22" y2="12"></line>
+              <line x1="2" y1="7" x2="7" y2="7"></line>
+              <line x1="2" y1="17" x2="7" y2="17"></line>
+              <line x1="17" y1="17" x2="22" y2="17"></line>
+              <line x1="17" y1="7" x2="22" y2="7"></line>
+            </svg>
+            <div class="progress-bar-track">
+              <div class="progress-bar-fill" style="width: 55%;"></div>
+            </div>
+          </div>
+          <div class="card-info">
+            <h3 class="card-title" title="Lola rennt">Lola rennt</h3>
+            <p class="card-meta">1998</p>
+          </div>
+        </div>
+
+        <!-- Film 3: Good Bye, Lenin! (2003) - Gesehen badge -->
+        <div class="poster-card">
+          <div class="poster-wrap">
+            <span class="card-badge badge-seen">
+              <svg width="12" height="12" viewBox="0 0 12 12" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round">
+                <polyline points="2 6 5 9 10 3"></polyline>
+              </svg>
+              Gesehen
+            </span>
+            <svg class="placeholder-icon" width="36" height="36" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.5" stroke-linecap="round" stroke-linejoin="round">
+              <rect x="2" y="2" width="20" height="20" rx="2.18" ry="2.18"></rect>
+              <line x1="7" y1="2" x2="7" y2="22"></line>
+              <line x1="17" y1="2" x2="17" y2="22"></line>
+              <line x1="2" y1="12" x2="22" y2="12"></line>
+              <line x1="2" y1="7" x2="7" y2="7"></line>
+              <line x1="2" y1="17" x2="7" y2="17"></line>
+              <line x1="17" y1="17" x2="22" y2="17"></line>
+              <line x1="17" y1="7" x2="22" y2="7"></line>
+            </svg>
+          </div>
+          <div class="card-info">
+            <h3 class="card-title" title="Good Bye, Lenin!">Good Bye, Lenin!</h3>
+            <p class="card-meta">2003</p>
+          </div>
+        </div>
+
+        <!-- Film 4: Das Leben der Anderen (2006) -->
+        <div class="poster-card">
+          <div class="poster-wrap">
+            <svg class="placeholder-icon" width="36" height="36" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.5" stroke-linecap="round" stroke-linejoin="round">
+              <rect x="2" y="2" width="20" height="20" rx="2.18" ry="2.18"></rect>
+              <line x1="7" y1="2" x2="7" y2="22"></line>
+              <line x1="17" y1="2" x2="17" y2="22"></line>
+              <line x1="2" y1="12" x2="22" y2="12"></line>
+              <line x1="2" y1="7" x2="7" y2="7"></line>
+              <line x1="2" y1="17" x2="7" y2="17"></line>
+              <line x1="17" y1="17" x2="22" y2="17"></line>
+              <line x1="17" y1="7" x2="22" y2="7"></line>
+            </svg>
+          </div>
+          <div class="card-info">
+            <h3 class="card-title" title="Das Leben der Anderen">Das Leben der Anderen</h3>
+            <p class="card-meta">2006</p>
+          </div>
+        </div>
+
+        <!-- Film 5: Der Himmel über Berlin (1987) -->
+        <div class="poster-card">
+          <div class="poster-wrap">
+            <svg class="placeholder-icon" width="36" height="36" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.5" stroke-linecap="round" stroke-linejoin="round">
+              <rect x="2" y="2" width="20" height="20" rx="2.18" ry="2.18"></rect>
+              <line x1="7" y1="2" x2="7" y2="22"></line>
+              <line x1="17" y1="2" x2="17" y2="22"></line>
+              <line x1="2" y1="12" x2="22" y2="12"></line>
+              <line x1="2" y1="7" x2="7" y2="7"></line>
+              <line x1="2" y1="17" x2="7" y2="17"></line>
+              <line x1="17" y1="17" x2="22" y2="17"></line>
+              <line x1="17" y1="7" x2="22" y2="7"></line>
+            </svg>
+          </div>
+          <div class="card-info">
+            <h3 class="card-title" title="Der Himmel über Berlin">Der Himmel über Berlin</h3>
+            <p class="card-meta">1987</p>
+          </div>
+        </div>
+
+        <!-- Film 6: Nosferatu (1922) - Progress bar -->
+        <div class="poster-card">
+          <div class="poster-wrap">
+            <svg class="placeholder-icon" width="36" height="36" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.5" stroke-linecap="round" stroke-linejoin="round">
+              <rect x="2" y="2" width="20" height="20" rx="2.18" ry="2.18"></rect>
+              <line x1="7" y1="2" x2="7" y2="22"></line>
+              <line x1="17" y1="2" x2="17" y2="22"></line>
+              <line x1="2" y1="12" x2="22" y2="12"></line>
+              <line x1="2" y1="7" x2="7" y2="7"></line>
+              <line x1="2" y1="17" x2="7" y2="17"></line>
+              <line x1="17" y1="17" x2="22" y2="17"></line>
+              <line x1="17" y1="7" x2="22" y2="7"></line>
+            </svg>
+            <div class="progress-bar-track">
+              <div class="progress-bar-fill" style="width: 35%;"></div>
+            </div>
+          </div>
+          <div class="card-info">
+            <h3 class="card-title" title="Nosferatu">Nosferatu</h3>
+            <p class="card-meta">1922</p>
+          </div>
+        </div>
+
+        <!-- Film 7: Die Blechtrommel (1979) - Red badge "Nicht abspielbar" -->
+        <div class="poster-card">
+          <div class="poster-wrap">
+            <span class="card-badge badge-unplayable">
+              <svg width="12" height="12" viewBox="0 0 12 12" fill="none" stroke="currentColor" stroke-width="1.8" stroke-linecap="round">
+                <circle cx="6" cy="6" r="5"></circle>
+                <line x1="2.5" y1="9.5" x2="9.5" y2="2.5"></line>
+              </svg>
+              Nicht abspielbar
+            </span>
+            <svg class="placeholder-icon" width="36" height="36" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.5" stroke-linecap="round" stroke-linejoin="round">
+              <rect x="2" y="2" width="20" height="20" rx="2.18" ry="2.18"></rect>
+              <line x1="7" y1="2" x2="7" y2="22"></line>
+              <line x1="17" y1="2" x2="17" y2="22"></line>
+              <line x1="2" y1="12" x2="22" y2="12"></line>
+              <line x1="2" y1="7" x2="7" y2="7"></line>
+              <line x1="2" y1="17" x2="7" y2="17"></line>
+              <line x1="17" y1="17" x2="22" y2="17"></line>
+              <line x1="17" y1="7" x2="22" y2="7"></line>
+            </svg>
+          </div>
+          <div class="card-info">
+            <h3 class="card-title" title="Die Blechtrommel">Die Blechtrommel</h3>
+            <p class="card-meta">1979</p>
+          </div>
+        </div>
+
+      </div>
+    </section>
+  </main>
+
+</body>
+</html>

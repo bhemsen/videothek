@@ -1,0 +1,633 @@
+<!DOCTYPE html>
+<html lang="de" class="dark">
+<head>
+  <meta charset="UTF-8">
+  <meta name="viewport" content="width=device-width, initial-scale=1.0">
+  <title>P4 Start Weiterschauen – Mobile</title>
+  <style>
+    /* CSS Reset & Tokens strictly adhering to DESIGN.md */
+    :root {
+      --bg: #0f1115;
+      --fg: #e8eaed;
+      --primary: #f5b301;
+      --secondary: #1c2029;
+      --accent: #4fb3ff;
+      --muted: #9aa0aa;
+      --border: #2a2f3a;
+      --destructive: #ff5c5c;
+      --font-sans: system-ui, -apple-system, 'Segoe UI', Roboto, 'Helvetica Neue', Arial, sans-serif;
+    }
+
+    * {
+      box-sizing: border-box;
+      margin: 0;
+      padding: 0;
+      -webkit-tap-highlight-color: transparent;
+    }
+
+    body {
+      background-color: var(--bg);
+      color: var(--fg);
+      font-family: var(--font-sans);
+      font-size: 14px;
+      line-height: 1.5;
+      width: 100%;
+      min-height: 100vh;
+      overflow-x: hidden;
+      padding-bottom: 84px; /* Space for fixed bottom navigation bar */
+    }
+
+    /* Interactive focus states */
+    button:focus-visible, a:focus-visible {
+      outline: 2px solid var(--primary);
+      outline-offset: 2px;
+    }
+
+    /* 1) Top Bar */
+    .top-bar {
+      display: flex;
+      align-items: center;
+      justify-content: space-between;
+      height: 56px;
+      padding: 0 16px;
+      position: sticky;
+      top: 0;
+      background-color: rgba(15, 17, 21, 0.95);
+      backdrop-filter: blur(8px);
+      z-index: 40;
+      border-bottom: 1px solid var(--border);
+    }
+
+    .brand-title {
+      font-size: 20px;
+      font-weight: 700;
+      letter-spacing: -0.02em;
+      color: var(--fg);
+    }
+
+    .konto-btn {
+      display: inline-flex;
+      align-items: center;
+      justify-content: center;
+      width: 44px;
+      height: 44px;
+      border-radius: 9999px;
+      background: var(--secondary);
+      border: 1px solid var(--border);
+      color: var(--fg);
+      cursor: pointer;
+      transition: background-color 0.15s ease;
+    }
+
+    .konto-btn:hover {
+      background-color: #262c38;
+    }
+
+    /* Section Typography & Spacing */
+    .section-container {
+      margin-top: 24px;
+    }
+
+    .section-header {
+      padding: 0 16px 12px 16px;
+    }
+
+    .section-title {
+      font-size: 20px;
+      font-weight: 600;
+      line-height: 1.2;
+      color: var(--fg);
+      letter-spacing: -0.01em;
+    }
+
+    /* 2) Weiterschauen (Horizontal Scrollable Row) */
+    .scroll-row {
+      display: flex;
+      gap: 12px;
+      overflow-x: auto;
+      scroll-snap-type: x mandatory;
+      padding: 0 16px 8px 16px;
+      scrollbar-width: none; /* Hide scrollbar for clean chrome */
+    }
+
+    .scroll-row::-webkit-scrollbar {
+      display: none;
+    }
+
+    .weiterschauen-card {
+      flex: 0 0 72%;
+      max-width: 280px;
+      scroll-snap-align: start;
+      display: flex;
+      flex-direction: column;
+      cursor: pointer;
+    }
+
+    .thumbnail-16-9 {
+      position: relative;
+      width: 100%;
+      aspect-ratio: 16 / 9;
+      background-color: var(--secondary);
+      border: 1px solid var(--border);
+      border-radius: 8px;
+      overflow: hidden;
+      display: flex;
+      align-items: center;
+      justify-content: center;
+    }
+
+    .thumbnail-placeholder-icon {
+      color: var(--muted);
+      opacity: 0.6;
+    }
+
+    .remove-action-btn {
+      position: absolute;
+      top: 4px;
+      right: 4px;
+      width: 44px;
+      height: 44px;
+      display: flex;
+      align-items: center;
+      justify-content: center;
+      background: transparent;
+      border: none;
+      color: var(--fg);
+      cursor: pointer;
+      z-index: 5;
+    }
+
+    .remove-action-circle {
+      display: flex;
+      align-items: center;
+      justify-content: center;
+      width: 28px;
+      height: 28px;
+      border-radius: 9999px;
+      background-color: rgba(15, 17, 21, 0.75);
+      backdrop-filter: blur(4px);
+      border: 1px solid rgba(255, 255, 255, 0.1);
+      transition: background-color 0.15s;
+    }
+
+    .remove-action-btn:hover .remove-action-circle {
+      background-color: rgba(255, 92, 92, 0.9);
+    }
+
+    /* Progress bar flush along the bottom edge */
+    .progress-bar-container {
+      position: absolute;
+      bottom: 0;
+      left: 0;
+      right: 0;
+      height: 4px;
+      background-color: rgba(0, 0, 0, 0.5);
+    }
+
+    .progress-bar-fill {
+      height: 100%;
+      background-color: var(--primary);
+    }
+
+    /* Next episode badge inside thumbnail */
+    .next-episode-pill {
+      position: absolute;
+      bottom: 8px;
+      left: 8px;
+      padding: 3px 8px;
+      font-size: 11px;
+      font-weight: 600;
+      color: var(--primary);
+      border: 1px solid var(--primary);
+      background-color: rgba(15, 17, 21, 0.85);
+      border-radius: 9999px;
+      line-height: 1;
+      letter-spacing: 0.02em;
+    }
+
+    .card-meta-wrap {
+      padding-top: 8px;
+    }
+
+    .card-title {
+      font-size: 15px;
+      font-weight: 600;
+      color: var(--fg);
+      white-space: nowrap;
+      overflow: hidden;
+      text-overflow: ellipsis;
+      display: block;
+    }
+
+    .card-subtext {
+      font-size: 13px;
+      color: var(--muted);
+      margin-top: 2px;
+      white-space: nowrap;
+      overflow: hidden;
+      text-overflow: ellipsis;
+    }
+
+    /* 3) Filme Grid (2-column, 2:3 aspect ratio) */
+    .movie-grid {
+      display: grid;
+      grid-template-columns: repeat(2, minmax(0, 1fr));
+      gap: 16px;
+      padding: 0 16px;
+    }
+
+    .movie-card {
+      display: flex;
+      flex-direction: column;
+      cursor: pointer;
+    }
+
+    .poster-2-3 {
+      position: relative;
+      width: 100%;
+      aspect-ratio: 2 / 3;
+      background-color: var(--secondary);
+      border: 1px solid var(--border);
+      border-radius: 8px;
+      overflow: hidden;
+      display: flex;
+      flex-direction: column;
+      align-items: center;
+      justify-content: center;
+      padding: 12px;
+      text-align: center;
+    }
+
+    .poster-inner-graphic {
+      margin-bottom: 8px;
+      color: var(--muted);
+      opacity: 0.5;
+    }
+
+    .poster-title-hint {
+      font-size: 13px;
+      font-weight: 600;
+      color: #787f8d;
+      line-height: 1.3;
+      max-width: 90%;
+    }
+
+    /* Badges */
+    .badge-seen {
+      position: absolute;
+      top: 8px;
+      left: 8px;
+      display: inline-flex;
+      align-items: center;
+      gap: 4px;
+      background-color: rgba(28, 32, 41, 0.9);
+      border: 1px solid var(--border);
+      color: var(--accent);
+      font-size: 11px;
+      font-weight: 600;
+      padding: 4px 8px;
+      border-radius: 4px;
+      backdrop-filter: blur(4px);
+    }
+
+    .badge-not-playable {
+      position: absolute;
+      top: 8px;
+      left: 8px;
+      display: inline-flex;
+      align-items: center;
+      gap: 4px;
+      background-color: rgba(255, 92, 92, 0.15);
+      border: 1px solid var(--destructive);
+      color: var(--destructive);
+      font-size: 11px;
+      font-weight: 600;
+      padding: 4px 8px;
+      border-radius: 4px;
+      backdrop-filter: blur(4px);
+    }
+
+    /* 4) Fixed Bottom Navigation Bar */
+    .bottom-nav {
+      position: fixed;
+      bottom: 0;
+      left: 0;
+      right: 0;
+      height: 64px;
+      background-color: var(--secondary);
+      border-top: 1px solid var(--border);
+      display: flex;
+      justify-content: space-around;
+      align-items: center;
+      z-index: 50;
+      padding-bottom: env(safe-area-inset-bottom, 0px);
+    }
+
+    .nav-item {
+      display: flex;
+      flex-direction: column;
+      align-items: center;
+      justify-content: center;
+      min-width: 44px;
+      min-height: 44px;
+      flex: 1;
+      height: 100%;
+      text-decoration: none;
+      color: var(--muted);
+      gap: 3px;
+      background: none;
+      border: none;
+      cursor: pointer;
+      transition: color 0.15s ease;
+      font-family: inherit;
+    }
+
+    .nav-item.active {
+      color: var(--primary);
+    }
+
+    .nav-label {
+      font-size: 11px;
+      font-weight: 600;
+      letter-spacing: 0.01em;
+    }
+  </style>
+</head>
+<body>
+
+  <!-- 1) Slim Top Bar -->
+  <header class="top-bar" role="banner">
+    <div class="brand-title">Videothek</div>
+    <button class="konto-btn" aria-label="Konto" title="Konto">
+      <!-- Inline User Icon SVG -->
+      <svg width="20" height="20" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true">
+        <path d="M19 21v-2a4 4 0 0 0-4-4H9a4 4 0 0 0-4 4v2"></path>
+        <circle cx="12" cy="7" r="4"></circle>
+      </svg>
+    </button>
+  </header>
+
+  <main role="main">
+    <!-- 2) Weiterschauen Section -->
+    <section class="section-container" aria-labelledby="heading-weiterschauen">
+      <div class="section-header">
+        <h2 id="heading-weiterschauen" class="section-title">Weiterschauen</h2>
+      </div>
+
+      <div class="scroll-row" role="region" aria-label="Weiterschauen Einträge" tabindex="0">
+        
+        <!-- Card 1: Dark (45% progress) -->
+        <article class="weiterschauen-card" tabindex="0">
+          <div class="thumbnail-16-9">
+            <button class="remove-action-btn" aria-label="Aus Weiterschauen entfernen" title="Aus Weiterschauen entfernen">
+              <span class="remove-action-circle">
+                <svg width="14" height="14" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2.5" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true">
+                  <line x1="18" y1="6" x2="6" y2="18"></line>
+                  <line x1="6" y1="6" x2="18" y2="18"></line>
+                </svg>
+              </span>
+            </button>
+            <div class="thumbnail-placeholder-icon" aria-hidden="true">
+              <svg width="32" height="32" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.75" stroke-linecap="round" stroke-linejoin="round">
+                <rect x="2" y="2" width="20" height="20" rx="2.18" ry="2.18"></rect>
+                <line x1="7" y1="2" x2="7" y2="22"></line>
+                <line x1="17" y1="2" x2="17" y2="22"></line>
+                <line x1="2" y1="12" x2="22" y2="12"></line>
+                <line x1="2" y1="7" x2="7" y2="7"></line>
+                <line x1="2" y1="17" x2="7" y2="17"></line>
+                <line x1="17" y1="17" x2="22" y2="17"></line>
+                <line x1="17" y1="7" x2="22" y2="7"></line>
+              </svg>
+            </div>
+            <div class="progress-bar-container" role="progressbar" aria-valuenow="45" aria-valuemin="0" aria-valuemax="100">
+              <div class="progress-bar-fill" style="width: 45%;"></div>
+            </div>
+          </div>
+          <div class="card-meta-wrap">
+            <h3 class="card-title">Dark</h3>
+            <p class="card-subtext">S1 · F3 · Noch 24 Min.</p>
+          </div>
+        </article>
+
+        <!-- Card 2: Der Name der Rose (20% progress) -->
+        <article class="weiterschauen-card" tabindex="0">
+          <div class="thumbnail-16-9">
+            <button class="remove-action-btn" aria-label="Aus Weiterschauen entfernen" title="Aus Weiterschauen entfernen">
+              <span class="remove-action-circle">
+                <svg width="14" height="14" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2.5" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true">
+                  <line x1="18" y1="6" x2="6" y2="18"></line>
+                  <line x1="6" y1="6" x2="18" y2="18"></line>
+                </svg>
+              </span>
+            </button>
+            <div class="thumbnail-placeholder-icon" aria-hidden="true">
+              <svg width="32" height="32" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.75" stroke-linecap="round" stroke-linejoin="round">
+                <rect x="2" y="2" width="20" height="20" rx="2.18" ry="2.18"></rect>
+                <line x1="7" y1="2" x2="7" y2="22"></line>
+                <line x1="17" y1="2" x2="17" y2="22"></line>
+                <line x1="2" y1="12" x2="22" y2="12"></line>
+                <line x1="2" y1="7" x2="7" y2="7"></line>
+                <line x1="2" y1="17" x2="7" y2="17"></line>
+                <line x1="17" y1="17" x2="22" y2="17"></line>
+                <line x1="17" y1="7" x2="22" y2="7"></line>
+              </svg>
+            </div>
+            <div class="progress-bar-container" role="progressbar" aria-valuenow="20" aria-valuemin="0" aria-valuemax="100">
+              <div class="progress-bar-fill" style="width: 20%;"></div>
+            </div>
+          </div>
+          <div class="card-meta-wrap">
+            <h3 class="card-title">Der Name der Rose</h3>
+            <p class="card-subtext">Noch 1 Std. 52 Min.</p>
+          </div>
+        </article>
+
+        <!-- Card 3: Babylon Berlin (Nächste Folge badge) -->
+        <article class="weiterschauen-card" tabindex="0">
+          <div class="thumbnail-16-9">
+            <button class="remove-action-btn" aria-label="Aus Weiterschauen entfernen" title="Aus Weiterschauen entfernen">
+              <span class="remove-action-circle">
+                <svg width="14" height="14" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2.5" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true">
+                  <line x1="18" y1="6" x2="6" y2="18"></line>
+                  <line x1="6" y1="6" x2="18" y2="18"></line>
+                </svg>
+              </span>
+            </button>
+            <div class="thumbnail-placeholder-icon" aria-hidden="true">
+              <svg width="32" height="32" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.75" stroke-linecap="round" stroke-linejoin="round">
+                <rect x="2" y="2" width="20" height="20" rx="2.18" ry="2.18"></rect>
+                <line x1="7" y1="2" x2="7" y2="22"></line>
+                <line x1="17" y1="2" x2="17" y2="22"></line>
+                <line x1="2" y1="12" x2="22" y2="12"></line>
+                <line x1="2" y1="7" x2="7" y2="7"></line>
+                <line x1="2" y1="17" x2="7" y2="17"></line>
+                <line x1="17" y1="17" x2="22" y2="17"></line>
+                <line x1="17" y1="7" x2="22" y2="7"></line>
+              </svg>
+            </div>
+            <span class="next-episode-pill">Nächste Folge</span>
+          </div>
+          <div class="card-meta-wrap">
+            <h3 class="card-title">Babylon Berlin</h3>
+            <p class="card-subtext">S2 · F5</p>
+          </div>
+        </article>
+
+      </div>
+    </section>
+
+    <!-- 3) Filme Section -->
+    <section class="section-container" style="margin-top: 28px;" aria-labelledby="heading-filme">
+      <div class="section-header">
+        <h2 id="heading-filme" class="section-title">Filme</h2>
+      </div>
+
+      <div class="movie-grid">
+        
+        <!-- Movie 1: Lola rennt (1998, Progress bar) -->
+        <article class="movie-card" tabindex="0">
+          <div class="poster-2-3">
+            <div class="poster-inner-graphic" aria-hidden="true">
+              <svg width="36" height="36" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.5" stroke-linecap="round" stroke-linejoin="round">
+                <rect x="3" y="3" width="18" height="18" rx="2"></rect>
+                <polygon points="10 8 16 12 10 16 10 8"></polygon>
+              </svg>
+            </div>
+            <span class="poster-title-hint">Lola rennt</span>
+            <!-- 4px amber progress bar at the poster bottom -->
+            <div class="progress-bar-container" role="progressbar" aria-valuenow="65" aria-valuemin="0" aria-valuemax="100">
+              <div class="progress-bar-fill" style="width: 65%;"></div>
+            </div>
+          </div>
+          <div class="card-meta-wrap">
+            <h3 class="card-title">Lola rennt</h3>
+            <p class="card-subtext">1998</p>
+          </div>
+        </article>
+
+        <!-- Movie 2: Good Bye, Lenin! (2003, Gesehen badge) -->
+        <article class="movie-card" tabindex="0">
+          <div class="poster-2-3">
+            <span class="badge-seen">
+              <svg width="12" height="12" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="3" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true">
+                <polyline points="20 6 9 17 4 12"></polyline>
+              </svg>
+              Gesehen
+            </span>
+            <div class="poster-inner-graphic" aria-hidden="true">
+              <svg width="36" height="36" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.5" stroke-linecap="round" stroke-linejoin="round">
+                <rect x="3" y="3" width="18" height="18" rx="2"></rect>
+                <polygon points="10 8 16 12 10 16 10 8"></polygon>
+              </svg>
+            </div>
+            <span class="poster-title-hint">Good Bye, Lenin!</span>
+          </div>
+          <div class="card-meta-wrap">
+            <h3 class="card-title">Good Bye, Lenin!</h3>
+            <p class="card-subtext">2003</p>
+          </div>
+        </article>
+
+        <!-- Movie 3: Das Boot (1981) -->
+        <article class="movie-card" tabindex="0">
+          <div class="poster-2-3">
+            <div class="poster-inner-graphic" aria-hidden="true">
+              <svg width="36" height="36" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.5" stroke-linecap="round" stroke-linejoin="round">
+                <rect x="3" y="3" width="18" height="18" rx="2"></rect>
+                <polygon points="10 8 16 12 10 16 10 8"></polygon>
+              </svg>
+            </div>
+            <span class="poster-title-hint">Das Boot</span>
+          </div>
+          <div class="card-meta-wrap">
+            <h3 class="card-title">Das Boot</h3>
+            <p class="card-subtext">1981</p>
+          </div>
+        </article>
+
+        <!-- Movie 4: Die Blechtrommel (1979, Nicht abspielbar badge) -->
+        <article class="movie-card" tabindex="0">
+          <div class="poster-2-3">
+            <span class="badge-not-playable">
+              <svg width="12" height="12" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2.5" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true">
+                <circle cx="12" cy="12" r="10"></circle>
+                <line x1="4.93" y1="4.93" x2="19.07" y2="19.07"></line>
+              </svg>
+              Nicht abspielbar
+            </span>
+            <div class="poster-inner-graphic" aria-hidden="true">
+              <svg width="36" height="36" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.5" stroke-linecap="round" stroke-linejoin="round">
+                <rect x="3" y="3" width="18" height="18" rx="2"></rect>
+                <polygon points="10 8 16 12 10 16 10 8"></polygon>
+              </svg>
+            </div>
+            <span class="poster-title-hint">Die Blechtrommel</span>
+          </div>
+          <div class="card-meta-wrap">
+            <h3 class="card-title">Die Blechtrommel</h3>
+            <p class="card-subtext">1979</p>
+          </div>
+        </article>
+
+      </div>
+    </section>
+  </main>
+
+  <!-- 4) Fixed Bottom Navigation Bar (5 fixed categories) -->
+  <nav class="bottom-nav" role="navigation" aria-label="Hauptnavigation">
+    <!-- Filme (Active) -->
+    <button class="nav-item active" aria-current="page">
+      <svg width="20" height="20" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true">
+        <rect x="2" y="2" width="20" height="20" rx="2.18" ry="2.18"></rect>
+        <line x1="7" y1="2" x2="7" y2="22"></line>
+        <line x1="17" y1="2" x2="17" y2="22"></line>
+        <line x1="2" y1="12" x2="22" y2="12"></line>
+        <line x1="2" y1="7" x2="7" y2="7"></line>
+        <line x1="2" y1="17" x2="7" y2="17"></line>
+        <line x1="17" y1="17" x2="22" y2="17"></line>
+        <line x1="17" y1="7" x2="22" y2="7"></line>
+      </svg>
+      <span class="nav-label">Filme</span>
+    </button>
+
+    <!-- Serien -->
+    <button class="nav-item">
+      <svg width="20" height="20" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true">
+        <rect x="2" y="7" width="20" height="15" rx="2" ry="2"></rect>
+        <polyline points="17 2 12 7 7 2"></polyline>
+      </svg>
+      <span class="nav-label">Serien</span>
+    </button>
+
+    <!-- Musik -->
+    <button class="nav-item">
+      <svg width="20" height="20" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true">
+        <path d="M9 18V5l12-2v13"></path>
+        <circle cx="6" cy="18" r="3"></circle>
+        <circle cx="18" cy="16" r="3"></circle>
+      </svg>
+      <span class="nav-label">Musik</span>
+    </button>
+
+    <!-- Hörbücher -->
+    <button class="nav-item">
+      <svg width="20" height="20" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true">
+        <path d="M3 18v-6a9 9 0 0 1 18 0v6"></path>
+        <path d="M21 19a2 2 0 0 1-2 2h-1a2 2 0 0 1-2-2v-3a2 2 0 0 1 2-2h3zM3 19a2 2 0 0 0 2 2h1a2 2 0 0 0 2-2v-3a2 2 0 0 0-2-2H3z"></path>
+      </svg>
+      <span class="nav-label">Hörbücher</span>
+    </button>
+
+    <!-- Bilder -->
+    <button class="nav-item">
+      <svg width="20" height="20" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true">
+        <rect x="3" y="3" width="18" height="18" rx="2" ry="2"></rect>
+        <circle cx="8.5" cy="8.5" r="1.5"></circle>
+        <polyline points="21 15 16 10 5 21"></polyline>
+      </svg>
+      <span class="nav-label">Bilder</span>
+    </button>
+  </nav>
+
+</body>
+</html>
