@@ -143,22 +143,28 @@ function createRequestHandler(deps, router, staticHandler, publicDir) {
     /** @type {URL} */
     let url;
     try {
-      url = new URL(req.url ?? '/', 'http://localhost');
+      // Prepending the base (rather than passing it as the WHATWG URL
+      // constructor's second, "base" argument) keeps a request-target
+      // starting with `//` a plain pathname instead of being parsed as a
+      // network-path reference — `new URL('//x', 'http://localhost')` would
+      // otherwise turn `GET //healthz` into host `healthz`, pathname `/`.
+      url = new URL(`http://localhost${req.url ?? '/'}`);
     } catch {
       sendError(res, 404, 'not_found');
       return;
     }
 
     const method = req.method ?? 'GET';
-    const { user, sessionId } = resolveSession(req, res, deps.sessions, deps.now);
-
-    if (MUTATING_METHODS.has(method) && !isSameOrigin(req)) {
-      deps.log.warn('origin_rejected', originLogFields(req));
-      sendError(res, 403, 'forbidden_origin');
-      return;
-    }
 
     try {
+      const { user, sessionId } = resolveSession(req, res, deps.sessions, deps.now);
+
+      if (MUTATING_METHODS.has(method) && !isSameOrigin(req)) {
+        deps.log.warn('origin_rejected', originLogFields(req));
+        sendError(res, 403, 'forbidden_origin');
+        return;
+      }
+
       const matched = router.match(method, url.pathname);
       const params = matched && 'handler' in matched ? matched.params : {};
       const ctx = { user, params, url, sessionId };
@@ -212,7 +218,12 @@ function closeServer(server) {
  *   publicDir?: string,
  *   [key: string]: unknown,
  * }} options
- * @returns {{ server: import('node:http').Server, deps: AppDeps, close: () => Promise<void> }}
+ * @returns {{
+ *   server: import('node:http').Server,
+ *   deps: AppDeps,
+ *   router: ReturnType<typeof createRouter>,
+ *   close: () => Promise<void>,
+ * }}
  */
 export function createApp({ config, db, log, now = Date.now, publicDir = DEFAULT_PUBLIC_DIR, ...extra }) {
   const resolvedPublicDir = path.resolve(publicDir);
@@ -225,5 +236,5 @@ export function createApp({ config, db, log, now = Date.now, publicDir = DEFAULT
 
   const server = http.createServer(createRequestHandler(deps, router, staticHandler, resolvedPublicDir));
 
-  return { server, deps, close: () => closeServer(server) };
+  return { server, deps, router, close: () => closeServer(server) };
 }

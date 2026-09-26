@@ -54,6 +54,8 @@ function resolveDirs(mediaRoot) {
  *   db: import('node:sqlite').DatabaseSync,
  *   config: import('../../src/config.js').Config,
  *   deps: import('../../src/app.js').AppDeps & { logLines: string[] },
+ *   router: ReturnType<typeof import('../../src/http/router.js').createRouter>,
+ *   server: import('node:http').Server,
  *   createUser: (username: string, password: string, role?: UserRole) => Promise<{ id: number, username: string, role: UserRole }>,
  *   login: (username: string, password: string) => Promise<string>,
  *   close: () => Promise<void>,
@@ -66,16 +68,24 @@ export async function startTestApp({ mediaRoot, now = Date.now, ...extra } = {})
   migrate(db);
 
   const { log, logLines } = createSilentLogger(now);
-  const { server, deps, close: closeApp } = createApp({ config, db, log, now, ...extra });
+  const { server, deps, router, close: closeApp } = createApp({ config, db, log, now, ...extra });
   await new Promise((resolve) => server.listen(0, '127.0.0.1', () => resolve(undefined)));
   const address = server.address();
   const port = address && typeof address === 'object' ? address.port : 0;
+
+  // Attaches `logLines` to the app's own `deps` object (rather than handing
+  // back a shallow copy) so `app.deps` stays identical to the object the
+  // running server actually dispatches with.
+  const appDeps = /** @type {import('../../src/app.js').AppDeps & { logLines: string[] }} */ (deps);
+  appDeps.logLines = logLines;
 
   return {
     baseUrl: `http://127.0.0.1:${port}`,
     db,
     config,
-    deps: /** @type {import('../../src/app.js').AppDeps & { logLines: string[] }} */ ({ ...deps, logLines }),
+    deps: appDeps,
+    router,
+    server,
     async createUser(username, password, role = 'user') {
       const normalized = validateUsername(username);
       if (normalized === null) throw new Error(`startTestApp.createUser: invalid username ${username}`);

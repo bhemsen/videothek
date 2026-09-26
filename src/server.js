@@ -108,7 +108,8 @@ function installSignalHandlers(stop, log) {
 /**
  * The real startup sequence, letting every failure (`ConfigError`,
  * `MigrationError`, `BootstrapError`, a listen error) propagate to the
- * single handler in {@link start}.
+ * single handler in {@link start}. Logs `startup` first, before config is
+ * even loaded, so an attempt is on record even when it fails immediately.
  * @param {import('./config.js').Config | undefined} providedConfig
  * @param {import('./log.js').Logger} log
  * @returns {Promise<{
@@ -119,6 +120,7 @@ function installSignalHandlers(stop, log) {
  * }>}
  */
 async function runStart(providedConfig, log) {
+  log.info('startup');
   const config = providedConfig ?? loadConfig();
   const db = openDatabase(config.dataDir);
   try {

@@ -202,6 +202,9 @@ test('mutation guard: a cross-origin POST is rejected before route matching (eve
     const res = await request(app.baseUrl, 'POST', '/anything', { Origin: 'https://evil.example' });
     assert.equal(res.status, 403);
     assert.deepEqual(JSON.parse(res.body), { error: 'forbidden_origin' });
+    assert.ok(
+      app.deps.logLines.some((line) => line.includes('origin_rejected') && line.includes('evil.example')),
+    );
   } finally {
     await app.close();
   }
@@ -223,6 +226,20 @@ test('mutation guard: a POST without an Origin header is allowed through (curl/C
   try {
     const res = await request(app.baseUrl, 'POST', '/anything');
     assert.equal(res.status, 404);
+  } finally {
+    await app.close();
+  }
+});
+
+test('a request-target starting with // is parsed as a path, not a network-path reference', async () => {
+  const app = await startTestApp();
+  try {
+    // Were `//healthz` parsed against a `http://localhost` base the WHATWG
+    // way, it would become host `healthz`, pathname `/` — i.e. it would
+    // match the registered `/healthz` route. It must not.
+    const res = await request(app.baseUrl, 'GET', '//healthz');
+    assert.equal(res.status, 404);
+    assert.match(res.body, /Seite nicht gefunden/);
   } finally {
     await app.close();
   }
