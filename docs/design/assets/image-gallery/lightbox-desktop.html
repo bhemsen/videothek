@@ -1,0 +1,118 @@
+<!DOCTYPE html>
+
+<html class="h-full" lang="de"><head>
+<meta charset="utf-8"/>
+<meta content="width=device-width, initial-scale=1.0" name="viewport"/>
+<title>P6 Lightbox Desktop - Videothek</title>
+<!-- Tailwind CSS v3 CDN with plugins -->
+<script src="https://cdn.tailwindcss.com?plugins=forms,container-queries"></script>
+<!-- BEGIN: Custom Design System Styles -->
+<style data-purpose="design-tokens">
+    :root {
+      --bg-canvas: #0f1115;
+      --text-main: #e8eaed;
+      --text-muted: #9aa0aa;
+      --surface-btn: #1c2029;
+      --border-btn: #2a2f3a;
+      --accent-focus: #f5b301;
+    }
+
+    body {
+      background-color: var(--bg-canvas);
+      color: var(--text-main);
+      font-family: system-ui, -apple-system, 'Segoe UI', Roboto, 'Helvetica Neue', Arial, sans-serif;
+      margin: 0;
+      padding: 0;
+      overflow: hidden;
+      -webkit-font-smoothing: antialiased;
+    }
+  </style>
+<style data-purpose="button-interactions">
+    .btn-circle {
+      background-color: var(--surface-btn);
+      border: 1px solid var(--border-btn);
+      color: var(--text-main);
+      transition: background-color 0.15s ease, border-color 0.15s ease, transform 0.1s ease;
+    }
+
+    .btn-circle:hover {
+      background-color: #262c38;
+      border-color: #3b4252;
+    }
+
+    .btn-circle:active {
+      transform: translateY(-50%) scale(0.96);
+    }
+
+    .btn-close:active {
+      transform: scale(0.96);
+    }
+
+    /* Strict Keyboard focus state specification */
+    .focus-ring-amber {
+      outline: 2px solid var(--accent-focus);
+      outline-offset: 2px;
+    }
+  </style>
+<!-- END: Custom Design System Styles -->
+</head>
+<body class="h-screen w-screen flex flex-col justify-between select-none">
+<!-- BEGIN: LightboxDialog -->
+<dialog aria-label="Bildanzeige Modal" class="m-0 p-0 w-full h-full max-w-full max-h-full bg-transparent flex flex-col border-none text-[#e8eaed] overflow-hidden" open="">
+<!-- BEGIN: TopBar -->
+<header class="w-full flex-none flex items-center justify-between px-6 py-4 z-20" data-purpose="lightbox-header">
+<!-- Image Index Counter -->
+<div class="text-[14px] font-medium text-[#9aa0aa] tracking-normal" data-purpose="image-counter">
+<span>12</span> / <span>148</span>
+</div>
+<!-- Close Button -->
+<button aria-label="Schließen" class="btn-circle btn-close w-[44px] h-[44px] rounded-full flex items-center justify-center cursor-pointer focus:outline-none focus-visible:ring-2 focus-visible:ring-[#f5b301] focus-visible:ring-offset-2 focus-visible:ring-offset-[#0f1115]" data-purpose="close-lightbox" title="Schließen" type="button">
+<!-- Close (X) Icon -->
+<svg aria-hidden="true" class="w-5 h-5 text-[#e8eaed]" fill="none" stroke="currentColor" stroke-linecap="round" stroke-linejoin="round" stroke-width="2" viewbox="0 0 24 24">
+<line x1="18" x2="6" y1="6" y2="18"></line>
+<line x1="6" x2="18" y1="6" y2="18"></line>
+</svg>
+</button>
+</header>
+<!-- END: TopBar -->
+<!-- BEGIN: CenterStage -->
+<main class="flex-1 min-h-0 relative flex items-center justify-center px-6" data-purpose="stage-container">
+<!-- Previous Image Navigation Button -->
+<button aria-label="Vorheriges Bild" class="btn-circle absolute left-6 top-1/2 -translate-y-1/2 w-[56px] h-[56px] rounded-full flex items-center justify-center cursor-pointer z-10 focus:outline-none focus-visible:ring-2 focus-visible:ring-[#f5b301] focus-visible:ring-offset-2 focus-visible:ring-offset-[#0f1115]" data-purpose="nav-previous" title="Vorheriges Bild" type="button">
+<!-- Chevron Left Icon -->
+<svg aria-hidden="true" class="w-6 h-6 text-[#e8eaed]" fill="none" stroke="currentColor" stroke-linecap="round" stroke-linejoin="round" stroke-width="2" viewbox="0 0 24 24">
+<polyline points="15 18 9 12 15 6"></polyline>
+</svg>
+</button>
+<!-- Active Display Image -->
+<div class="relative flex items-center justify-center max-w-full max-h-full">
+<img alt="Kolosseum in Rom bei Sonnenuntergang" class="max-w-[calc(100vw-160px)] max-h-[calc(100vh-140px)] object-contain rounded-[4px] shadow-[0_8px_30px_rgba(0,0,0,0.60)]" data-purpose="main-photo" src="https://lh3.googleusercontent.com/aida-public/AB6AXuDnjnHkjxxo0_1kE6fB0tFH_QcbuYO0dfzt6Mzb1B1Wp5MXbG7chb02tlaKZfnvAk_SVC4osPiNtP7VQVFkRbyytyXyLn4GNDWU2W5PvGDjpp3Fe4uRkR7_GOawZIuWCv4H27u8J-4-KpTRT-6P6N-x2iIDez-gXUp-JWHFxT_kNFAx5egCPM8TUA9xDZuCQiF9B6syvFhYU2BZgeem--R1Lqk4dxjUsLiWGeHMQ3wNwZshNN9WY_QniERSO2xyCGcfdm5t4YAsr_F9"/>
+</div>
+<!-- Next Image Navigation Button with Focus State Demonstration -->
+<button aria-label="Nächstes Bild" class="btn-circle focus-ring-amber absolute right-6 top-1/2 -translate-y-1/2 w-[56px] h-[56px] rounded-full flex items-center justify-center cursor-pointer z-10" data-purpose="nav-next" title="Nächstes Bild" type="button">
+<!-- Chevron Right Icon -->
+<svg aria-hidden="true" class="w-6 h-6 text-[#e8eaed]" fill="none" stroke="currentColor" stroke-linecap="round" stroke-linejoin="round" stroke-width="2" viewbox="0 0 24 24">
+<polyline points="9 18 15 12 9 6"></polyline>
+</svg>
+</button>
+</main>
+<!-- END: CenterStage -->
+<!-- BEGIN: BottomCaptionBar -->
+<footer class="w-full flex-none flex items-center justify-between px-6 py-4 bg-transparent z-20" data-purpose="caption-bar">
+<!-- File Metadata (Left Side) -->
+<div class="flex items-center gap-3" data-purpose="photo-metadata">
+<span class="text-[16px] font-semibold text-[#e8eaed] tracking-tight">IMG_0412.JPG</span>
+<span aria-hidden="true" class="text-[#2a2f3a] select-none">•</span>
+<span class="text-[14px] font-normal text-[#9aa0aa]">14.07.2024, 18:03</span>
+</div>
+<!-- Interaction Shortcuts (Right Side) -->
+<div class="text-[12px] font-normal text-[#9aa0aa] tracking-[0.3px]" data-purpose="keyboard-shortcuts">
+<span>← → Blättern</span>
+<span class="mx-1.5 opacity-60">·</span>
+<span>Esc Schließen</span>
+</div>
+</footer>
+<!-- END: BottomCaptionBar -->
+</dialog>
+<!-- END: LightboxDialog -->
+</body></html>

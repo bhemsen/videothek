@@ -1,0 +1,693 @@
+<!DOCTYPE html>
+<html lang="de">
+<head>
+  <meta charset="UTF-8">
+  <meta name="viewport" content="width=device-width, initial-scale=1.0">
+  <title>P6 Bilder Ordneransicht Mobile</title>
+  <style>
+    :root {
+      --bg: #0f1115;
+      --fg: #e8eaed;
+      --primary: #f5b301;
+      --secondary: #1c2029;
+      --accent: #4fb3ff;
+      --muted: #9aa0aa;
+      --border: #2a2f3a;
+      --destructive: #ff5c5c;
+      --font-sans: system-ui, -apple-system, 'Segoe UI', Roboto, 'Helvetica Neue', Arial, sans-serif;
+    }
+
+    * {
+      box-sizing: border-box;
+      margin: 0;
+      padding: 0;
+    }
+
+    body {
+      background-color: var(--bg);
+      color: var(--fg);
+      font-family: var(--font-sans);
+      display: flex;
+      justify-content: center;
+      min-height: 100vh;
+      -webkit-font-smoothing: antialiased;
+    }
+
+    .mobile-container {
+      width: 390px;
+      min-height: 100vh;
+      background-color: var(--bg);
+      display: flex;
+      flex-direction: column;
+      position: relative;
+      padding-bottom: 76px; /* space for fixed bottom bar */
+      box-shadow: 0 0 40px rgba(0, 0, 0, 0.8);
+    }
+
+    /* Top bar */
+    .top-bar {
+      background-color: var(--secondary);
+      border-bottom: 1px solid var(--border);
+      height: 56px;
+      display: flex;
+      align-items: center;
+      justify-content: space-between;
+      padding: 0 16px;
+      position: sticky;
+      top: 0;
+      z-index: 20;
+    }
+
+    .logo-container {
+      display: flex;
+      align-items: center;
+      gap: 8px;
+    }
+
+    .logo-icon {
+      color: var(--primary);
+      width: 20px;
+      height: 20px;
+    }
+
+    .app-title {
+      font-size: 18px;
+      font-weight: 700;
+      letter-spacing: -0.2px;
+      color: var(--fg);
+    }
+
+    .btn-logout {
+      display: flex;
+      align-items: center;
+      justify-content: center;
+      gap: 6px;
+      height: 44px;
+      min-width: 44px;
+      padding: 0 8px;
+      background: transparent;
+      border: 1px solid transparent;
+      border-radius: 8px;
+      color: var(--muted);
+      font-size: 13px;
+      font-family: inherit;
+      cursor: pointer;
+    }
+
+    .btn-logout:focus-visible {
+      outline: 2px solid var(--primary);
+      outline-offset: 2px;
+    }
+
+    .btn-logout svg {
+      width: 18px;
+      height: 18px;
+      stroke: currentColor;
+    }
+
+    /* Main Content */
+    .content {
+      padding: 16px;
+      display: flex;
+      flex-direction: column;
+      gap: 24px;
+    }
+
+    /* Breadcrumb & Header */
+    .header-group {
+      display: flex;
+      flex-direction: column;
+      gap: 8px;
+    }
+
+    .breadcrumb {
+      font-size: 14px;
+      line-height: 1.4;
+      white-space: nowrap;
+      overflow: hidden;
+      text-overflow: ellipsis;
+    }
+
+    .breadcrumb a {
+      color: var(--accent);
+      text-decoration: none;
+    }
+
+    .breadcrumb .sep {
+      color: var(--muted);
+      margin: 0 4px;
+    }
+
+    .breadcrumb .current {
+      color: var(--fg);
+    }
+
+    .page-title {
+      font-size: 24px;
+      font-weight: 700;
+      line-height: 1.2;
+      color: var(--fg);
+    }
+
+    .meta-text {
+      font-size: 14px;
+      color: var(--muted);
+      line-height: 1.2;
+    }
+
+    /* Section */
+    .section {
+      display: flex;
+      flex-direction: column;
+      gap: 12px;
+    }
+
+    .section-title {
+      font-size: 20px;
+      font-weight: 600;
+      line-height: 1.2;
+      color: var(--fg);
+    }
+
+    /* Grids */
+    .two-col-grid {
+      display: grid;
+      grid-template-columns: repeat(2, 1fr);
+      gap: 16px;
+    }
+
+    /* Folder Card */
+    .folder-card {
+      display: flex;
+      flex-direction: column;
+      gap: 8px;
+      cursor: pointer;
+    }
+
+    .folder-cover {
+      width: 100%;
+      aspect-ratio: 1 / 1;
+      background-color: var(--secondary);
+      border-radius: 8px;
+      position: relative;
+      overflow: hidden;
+      display: flex;
+      align-items: center;
+      justify-content: center;
+      border: 1px solid var(--border);
+    }
+
+    .folder-cover-art {
+      width: 100%;
+      height: 100%;
+      display: flex;
+      align-items: center;
+      justify-content: center;
+      background-color: #161a22;
+    }
+
+    .folder-cover-art svg {
+      width: 64px;
+      height: 64px;
+      opacity: 0.35;
+      fill: none;
+      stroke: var(--muted);
+      stroke-width: 1.5;
+    }
+
+    .folder-badge {
+      position: absolute;
+      bottom: 8px;
+      left: 8px;
+      width: 28px;
+      height: 28px;
+      background-color: rgba(15, 17, 21, 0.85);
+      border: 1px solid var(--border);
+      border-radius: 6px;
+      display: flex;
+      align-items: center;
+      justify-content: center;
+      color: var(--primary);
+    }
+
+    .folder-badge svg {
+      width: 16px;
+      height: 16px;
+      stroke: var(--primary);
+      stroke-width: 1.75;
+      fill: none;
+    }
+
+    .card-info {
+      display: flex;
+      flex-direction: column;
+      gap: 4px;
+    }
+
+    .card-title {
+      font-size: 14px;
+      font-weight: 500;
+      color: var(--fg);
+      white-space: nowrap;
+      overflow: hidden;
+      text-overflow: ellipsis;
+    }
+
+    .card-meta {
+      font-size: 12px;
+      color: var(--muted);
+    }
+
+    /* Image Card */
+    .image-card {
+      display: flex;
+      flex-direction: column;
+      gap: 8px;
+    }
+
+    .image-thumbnail-box {
+      width: 100%;
+      aspect-ratio: 1 / 1;
+      background-color: var(--secondary);
+      border-radius: 8px;
+      position: relative;
+      overflow: hidden;
+      border: 1px solid var(--border);
+      display: flex;
+      align-items: center;
+      justify-content: center;
+    }
+
+    .thumb-art {
+      width: 100%;
+      height: 100%;
+      display: flex;
+      align-items: center;
+      justify-content: center;
+      background-color: #171c26;
+    }
+
+    /* Abstract landscape line art representations of Italian photos */
+    .thumb-art svg {
+      width: 100%;
+      height: 100%;
+    }
+
+    /* Unplayable card */
+    .unplayable-box {
+      width: 100%;
+      aspect-ratio: 1 / 1;
+      background-color: var(--secondary);
+      border-radius: 8px;
+      border: 1px solid var(--border);
+      display: flex;
+      flex-direction: column;
+      align-items: center;
+      justify-content: center;
+      gap: 10px;
+      padding: 12px;
+    }
+
+    .unplayable-box svg {
+      width: 32px;
+      height: 32px;
+      stroke: var(--muted);
+      stroke-width: 1.5;
+      fill: none;
+    }
+
+    .badge-unplayable {
+      display: inline-flex;
+      align-items: center;
+      padding: 2px 6px;
+      font-size: 11px;
+      font-weight: 600;
+      color: var(--destructive);
+      background-color: var(--secondary);
+      border: 1px solid var(--destructive);
+      border-radius: 4px;
+      line-height: 1.2;
+      text-align: center;
+      white-space: nowrap;
+    }
+
+    /* Video card */
+    .video-box {
+      width: 100%;
+      aspect-ratio: 1 / 1;
+      background-color: var(--secondary);
+      border-radius: 8px;
+      border: 1px solid var(--border);
+      display: flex;
+      align-items: center;
+      justify-content: center;
+      position: relative;
+    }
+
+    .play-circle {
+      width: 44px;
+      height: 44px;
+      border-radius: 9999px;
+      background-color: rgba(15, 17, 21, 0.7);
+      border: 1px solid var(--border);
+      display: flex;
+      align-items: center;
+      justify-content: center;
+    }
+
+    .play-circle svg {
+      width: 22px;
+      height: 22px;
+      fill: var(--fg);
+      transform: translateX(1px);
+    }
+
+    /* Bottom Navigation Bar */
+    .bottom-nav {
+      position: fixed;
+      bottom: 0;
+      left: 50%;
+      transform: translateX(-50%);
+      width: 390px;
+      height: 60px;
+      background-color: var(--secondary);
+      border-top: 1px solid var(--border);
+      display: grid;
+      grid-template-columns: repeat(5, 1fr);
+      z-index: 30;
+    }
+
+    .nav-item {
+      display: flex;
+      flex-direction: column;
+      align-items: center;
+      justify-content: center;
+      gap: 4px;
+      min-height: 44px;
+      text-decoration: none;
+      color: var(--muted);
+      transition: color 0.15s ease;
+    }
+
+    .nav-item:focus-visible {
+      outline: 2px solid var(--primary);
+      outline-offset: -2px;
+    }
+
+    .nav-item.active {
+      color: var(--primary);
+    }
+
+    .nav-item svg {
+      width: 20px;
+      height: 20px;
+      stroke: currentColor;
+      stroke-width: 1.75;
+      fill: none;
+    }
+
+    .nav-label {
+      font-size: 12px;
+      font-weight: 500;
+      line-height: 1;
+    }
+  </style>
+</head>
+<body>
+  <div class="mobile-container">
+    <!-- Top Bar -->
+    <header class="top-bar">
+      <div class="logo-container">
+        <svg class="logo-icon" viewBox="0 0 24 24" fill="currentColor">
+          <polygon points="5 3 19 12 5 21 5 3"></polygon>
+        </svg>
+        <span class="app-title">Videothek</span>
+      </div>
+      <button class="btn-logout" aria-label="Abmelden" title="Abmelden">
+        <svg viewBox="0 0 24 24" fill="none" stroke-linecap="round" stroke-linejoin="round">
+          <path d="M9 21H5a2 2 0 0 1-2-2V5a2 2 0 0 1 2-2h4"></path>
+          <polyline points="16 17 21 12 16 7"></polyline>
+          <line x1="21" y1="12" x2="9" y2="12"></line>
+        </svg>
+        <span>Abmelden</span>
+      </button>
+    </header>
+
+    <!-- Main Content Area -->
+    <main class="content">
+      <!-- Breadcrumb & Titles -->
+      <section class="header-group">
+        <nav class="breadcrumb" aria-label="Brotkrumen-Navigation">
+          <a href="#">Bilder</a>
+          <span class="sep">›</span>
+          <a href="#">Urlaub 2024</a>
+          <span class="sep">›</span>
+          <span class="current">Italien</span>
+        </nav>
+        <h1 class="page-title">Italien</h1>
+        <p class="meta-text">3 Ordner · 14 Dateien</p>
+      </section>
+
+      <!-- Section: Ordner -->
+      <section class="section">
+        <h2 class="section-title">Ordner</h2>
+        <div class="two-col-grid">
+          <!-- Folder 1: Rom -->
+          <div class="folder-card" role="button" tabindex="0">
+            <div class="folder-cover">
+              <div class="folder-cover-art">
+                <svg viewBox="0 0 80 80">
+                  <circle cx="56" cy="24" r="7" stroke="var(--primary)" stroke-width="1.5" />
+                  <path d="M12 62 C16 45, 26 38, 40 38 C54 38, 64 45, 68 62 Z" />
+                  <path d="M26 62 V48" />
+                  <path d="M40 62 V48" />
+                  <path d="M54 62 V48" />
+                </svg>
+              </div>
+              <div class="folder-badge">
+                <svg viewBox="0 0 24 24">
+                  <path d="M22 19a2 2 0 0 1-2 2H4a2 2 0 0 1-2-2V5a2 2 0 0 1 2-2h5l2 3h9a2 2 0 0 1 2 2z"></path>
+                </svg>
+              </div>
+            </div>
+            <div class="card-info">
+              <div class="card-title">Tag 1 – Rom</div>
+              <div class="card-meta">48 Bilder</div>
+            </div>
+          </div>
+
+          <!-- Folder 2: Florenz -->
+          <div class="folder-card" role="button" tabindex="0">
+            <div class="folder-cover">
+              <div class="folder-cover-art">
+                <svg viewBox="0 0 80 80">
+                  <path d="M40 16 L40 22" />
+                  <path d="M24 60 C24 38, 32 30, 40 24 C48 30, 56 38, 56 60 Z" />
+                  <path d="M16 60 H64" />
+                </svg>
+              </div>
+              <div class="folder-badge">
+                <svg viewBox="0 0 24 24">
+                  <path d="M22 19a2 2 0 0 1-2 2H4a2 2 0 0 1-2-2V5a2 2 0 0 1 2-2h5l2 3h9a2 2 0 0 1 2 2z"></path>
+                </svg>
+              </div>
+            </div>
+            <div class="card-info">
+              <div class="card-title">Tag 2 – Florenz</div>
+              <div class="card-meta">52 Bilder</div>
+            </div>
+          </div>
+
+          <!-- Folder 3: Venedig -->
+          <div class="folder-card" role="button" tabindex="0">
+            <div class="folder-cover">
+              <div class="folder-cover-art">
+                <svg viewBox="0 0 80 80">
+                  <circle cx="28" cy="26" r="6" stroke="var(--primary)" stroke-width="1.5" />
+                  <path d="M10 52 Q 40 44, 70 56" />
+                  <path d="M10 60 Q 40 54, 70 64" />
+                </svg>
+              </div>
+              <div class="folder-badge">
+                <svg viewBox="0 0 24 24">
+                  <path d="M22 19a2 2 0 0 1-2 2H4a2 2 0 0 1-2-2V5a2 2 0 0 1 2-2h5l2 3h9a2 2 0 0 1 2 2z"></path>
+                </svg>
+              </div>
+            </div>
+            <div class="card-info">
+              <div class="card-title">Tag 3 – Venedig</div>
+              <div class="card-meta">44 Bilder</div>
+            </div>
+          </div>
+        </div>
+      </section>
+
+      <!-- Section: Bilder -->
+      <section class="section">
+        <h2 class="section-title">Bilder</h2>
+        <div class="two-col-grid">
+          <!-- Image 1 -->
+          <div class="image-card">
+            <div class="image-thumbnail-box">
+              <div class="thumb-art">
+                <svg viewBox="0 0 120 120">
+                  <rect width="120" height="120" fill="#181d26" />
+                  <circle cx="90" cy="36" r="14" fill="#202734" />
+                  <path d="M0 88 C30 70, 70 95, 120 74 L120 120 L0 120 Z" fill="#131720" />
+                  <path d="M20 90 L20 60" stroke="var(--muted)" stroke-width="2" stroke-linecap="round" />
+                  <path d="M26 90 L26 68" stroke="var(--muted)" stroke-width="1.5" stroke-linecap="round" />
+                </svg>
+              </div>
+            </div>
+            <div class="card-info">
+              <div class="card-title">IMG_0412.JPG</div>
+              <div class="card-meta">14.07.2024, 09:14</div>
+            </div>
+          </div>
+
+          <!-- Image 2 -->
+          <div class="image-card">
+            <div class="image-thumbnail-box">
+              <div class="thumb-art">
+                <svg viewBox="0 0 120 120">
+                  <rect width="120" height="120" fill="#191e28" />
+                  <circle cx="60" cy="60" r="28" stroke="var(--border)" stroke-width="6" fill="none" />
+                  <circle cx="60" cy="60" r="12" fill="#242b3a" />
+                  <path d="M74 38 Q 88 42, 84 56" stroke="var(--muted)" stroke-width="3" fill="none" stroke-linecap="round" />
+                </svg>
+              </div>
+            </div>
+            <div class="card-info">
+              <div class="card-title">IMG_0415.JPG</div>
+              <div class="card-meta">14.07.2024, 10:28</div>
+            </div>
+          </div>
+
+          <!-- Image 3 -->
+          <div class="image-card">
+            <div class="image-thumbnail-box">
+              <div class="thumb-art">
+                <svg viewBox="0 0 120 120">
+                  <rect width="120" height="120" fill="#181c25" />
+                  <path d="M38 100 V52 C38 38, 82 38, 82 52 V100" stroke="#252d3c" stroke-width="14" stroke-linecap="round" fill="none" />
+                </svg>
+              </div>
+            </div>
+            <div class="card-info">
+              <div class="card-title">IMG_0419.JPG</div>
+              <div class="card-meta">14.07.2024, 11:45</div>
+            </div>
+          </div>
+
+          <!-- Image 4 -->
+          <div class="image-card">
+            <div class="image-thumbnail-box">
+              <div class="thumb-art">
+                <svg viewBox="0 0 120 120">
+                  <rect width="120" height="120" fill="#191e29" />
+                  <circle cx="60" cy="60" r="30" fill="#212836" />
+                  <circle cx="50" cy="54" r="5" fill="#151921" />
+                  <circle cx="68" cy="52" r="4" fill="#151921" />
+                  <circle cx="62" cy="70" r="6" fill="#151921" />
+                </svg>
+              </div>
+            </div>
+            <div class="card-info">
+              <div class="card-title">IMG_0424.JPG</div>
+              <div class="card-meta">14.07.2024, 13:12</div>
+            </div>
+          </div>
+
+          <!-- Image 5: Nicht anzeigbar (IMG_0431.HEIC) -->
+          <div class="image-card">
+            <div class="unplayable-box">
+              <svg viewBox="0 0 24 24" stroke-linecap="round" stroke-linejoin="round">
+                <line x1="1" y1="1" x2="23" y2="23"></line>
+                <path d="M21 21H3a2 2 0 0 1-2-2V5a2 2 0 0 1 2-2h4m5 0h8a2 2 0 0 1 2 2v10"></path>
+                <circle cx="9" cy="9" r="2"></circle>
+                <path d="m21 15-3.086-3.086a2 2 0 0 0-2.828 0L6 21"></path>
+              </svg>
+              <span class="badge-unplayable">Nicht anzeigbar</span>
+            </div>
+            <div class="card-info">
+              <div class="card-title">IMG_0431.HEIC</div>
+              <div class="card-meta">14.07.2024, 14:05</div>
+            </div>
+          </div>
+
+          <!-- Image 6: Video (VID_0433.MP4) -->
+          <div class="image-card">
+            <div class="video-box">
+              <div class="play-circle">
+                <svg viewBox="0 0 24 24">
+                  <polygon points="6 4 20 12 6 20 6 4"></polygon>
+                </svg>
+              </div>
+            </div>
+            <div class="card-info">
+              <div class="card-title">VID_0433.MP4</div>
+              <div class="card-meta">Video</div>
+            </div>
+          </div>
+        </div>
+      </section>
+    </main>
+
+    <!-- Bottom Navigation Bar -->
+    <nav class="bottom-nav" aria-label="Hauptnavigation">
+      <!-- Filme -->
+      <a href="#" class="nav-item">
+        <svg viewBox="0 0 24 24" stroke-linecap="round" stroke-linejoin="round">
+          <rect x="2" y="2" width="20" height="20" rx="2.18" ry="2.18"></rect>
+          <line x1="7" y1="2" x2="7" y2="22"></line>
+          <line x1="17" y1="2" x2="17" y2="22"></line>
+          <line x1="2" y1="12" x2="22" y2="12"></line>
+          <line x1="2" y1="7" x2="7" y2="7"></line>
+          <line x1="2" y1="17" x2="7" y2="17"></line>
+          <line x1="17" y1="17" x2="22" y2="17"></line>
+          <line x1="17" y1="7" x2="22" y2="7"></line>
+        </svg>
+        <span class="nav-label">Filme</span>
+      </a>
+
+      <!-- Serien -->
+      <a href="#" class="nav-item">
+        <svg viewBox="0 0 24 24" stroke-linecap="round" stroke-linejoin="round">
+          <rect x="2" y="7" width="20" height="15" rx="2" ry="2"></rect>
+          <polyline points="17 2 12 7 7 2"></polyline>
+        </svg>
+        <span class="nav-label">Serien</span>
+      </a>
+
+      <!-- Musik -->
+      <a href="#" class="nav-item">
+        <svg viewBox="0 0 24 24" stroke-linecap="round" stroke-linejoin="round">
+          <path d="M9 18V5l12-2v13"></path>
+          <circle cx="6" cy="18" r="3"></circle>
+          <circle cx="18" cy="16" r="3"></circle>
+        </svg>
+        <span class="nav-label">Musik</span>
+      </a>
+
+      <!-- Hörbücher -->
+      <a href="#" class="nav-item">
+        <svg viewBox="0 0 24 24" stroke-linecap="round" stroke-linejoin="round">
+          <path d="M3 18v-6a9 9 0 0 1 18 0v6"></path>
+          <path d="M21 19a2 2 0 0 1-2 2h-1a2 2 0 0 1-2-2v-3a2 2 0 0 1 2-2h3zM3 19a2 2 0 0 0 2 2h1a2 2 0 0 0 2-2v-3a2 2 0 0 0-2-2H3z"></path>
+        </svg>
+        <span class="nav-label">Hörbücher</span>
+      </a>
+
+      <!-- Bilder (active) -->
+      <a href="#" class="nav-item active" aria-current="page">
+        <svg viewBox="0 0 24 24" stroke-linecap="round" stroke-linejoin="round">
+          <rect x="3" y="3" width="18" height="18" rx="2" ry="2"></rect>
+          <circle cx="8.5" cy="8.5" r="1.5"></circle>
+          <polyline points="21 15 16 10 5 21"></polyline>
+        </svg>
+        <span class="nav-label">Bilder</span>
+      </a>
+    </nav>
+  </div>
+</body>
+</html>
