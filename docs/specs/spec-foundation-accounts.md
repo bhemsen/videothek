@@ -538,6 +538,7 @@ Migration files contain no transaction statements. Each applied file logs
 | Login page keeps the export's footer "Konten werden von der Verwaltung angelegt."; the mobile admin card drops the export's role pill (the select is the only role display) | Footer answers "how do I get an account" (no self-registration); a pill next to an editable select duplicates state | 2026-09-26 |
 | Human decision at spec-acceptance gate (H1): account recovery = offline CLI `npm run reset-password -- <username>` (`node --env-file-if-exists=.env src/cli/reset-password.js`): loads config with `requireMediaRoot: false`, opens the DB (works while the server runs — WAL + `busy_timeout`), normalizes the username, prompts "Neues Passwort für {name}: " and "Passwort wiederholen: " without echo (TTY raw mode; plain line read when stdin is not a TTY), validates (8–256), sets the hash, revokes all of that user's sessions, prints "Passwort für {name} gesetzt, {n} Sitzung(en) beendet.", logs `password_reset {user, by: "cli"}`, exit 0; missing argument, unknown user ("Unbekannter Benutzer: {name}"), mismatch ("Passwörter stimmen nicht überein.") or invalid password → message on stderr, exit 1; promotes nothing; own test with injected streams; README recovery section | Recovers a lost last-admin password without losing progress; needs no new env var | 2026-09-26 |
 | Human decision at spec-acceptance gate (H2): self-service password change is out of v1; the admin resets passwords; a later `track:adhoc` if wanted | Keeps P1 minimal | 2026-09-26 |
+| `src/log.js`: `out`/`err` are typed as a minimal `LogStream = { write(chunk: string): void }`, not `NodeJS.WritableStream` (`process.stdout`/`process.stderr` still satisfy it structurally); a redacted key's whole value is replaced with `"[redacted]"` without recursing further into it, so a matched key holding an object or array is never partially redacted; `Error` values are serialized to `{ message, stack }` at any nesting depth, including inside arrays | Full stream typing would force every test double to implement the whole `Writable` surface; a redacted key's value could itself contain more sensitive data, so replacing it wholesale (vs. recursing in) is the safer default; nested `Error` serialization matches other fields the redaction traversal already recurses into (issue #10 acceptance) | 2026-09-26 |
 
 ## Tracking
 
@@ -690,6 +691,21 @@ Chromium and Firefox, mobile ≤ 767 px and desktop ≥ 1024 px viewport):
   scan scoped to css/js/html with a token-colour check for `favicon.svg`;
   401 guarantee worded for registered routes; prior session revoked only after
   a successful login; missing exports for home/404/dialogs noted.
+- 2026-09-26 (#13): `src/auth/{password,validation,rate-limit}.js`
+  implemented. `deriveKey` wraps `crypto.scrypt` in a plain `Promise`
+  executor instead of `util.promisify` — the promisified overload with an
+  options object did not type-check under `tsc --noEmit --strict` (picked the
+  3-arg, no-options overload). `DUMMY_HASH` is a hardcoded precomputed
+  literal (fixed salt) rather than computed via top-level `await
+  hashPassword(...)`, so importing the module carries no scrypt cost and the
+  constant is deterministic across runs. `createLoginLimiter`'s LRU eviction
+  keys off `Map` iteration order: `fail(key)` deletes-then-re-sets the key to
+  move it to the end (most-recently-failed), so `failures.keys().next()`
+  yields the least-recently-failed key to evict once `maxKeys` is exceeded;
+  `check`/window-pruning never reorder a key so they cannot mask eviction
+  order. `check()` returns `retryAfterSec: null` when `allowed` is `true`,
+  matching the `number | null` convention used elsewhere in this spec
+  (`ApiError.retryAfterSec`).
 - 2026-09-26: Issue #22 (`public/js/lib/{dom,icons,api}.js`) implementation
   choices not fixed elsewhere: `el()` treats `null`/`undefined`/`false` attribute
   values as omitted and `true` as a boolean attribute (`setAttribute(key, '')`);
