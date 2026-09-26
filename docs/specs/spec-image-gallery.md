@@ -542,3 +542,27 @@ Human QA (Chromium + Firefox; desktop 1280 px and 390 px mobile emulation;
   fills ignored; lightbox split pre-named (`lightbox-slide.js`,
   `lightbox-history.js`) to stay within 300 lines per file; folder URLs beyond
   P1's 2,048-char `safeNext` cap fall back to `/` after login — accepted.
+- 2026-09-27 (#75, `src/library/tags/exif.js`): the IFD cycle guard is a
+  shared `Set` of absolute IFD start offsets visited across the three fixed
+  reads (IFD0, its Exif sub-IFD, IFD1) rather than a generic "follow next"
+  loop — the reader never chains past IFD1, so this is enough to make a
+  self-referencing offset (IFD0 as its own Exif pointer or next-IFD) a no-op
+  instead of a special case. The thumbnail's "inside the APP1 segment" check
+  uses the segment's *declared* end (from its length field, unclamped),
+  while any actual byte access (TIFF/IFD parsing, the thumbnail's FF D8 peek)
+  is bounded by `min(declared end, bytes actually read)` — the two coincide
+  for a real file (APP1 ≤ 64 KiB, read window 128 KiB) and only diverge for a
+  deliberately truncated test buffer. `parseExif` also wraps its body in a
+  top-level try/catch as a defensive backstop on top of the explicit bounds
+  checks, matching "never throws" for any bounds-check gap.
+- 2026-09-27 (#75, `test/helpers/exif-jpeg.js`): the embedded base JPEG is a
+  16x16 baseline grayscale image built from flat 8x8 blocks (top block-row
+  dark, bottom light) — a flat block's DCT has no AC energy, so the one-off
+  generator (not committed) needed no real DCT, only the DC term, and the
+  custom AC Huffman table needs only one symbol (EOB), avoiding transcribing
+  the large standard 162-symbol table; verified by decoding the output
+  visually before embedding it as base64. The QA fixture tree's non-JPEG
+  entries (`.heic`/`.webm`/`.mov`/`.png`/`.gif`) are a few arbitrary bytes per
+  the Fixtures row's explicit sanction; capture dates/times for the fixture
+  files the QA tree row leaves unpinned (Tag 1/Tag 2, `geburtstag.jpg`,
+  `alias.jpg`) were chosen to keep chronological order plausible.
