@@ -904,3 +904,50 @@ Chromium and Firefox, mobile ≤ 767 px and desktop ≥ 1024 px viewport):
   password arriving as a multi-character chunk ending in `\r` had the `\r`
   appended to the secret instead of submitting; `onKeystroke` now runs once
   per character in the chunk (`for (const ch of text)`).
+- 2026-09-26 (#16): `src/http/{security,static}.js` implemented.
+  `createStaticHandler`'s returned function matches the module table's
+  `Promise<boolean>` contract exactly: `false` — nothing served — for a
+  method other than `GET`/`HEAD`, a decode failure or path-safety
+  rejection, a well-formed `/<name>` with no matching page file,
+  `*.html`/`/index`/`/404`/an unknown extension, or an asset that does not
+  resolve inside `publicDir`; `true` only once it has written a response
+  (200, 304 or a redirect). `app.js`'s own dispatch (built by #17) decides
+  every `false` case per the server contract (`allow` -> `405`; else
+  `/api/*` -> `404` JSON, other -> `404` page). `sendNotFoundPage`
+  (streamed `public/404.html`, or the plain German fallback line) is
+  exported from `static.js` so that "other -> 404 page" branch reuses the
+  same renderer instead of app.js duplicating it. Review finding fixed: an
+  earlier version rendered the 404 page itself and always returned `true`
+  for every unmatched case, which pre-empted `app.js`'s `allow` -> `405`
+  branch for a `GET`/`HEAD` request on a path registered only under other
+  methods (e.g. `GET /logout`, registered only as `POST`, would have 404'd
+  instead of 405'd); dispatch now sees `false` and decides correctly. Path
+  safety decodes the whole pathname once as a single string (never per
+  segment — decoding only after splitting would miss a `%2F` that reveals
+  a hidden `..` once decoded) and rejects a NUL byte, a literal backslash,
+  or any segment starting with `.`; a containment check (`resolved ===
+  root || resolved.startsWith(root + sep)`) after `path.join` +
+  `path.resolve` is the second, independent layer against traversal for
+  extension-matched asset paths. `sendFile` streams via the `pipeline`
+  helper from `node:stream/promises` (not `.pipe()`), so a client aborting
+  mid-transfer destroys the source `fs.ReadStream`/fd instead of leaking
+  it. A stream error once headers are already sent (page, asset or the 404
+  page itself) logs `request_error {method, path, stack}` with `path` set
+  to `ctx.url.pathname` throughout — the same shape as the app's own
+  top-level dispatch error log, since a failure this late can no longer
+  become a thrown `HttpError` for app.js to catch — and destroys the
+  socket.
+  `isSameOrigin`/`isHttps` take the first value of a comma-separated or
+  array-valued forwarded header; `isSameOrigin` compares `Origin`'s
+  `.host` (scheme-independent, default ports dropped) case-insensitively
+  against the first `X-Forwarded-Host` value, else `Host`. Review finding
+  fixed: `URL.host` only drops a default port (80/443) for its *own*
+  scheme, so a proxy forwarding `X-Forwarded-Host`/`Host` with an explicit
+  default port (a real nginx/Traefik/Caddy config shape) fell through as a
+  false origin mismatch (`403 forbidden_origin` on every mutation); both
+  sides now strip a trailing `:80`/`:443` the same way before comparing.
+  Open question for the spec owner: this also normalizes an
+  `Origin: http://host:443` against `Host: host` (mismatched scheme's
+  default port), slightly widening the spec's `hostname[:port]` equality
+  rule; flagged in review as practically harmless but not yet a confirmed
+  spec change.

@@ -576,3 +576,13 @@ Firefox, desktop and a 390 px phone viewport):
   regular/specials chain split is a single `CASE WHEN ? = 1 THEN season = 0
   ELSE season >= 1 END` guard driven by one bound `isSpecial` flag computed
   from `row.season === 0`, rather than two branches with separate SQL text.
+- 2026-09-26: implementation (#48, `public/js/lib/player-format.js`) —
+  `errorStateFor` returns one of the string literals `'file-missing'` |
+  `'codec'` | `'connection-lost'` (not fixed by the spec text, which only
+  names the German copy); the consuming `player-panel.js` issue matches
+  these exact keys to the state table's German copy. `episodeTitleFor` and
+  the internal `episodeHeading` helper destructure `season`/`episode`/
+  `episodeEnd` with `= null` defaults so an item missing those fields
+  (e.g. a movie) normalizes to the same `EpisodeIdentity` shape
+  `episodeCode` expects, satisfying `tsc --strict` without widening
+  `library-format.js`'s own types.
