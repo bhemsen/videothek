@@ -977,6 +977,11 @@ Chromium and Firefox, mobile ≤ 767 px and desktop ≥ 1024 px viewport):
   test's own setup mistake (wrong password, user never created) fails at the
   call site instead of silently producing a session for the wrong intent.
   `test/route-auth.test.js` reads the route list from a throwaway
-  `createRouter()` + `registerRoutes(router, deps)` call rather than a router
-  `createApp` would have to expose, so it automatically covers every route a
-  later phase adds to `src/http/routes.js` with no edit here.
+  `createRouter()` + `registerRoutes(router, deps)` call rather than reusing
+  the running app's own router, so it automatically covers every route a
+  later phase adds to `src/http/routes.js` with no edit here. `createApp`
+  additionally returns `router` (beyond the `{ server, deps, close() }`
+  above) so other tests can register routes onto a live app instead —
+  `app-error-mapping.test.js` does this; `startTestApp` (below) passes both
+  `router` and `server` through for the same reason, beyond its own spec'd
+  `{ baseUrl, db, config, deps, createUser, login, close }`.

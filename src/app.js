@@ -91,11 +91,30 @@ function isJsonErrorPath(pathname, method) {
 }
 
 /**
+ * Logs one `request_error {method, path, stack}` line for a non-`HttpError`
+ * dispatch failure.
+ * @param {Logger} log
+ * @param {string} method
+ * @param {URL} url
+ * @param {unknown} err
+ * @returns {void}
+ */
+function logRequestError(log, method, url, err) {
+  log.error('request_error', {
+    method,
+    path: url.pathname,
+    stack: err instanceof Error ? err.stack : String(err),
+  });
+}
+
+/**
  * Maps a dispatch failure to a response: a thrown `HttpError` -> its own
  * status/code/headers; anything else -> `500` (JSON or plain text per
  * {@link isJsonErrorPath}) plus one `request_error` log line. Once headers
  * are already sent, no further response can be framed, so the socket is
- * destroyed instead.
+ * destroyed instead of sending a response; a non-`HttpError` still gets its
+ * `request_error` log line first, the same shape as the app's own top-level
+ * dispatch error log (see `src/http/static.js` `sendFile`).
  * @param {unknown} err
  * @param {IncomingMessage} req
  * @param {ServerResponse} res
@@ -104,7 +123,11 @@ function isJsonErrorPath(pathname, method) {
  * @returns {void}
  */
 function handleDispatchError(err, req, res, log, url) {
+  const method = req.method ?? 'GET';
   if (res.headersSent) {
+    if (!(err instanceof HttpError)) {
+      logRequestError(log, method, url, err);
+    }
     res.destroy();
     return;
   }
@@ -112,12 +135,7 @@ function handleDispatchError(err, req, res, log, url) {
     sendError(res, err.status, err.code, err.headers);
     return;
   }
-  const method = req.method ?? 'GET';
-  log.error('request_error', {
-    method,
-    path: url.pathname,
-    stack: err instanceof Error ? err.stack : String(err),
-  });
+  logRequestError(log, method, url, err);
   if (isJsonErrorPath(url.pathname, method)) {
     sendError(res, 500, 'internal');
     return;

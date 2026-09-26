@@ -2,10 +2,12 @@
  * Machine-checked constitution rule: every route registered via
  * `registerRoutes` — except the public exceptions below — answers `401
  * {"error":"unauthorized"}` when called without a session. Reads the route
- * list from a throwaway router registration (not the running app's own
- * internal one, which `createApp` does not expose), so a later phase's new
- * `register<X>Routes` call is picked up automatically the moment it is
- * wired into `src/http/routes.js` — no edit needed here.
+ * list from a throwaway router registration rather than the running app's
+ * own internal one (`createApp`/`startTestApp` do expose `router` as an
+ * additive return key, for tests that need to add routes to a live app, but
+ * a fresh registration here is simpler and needs no running app at all), so
+ * a later phase's new `register<X>Routes` call is picked up automatically
+ * the moment it is wired into `src/http/routes.js` — no edit needed here.
  */
 
 import { test } from 'node:test';

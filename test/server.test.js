@@ -105,10 +105,10 @@ test('stop() resolves promptly after its 5s force-close timer with a request in 
     const startedAt = Date.now();
     await result.stop();
     const elapsedMs = Date.now() - startedAt;
-    // The force-close timer itself is a fixed 5s, so this only has to catch
-    // a runaway hang, not pin down the exact floor; 8s leaves headroom for a
-    // slow CI runner or a Pi instead of asserting right against the timer.
-    assert.ok(elapsedMs <= 8000, `stop() took ${elapsedMs}ms`);
+    // Acceptance for #17 requires stop() to resolve within 6s while a
+    // request is still open; the force-close timer itself is a fixed 5s, so
+    // 6s leaves 1s of headroom without loosening past the spec's bound.
+    assert.ok(elapsedMs <= 6000, `stop() took ${elapsedMs}ms`);
 
     await result.stop(); // idempotent: a second call must not reject or hang
     socket.destroy();

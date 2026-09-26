@@ -139,7 +139,7 @@ test('dispatch error mapping: a thrown non-HttpError on a GET page path answers 
   }
 });
 
-test('dispatch error mapping: once headers are already sent, a later throw destroys the socket', async () => {
+test('dispatch error mapping: once headers are already sent, a later throw destroys the socket and still logs request_error', async () => {
   const app = await startTestApp();
   try {
     app.router.add('GET', '/__test/boom-after-headers', (_req, res) => {
@@ -147,6 +147,14 @@ test('dispatch error mapping: once headers are already sent, a later throw destr
       throw new Error('boom-after-headers');
     });
     await assert.rejects(() => request(app.baseUrl, 'GET', '/__test/boom-after-headers'));
+    assert.ok(
+      app.deps.logLines.some(
+        (line) =>
+          line.includes('request_error') &&
+          line.includes('boom-after-headers') &&
+          line.includes('/__test/boom-after-headers'),
+      ),
+    );
   } finally {
     await app.close();
   }
