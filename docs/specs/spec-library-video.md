@@ -752,7 +752,7 @@ substitute was not accepted, so this line is run on the Pi).
 | One serialised scan queue with coalescing; watcher and timer only enqueue | Constitution/brief: no overlapping scans; serialises all index writes. | 2026-09-26 |
 | Debounce, max wait, backoff, batch size are code constants; only `RESCAN_INTERVAL_MIN` is configurable (already validated by P1) | Constitution fixes the env-var list; P1 owns `src/config.js`. | 2026-09-26 |
 | `startLibrary` returns synchronously; watcher start and the initial scan are deferred; `library` is built in `server.js` `start()`, passed to `createApp` as an extra key, stopped in `stop()` before the DB closes; `src/app.js` only gains the optional `library` in its `AppDeps` typedef | D4 and P1's server contract: wiring never delays `listen`; `createApp` passes extra keys through to route modules. | 2026-09-26 |
-| Logging through the injected `log` as JSON events (`library_scan_complete`, `library_scan_failed`, `library_dir_failed`, `library_root_protected`, `library_names_undecodable`, `library_watch_error`, `library_watch_limit`, `library_listener_failed`) | D4: no `console.*` in modules; one log format for the whole app. | 2026-09-26 |
+| Logging through the injected `log` as JSON events (`library_scan_complete`, `library_scan_failed`, `library_dir_failed`, `library_root_protected`, `library_names_undecodable`, `library_watch_error`, `library_watch_limit`, `library_listener_failed`, `library_scan_run_failed`, `library_scan_queue_oncomplete_failed`) | D4: no `console.*` in modules; one log format for the whole app; the last two are `scan-queue.js`-internal (unexpected `runFull`/`runPaths` failure, `onComplete` failure), distinct from the scanner's own `library_scan_failed`/`library_listener_failed`. | 2026-09-26 |
 | API timestamps are ISO-8601 strings (`addedAt`, `scan.lastCompletedAt`); DB keeps epoch ms | D4 cross-phase JSON convention. | 2026-09-26 |
 | `next` and `subtitles` appear only in `GET /api/library/items/:id` and are added by Phase 3; P2's `toItemJson` and list responses never carry them | Cross-phase consolidation D10 + human gate decision H4 (subtitles = `.vtt` sidecars discovered at request time, never indexed). | 2026-09-26 |
 | Page URLs `/movies`, `/series`, `/series-detail?id=<seriesId>`; player links `/player?id=<itemId>`; P2 replaces P1's `movies.html`/`series.html` placeholders and never edits nav or `placeholder.js` | Cross-phase consolidation D1. | 2026-09-26 |
@@ -934,6 +934,32 @@ and desktop 1440 px, compared with the design exports):
   extension/MIME table with `{ kind, playable, sniff, mime }`; added `jfif`,
   `jxl`, `weba`; `svg` indexed, never playable; `SCAN_VERSION` moved into
   `compat.js` (D9, D6; review BLOCKING 4).
+- 2026-09-26: `scan-queue.js` — `drainPathsBetweenDirs()` is a nested-call
+  contract: it assumes it is only ever invoked from within the currently
+  running `runFull`, so it neither toggles the queue's own in-flight state
+  nor triggers chaining itself; only the top-level dispatch (`startNext`)
+  owns those. This keeps "at most one run in flight" correct without a
+  re-entrancy flag. A thrown/rejected `onComplete` at this internal
+  scan-queue seam (between `scan-queue.js` and `scanner.js`, before
+  `scanner.js` dispatches to its own public `onScanComplete` listeners) is
+  logged as `library_scan_queue_oncomplete_failed`, distinct from
+  `library_listener_failed` (D6's event name for a public listener's own
+  failure) so the two are told apart in logs. A rejected (not just thrown)
+  `onComplete` is caught and logged the same way, since Node 24 terminates
+  the process on an unhandled rejection.
+- 2026-09-26: `scan-queue.js` treats a `'paths'` run's resolved value as
+  opaque except for one field: a truthy `escalate` (the shape `reconcile.js`
+  returns per the path-reconcile rules above) makes the queue set its
+  pending kind to `'full'` — never downgrading an already-pending
+  `'initial'` — so the top-level `MEDIA_ROOT`-or-category-root escalation
+  case chains into one follow-up full run instead of waiting for the
+  periodic rescan. Applies identically to a top-level `'paths'` job and one
+  run inline via `drainPathsBetweenDirs()`. A thrown/rejected `runFull` or
+  `runPaths` is logged as `library_scan_run_failed`, an internal
+  scan-queue-only event distinct from the scanner's own `library_scan_failed`
+  (which covers an expected, handled abort such as an unreadable
+  `MEDIA_ROOT` and still resolves normally); `library_scan_run_failed` fires
+  only for an unexpected failure that escapes `scanner.js`'s own handling.
 - 2026-09-26: cross-phase consolidation — `next`/`subtitles` only in the
   single-item response, added by Phase 3 (D10, H4).
 - 2026-09-26: cross-phase consolidation — migration 002 `STRICT` +
@@ -957,6 +983,16 @@ and desktop 1440 px, compared with the design exports):
   `onScanComplete` not fired for aborted runs; `sort` default and invalid
   URL values; file-size format; "Folgen 1–2" label; season-less series meta;
   README section "Medienordner".
+- 2026-09-26 (#29): `sniffMp4Codecs(absPath)` is async (`Promise<SniffedCodecs
+  | null>`) — the spec's arrow notation left this implicit; callers (P2's
+  item builder) must `await` it. Within one `trak`, a missing `mdia`, `hdlr`,
+  `minf`, `stbl`, `stsd`, or an empty `stsd` skips only that track (it
+  contributes nothing to `video`/`audio`) rather than aborting the whole
+  file — only an actual guard violation (box count/depth/size-fits-parent/
+  64 KiB read budget) or a real I/O truncation aborts the walk and yields
+  `null`. This keeps a track type the sniffer doesn't care about (hint,
+  timecode, …) from ever downgrading a file to "unknown", while a moov
+  literally missing is still treated as `null` per spec.
 - 2026-09-26: change detection (#31) — `MEDIA_ROOT` itself is watched by
   `watcher.js`'s `start()` calling `dirObserver.seen('')` directly, not by the
   scanner's walk: the scanner (#33) only calls `seen(relDir)` for category
