@@ -1,5 +1,5 @@
 import { accessSync, constants as fsConstants, statSync } from 'node:fs';
-import { isAbsolute, resolve, sep } from 'node:path';
+import { isAbsolute, relative, resolve, sep } from 'node:path';
 
 /**
  * @typedef {object} Config
@@ -70,10 +70,12 @@ function isReadableDirectory(path) {
 }
 
 /**
- * Resolves and validates `MEDIA_ROOT`. When `requireMediaRoot` is `false`
- * (CLI tools that must keep working with the media disk unmounted) no
- * problem is ever raised: a usable absolute value is passed through as-is,
- * anything else yields `null`.
+ * Resolves and validates `MEDIA_ROOT`. The returned value, when not `null`,
+ * has always passed through `path.resolve` (normalized, no trailing `.`/`..`
+ * segments) so downstream containment checks can compare it directly. When
+ * `requireMediaRoot` is `false` (CLI tools that must keep working with the
+ * media disk unmounted) no problem is ever raised: a usable absolute value
+ * is resolved and returned, anything else yields `null`.
  * @param {NodeJS.ProcessEnv} env
  * @param {string[]} problems
  * @param {boolean} requireMediaRoot
@@ -82,7 +84,7 @@ function isReadableDirectory(path) {
 function resolveMediaRoot(env, problems, requireMediaRoot) {
   const raw = readVar(env, 'MEDIA_ROOT');
   if (!requireMediaRoot) {
-    return raw !== undefined && isAbsolute(raw) ? raw : null;
+    return raw !== undefined && isAbsolute(raw) ? resolve(raw) : null;
   }
   if (raw === undefined) {
     problems.push('MEDIA_ROOT: required');
@@ -96,17 +98,21 @@ function resolveMediaRoot(env, problems, requireMediaRoot) {
     problems.push('MEDIA_ROOT: must be a readable directory');
     return null;
   }
-  return raw;
+  return resolve(raw);
 }
 
 /**
- * @param {string} parent - Absolute path.
- * @param {string} child - Absolute path.
+ * Containment via `path.relative` rather than a string-prefix test, so it
+ * cannot be fooled by an unnormalized path (trailing `.`/`..` segments) or,
+ * on win32, by a differently-cased path (`path.relative` is case-insensitive
+ * there) — see `resolveMediaPath`'s decision in the video-streaming spec.
+ * @param {string} parent - Resolved absolute path.
+ * @param {string} child - Resolved absolute path.
  * @returns {boolean} whether `child` is `parent` itself or lies inside it.
  */
 function isInside(parent, child) {
-  const prefix = parent.endsWith(sep) ? parent : parent + sep;
-  return child === parent || child.startsWith(prefix);
+  const rel = relative(parent, child);
+  return rel === '' || (!rel.startsWith(`..${sep}`) && rel !== '..' && !isAbsolute(rel));
 }
 
 /**

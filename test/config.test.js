@@ -2,16 +2,17 @@ import { test } from 'node:test';
 import assert from 'node:assert/strict';
 import { mkdtempSync, writeFileSync, rmSync } from 'node:fs';
 import { tmpdir } from 'node:os';
-import { join, resolve } from 'node:path';
+import { join, resolve, sep } from 'node:path';
 import { loadConfig, ConfigError } from '../src/config.js';
 
 const mediaRoot = mkdtempSync(join(tmpdir(), 'vt-media-'));
-const nonDirPath = join(mkdtempSync(join(tmpdir(), 'vt-file-')), 'not-a-dir');
+const nonDirDir = mkdtempSync(join(tmpdir(), 'vt-file-'));
+const nonDirPath = join(nonDirDir, 'not-a-dir');
 writeFileSync(nonDirPath, 'x');
 
 test.after(() => {
   rmSync(mediaRoot, { recursive: true, force: true });
-  rmSync(nonDirPath, { force: true });
+  rmSync(nonDirDir, { recursive: true, force: true });
 });
 
 /** @returns {NodeJS.ProcessEnv} a minimal, valid base env */
@@ -118,6 +119,46 @@ test('DATA_DIR equal to MEDIA_ROOT is rejected', () => {
   );
   assert.deepEqual(err.problems, ['DATA_DIR: must not be inside MEDIA_ROOT']);
 });
+
+test('MEDIA_ROOT with a trailing "." segment is resolved and DATA_DIR containment still catches it', () => {
+  const err = assertConfigError(() =>
+    loadConfig({
+      MEDIA_ROOT: `${mediaRoot}${sep}.`,
+      DATA_DIR: join(mediaRoot, 'data'),
+    }),
+  );
+  assert.deepEqual(err.problems, ['DATA_DIR: must not be inside MEDIA_ROOT']);
+});
+
+test('MEDIA_ROOT with a "dir/.." segment is resolved and DATA_DIR containment still catches it', () => {
+  const err = assertConfigError(() =>
+    loadConfig({
+      MEDIA_ROOT: join(mediaRoot, 'x', '..'),
+      DATA_DIR: join(mediaRoot, 'data'),
+    }),
+  );
+  assert.deepEqual(err.problems, ['DATA_DIR: must not be inside MEDIA_ROOT']);
+});
+
+test('mediaRoot always comes back normalized (resolved), even with a trailing "." segment', () => {
+  const config = loadConfig({
+    MEDIA_ROOT: `${mediaRoot}${sep}.`,
+    DATA_DIR: './somewhere-else',
+  });
+  assert.equal(config.mediaRoot, mediaRoot);
+});
+
+if (process.platform === 'win32') {
+  test('DATA_DIR inside MEDIA_ROOT is caught regardless of letter case (win32)', () => {
+    const err = assertConfigError(() =>
+      loadConfig({
+        MEDIA_ROOT: mediaRoot.toUpperCase(),
+        DATA_DIR: join(mediaRoot, 'data'),
+      }),
+    );
+    assert.deepEqual(err.problems, ['DATA_DIR: must not be inside MEDIA_ROOT']);
+  });
+}
 
 for (const badPort of ['0', '65536', 'abc', '8080.5', '-1', ' 80']) {
   test(`bad PORT "${badPort}" is rejected`, () => {
