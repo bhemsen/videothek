@@ -624,12 +624,14 @@ compared with the exports):
   space); numeric/`"n/total"`/year normalisation from the "Fields read" row is
   left to the future `src/library/tags/index.js` mapping (out of this issue's
   files), matching the Reader interfaces row's `Record<string, string>` type.
-  A repeated Vorbis key keeps its first non-empty value (mirrors ID3's
-  multi-value rule without assuming FLAC's `\0`-separation). Read budget is
-  soft: once exhausted the metadata-block loop stops before its next block
-  header read, so a block already being read when the budget crosses zero
-  still completes — simpler than a hard per-call cap and immaterial at
-  256 KiB. PICTURE selection tracks the first type-3 and the first non-type-3
+  A repeated Vorbis key keeps its first non-empty value, including across a
+  malformed file's repeated VORBIS_COMMENT blocks (mirrors ID3's multi-value
+  rule without assuming FLAC's `\0`-separation). Each STREAMINFO/
+  VORBIS_COMMENT/PICTURE content read is additionally clamped to the bytes
+  left in the budget (on top of its own per-type cap), so total I/O honours
+  the 256 KiB row exactly bar the handful of fixed 4-byte block-header reads
+  already in flight when the budget crosses zero. PICTURE selection tracks
+  the first type-3 and the first non-type-3
   block separately and prefers the former, so ordering never matters. The
   fixture builder (`test/helpers/flac-fixture.js`) writes real, correctly
   CRC'd (CRC-8/CRC-16, poly `0x07`/`0x8005`) CONSTANT-subframe frames using

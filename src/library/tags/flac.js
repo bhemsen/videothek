@@ -52,7 +52,8 @@ function leadingId3v2Size(head) {
   if (!isId3 || (head[3] !== 3 && head[3] !== 4)) return 0;
   const size =
     ((head[6] & 0x7f) << 21) | ((head[7] & 0x7f) << 14) | ((head[8] & 0x7f) << 7) | (head[9] & 0x7f);
-  return 10 + size;
+  const hasFooter = head[3] === 4 && (head[5] & 0x10) !== 0; // ID3v2.4 footer flag adds 10 bytes
+  return 10 + size + (hasFooter ? 10 : 0);
 }
 
 /**
@@ -82,17 +83,17 @@ async function readMetadataBlocks(readAt, pos, fileSize, budget) {
     const blockStart = pos + 4;
 
     if (type === 0) {
-      const buf = await readAt(blockStart, Math.min(length, 34));
+      const buf = await readAt(blockStart, Math.min(length, 34, Math.max(budget, 0)));
       budget -= buf.length;
       streamInfo = streamInfo ?? parseStreamInfo(buf);
     } else if (type === 4 && length <= VORBIS_COMMENT_MAX) {
-      const buf = await readAt(blockStart, length);
+      const buf = await readAt(blockStart, Math.min(length, Math.max(budget, 0)));
       budget -= buf.length;
-      Object.assign(fields, parseVorbisComments(buf));
+      mergeMissing(fields, parseVorbisComments(buf));
     } else if (type === 6) {
-      const buf = await readAt(blockStart, Math.min(length, PICTURE_READ_CAP));
+      const buf = await readAt(blockStart, Math.min(length, PICTURE_READ_CAP, Math.max(budget, 0)));
       budget -= buf.length;
-      const picture = parsePicture(buf, blockStart);
+      const picture = parsePicture(buf, blockStart, length);
       if (picture?.pictureType === 3) frontPicture = frontPicture ?? picture;
       else if (picture) firstPicture = firstPicture ?? picture;
     }
@@ -160,6 +161,20 @@ function parseVorbisComments(buf) {
 }
 
 /**
+ * Copies entries from `source` into `target` for keys `target` does not
+ * already have, so a repeated VORBIS_COMMENT block (malformed file) cannot
+ * overwrite a value the first block already set.
+ *
+ * @param {Record<string, string>} target
+ * @param {Record<string, string>} source
+ */
+function mergeMissing(target, source) {
+  for (const [key, value] of Object.entries(source)) {
+    if (!(key in target)) target[key] = value;
+  }
+}
+
+/**
  * @param {Record<string, string>} fields
  * @param {string} raw One "KEY=value" comment entry.
  */
@@ -178,9 +193,12 @@ function addVorbisEntry(fields, raw) {
  *
  * @param {Buffer} buf Up to `PICTURE_READ_CAP` bytes from the block start.
  * @param {number} blockStartAbs Absolute file offset of the block content.
+ * @param {number} blockLength Declared byte length of the block content, from
+ *   the metadata block header — bounds `dataLength` so a corrupt value cannot
+ *   reference bytes past this block (into the next block or past EOF).
  * @returns {(PictureRef & { pictureType: number }) | null}
  */
-function parsePicture(buf, blockStartAbs) {
+function parsePicture(buf, blockStartAbs, blockLength) {
   if (buf.length < 8) return null;
   const pictureType = buf.readUInt32BE(0);
   const mimeLen = buf.readUInt32BE(4);
@@ -193,9 +211,11 @@ function parsePicture(buf, blockStartAbs) {
   offset += 4 + descLen + 16; // description + width/height/depth/colors
   if (offset + 4 > buf.length) return null;
   const dataLength = buf.readUInt32BE(offset);
+  const dataStart = offset + 4;
 
   if (mime === 'image/jpg') mime = 'image/jpeg';
   if (!PICTURE_MIME_TYPES.has(mime)) return null;
   if (dataLength <= 0 || dataLength > PICTURE_MAX_LENGTH) return null;
-  return { offset: blockStartAbs + offset + 4, length: dataLength, mime, pictureType };
+  if (dataStart + dataLength > blockLength) return null;
+  return { offset: blockStartAbs + dataStart, length: dataLength, mime, pictureType };
 }

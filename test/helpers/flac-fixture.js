@@ -14,8 +14,13 @@
  * @param {number} [opts.bitsPerSample] Must be a multiple of 8.
  * @param {number} [opts.totalSamples] STREAMINFO total sample count.
  * @param {Record<string, string> | [string, string][]} [opts.vorbisComments]
+ * @param {(Record<string, string> | [string, string][])[]} [opts.extraVorbisCommentBlocks]
+ *   Additional VORBIS_COMMENT blocks appended after the primary one. Real
+ *   encoders emit only one; this is for exercising the reader's handling of a
+ *   malformed file that repeats the block.
  * @param {{ type?: number, mime?: string, description?: string, data?: Buffer }[]} [opts.pictures]
- * @param {boolean} [opts.leadingId3v2] Prepend a minimal ID3v2.3 tag.
+ * @param {boolean | { version?: number, footer?: boolean }} [opts.leadingId3v2]
+ *   Prepend a minimal ID3v2 tag; `true` defaults to a v2.3 tag with no footer.
  * @param {number} [opts.vorbisPaddingBytes] Inflates the VORBIS_COMMENT block.
  * @param {boolean} [opts.includeFrames] Whether to append audio frames.
  * @param {number} [opts.blockSize] Samples per frame.
@@ -28,6 +33,7 @@ export function buildFlacFile(opts = {}) {
     bitsPerSample = 16,
     totalSamples = 0,
     vorbisComments = { TITLE: 'Test' },
+    extraVorbisCommentBlocks = [],
     pictures = [],
     leadingId3v2 = false,
     vorbisPaddingBytes = 0,
@@ -38,10 +44,11 @@ export function buildFlacFile(opts = {}) {
   const blocks = [
     { type: 0, content: buildStreamInfoBlock({ sampleRate, channels, bitsPerSample, totalSamples, blockSize }) },
     { type: 4, content: buildVorbisCommentBlock(vorbisComments, vorbisPaddingBytes) },
+    ...extraVorbisCommentBlocks.map((comments) => ({ type: 4, content: buildVorbisCommentBlock(comments, 0) })),
     ...pictures.map((picture) => ({ type: 6, content: buildPictureBlock(picture) })),
   ];
 
-  const prefix = leadingId3v2 ? buildId3v2Prefix() : Buffer.alloc(0);
+  const prefix = leadingId3v2 ? buildId3v2Prefix(typeof leadingId3v2 === 'object' ? leadingId3v2 : {}) : Buffer.alloc(0);
   const frames = includeFrames
     ? buildFrames({ totalSamples, blockSize, channels, bitsPerSample })
     : Buffer.alloc(0);
@@ -113,14 +120,29 @@ function buildPictureBlock({ type = 3, mime = 'image/jpeg', description = '', da
   return Buffer.concat([head, data]);
 }
 
-/** A minimal ID3v2.3 tag with no frames, used to test the FLAC leading-tag skip. */
-function buildId3v2Prefix() {
+/**
+ * A minimal ID3v2 tag with no frames, used to test the FLAC leading-tag skip.
+ *
+ * @param {{ version?: number, footer?: boolean }} [opts]
+ */
+function buildId3v2Prefix({ version = 3, footer = false } = {}) {
   const body = Buffer.alloc(16);
   const header = Buffer.alloc(10);
   header.write('ID3', 0, 'ascii');
-  header[3] = 3;
+  header[3] = version;
+  header[5] = footer ? 0x10 : 0; // footer-present flag (ID3v2.4 only)
   writeSynchsafe(header, 6, body.length);
-  return Buffer.concat([header, body]);
+  const footerBuf = footer ? buildId3v2Footer(version, body.length) : Buffer.alloc(0);
+  return Buffer.concat([header, body, footerBuf]);
+}
+
+/** @param {number} version @param {number} size */
+function buildId3v2Footer(version, size) {
+  const footer = Buffer.alloc(10);
+  footer.write('3DI', 0, 'ascii');
+  footer[3] = version;
+  writeSynchsafe(footer, 6, size);
+  return footer;
 }
 
 /** @param {Buffer} buf @param {number} offset @param {number} value */
@@ -213,6 +235,26 @@ function crc16(buf) {
     for (let i = 0; i < 8; i++) crc = crc & 0x8000 ? ((crc << 1) ^ 0x8005) & 0xffff : (crc << 1) & 0xffff;
   }
   return crc;
+}
+
+/**
+ * Walks the metadata block chain of a buffer built by {@link buildFlacFile}
+ * and returns the byte offset where the audio frame stream begins (right
+ * after the last metadata block). Independent of `src/library/tags/flac.js`.
+ *
+ * @param {Buffer} buf A buffer built by {@link buildFlacFile}.
+ * @returns {number}
+ */
+export function findFrameStart(buf) {
+  let pos = buf.indexOf('fLaC', 0, 'ascii') + 4;
+  let last = false;
+  while (!last) {
+    const header = buf.subarray(pos, pos + 4);
+    last = (header[0] & 0x80) !== 0;
+    const length = (header[1] << 16) | (header[2] << 8) | header[3];
+    pos += 4 + length;
+  }
+  return pos;
 }
 
 /**
