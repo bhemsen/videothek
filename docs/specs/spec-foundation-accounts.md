@@ -885,3 +885,22 @@ Chromium and Firefox, mobile ≤ 767 px and desktop ≥ 1024 px viewport):
   spec's fixed `realpathSync(process.argv[1]) === realpathSync(fileURLToPath(
   import.meta.url))` check (this is its first use in the repo; `src/server.js`
   does not exist yet).
+- 2026-09-27 (#20 review): PR #121 review fixes. (1) Failures were landing on
+  stdout (`output`) instead of stderr, contradicting H1 ("message on stderr,
+  exit 1") and the issue's acceptance criteria; `resetPassword` now takes an
+  additional `errorOutput` dependency (not in the module-layout table's
+  signature — an explicit, intentional deviation, kept minimal since every
+  other dependency in that signature is likewise passed in rather than
+  defaulted) that all four failure messages write to, and `main()` wires it to
+  `process.stderr` (prompts/success still go to `output`/stdout). (2)
+  `createPromptReader` never listened for `'end'`/`'close'`, so empty or
+  closed stdin, or a final line with no trailing newline, left a prompt's
+  promise pending forever; the process then exited 0 silently once the event
+  loop drained instead of reporting a failure. It now resolves a pending
+  `readNext()` with whatever is left in the buffer when the stream ends (and
+  any later call resolves the same way immediately), which naturally fails
+  the existing length/mismatch checks instead of hanging. (3) TTY keystroke
+  handling treated an entire `'data'` chunk as one keystroke, so a pasted
+  password arriving as a multi-character chunk ending in `\r` had the `\r`
+  appended to the secret instead of submitting; `onKeystroke` now runs once
+  per character in the chunk (`for (const ch of text)`).
