@@ -1088,3 +1088,54 @@ and desktop 1440 px, compared with the design exports):
   unplayable. `library-api.js`'s `getCategory`/`getSeries` return the parsed
   JSON typed via JSDoc (`CategoryItemsResponse | CategorySeriesResponse`,
   `SeriesDetail`) for later phases to consume directly.
+- 2026-09-27 (#33): the end-of-walk sweep (deleting rows under a directory
+  that vanished entirely, not just a changed file inside one still there)
+  needs to know which DB-known directories exist under a prefix, which
+  `library-repo.js`'s existing exports (`getItemsByDir` exact-match,
+  `hasItemsUnderDir` boolean, `deleteItemsUnderDir` blind delete) cannot
+  answer. Added `listDirsUnderDir(db, prefix)` (`SELECT DISTINCT dir`) — an
+  additive read query, same pattern as (#27)'s own `deleteItem` addition.
+- 2026-09-27 (#33): root safety (D7) needs to tell "this category root is
+  currently missing/unreadable/empty" apart from "this root simply doesn't
+  exist and never had any files" (a fresh install with only 2 of 5
+  categories in use must never warn). The scanner keeps an in-memory
+  `knownRoots` set of exact on-disk root names, updated at the end of every
+  completed full scan; a name drops out only once it is both absent from
+  the current listing and has no DB rows left. A root is evaluated (and, if
+  it still has rows, protected + `library_root_protected` + `lastError =
+  'root_protected'`) only when it is in `knownRoots ∪ discovered-this-scan`,
+  so an unused category is silently skipped forever, while a root that once
+  had files keeps being checked (and re-warned) across scans until it is
+  fixed or its rows are gone (matches the QA scenario: rename `Filme/` away
+  while the server keeps running, rename it back). This state does not
+  survive a process restart, which is an accepted simplification: a
+  restart after a root vanished re-runs `discoverRoots()` fresh and the
+  vanished root's rows simply keep waiting, untouched, since only visited
+  directories are ever swept.
+- 2026-09-27 (#33): `lastError` distinguishes three causes with three
+  literal strings — `'media_root_unreadable'` (the whole run aborted, no
+  `onScanComplete`), `'root_protected'` (at least one category root was
+  protected this run) and `'dir_failed'` (no protected root, but at least
+  one ordinary directory's `readdir` failed) — `'dir_failed'` was not
+  spelled out in the spec text; chosen for symmetry with the other two so a
+  human reading a status payload can tell the three failure shapes apart
+  without decoding a boolean pair.
+- 2026-09-27 (#33): `reconcile.js`'s directory case ("subtree scan") and
+  `scanner.js`'s per-root walk share one recursive `walkDir` implementation
+  inside `scanner.js`, exposed to `reconcile.js` only as a plain
+  `ctx.scanSubtree(relDir)` function (built by `scanner.js` and passed
+  through the same `ctx` dir-sync/reconcile already take) — never an
+  import of `scanner.js` from `reconcile.js`, which `scanner.js` already
+  imports the other way for its `'paths'` runs. A subtree scan's own
+  visited set is merged into the currently-running full scan's visited set
+  (tracked in a closure-local `activeFullVisited`, non-null only while a
+  full scan's own walk is in flight) so a directory an interleaved
+  reconcile discovers mid-walk is not swept away moments later as
+  "unvisited" by that same full scan's own end-of-walk sweep.
+- 2026-09-27 (#33): `dir-sync.js`'s `syncDirectory(ctx, relDir)` and
+  `scanner.js`'s `createScanner(...)` both accept an optional, test-only
+  `statFn` (threaded down to `walk.js`'s own `listDirectory(dir, {
+  statFn })`, per (#32)'s precedent), letting a test deterministically hook
+  a specific file's `stat` call — used to inject an interleaved
+  `requestPaths` call at an exact point mid-walk instead of racing real
+  timers against real disk I/O.

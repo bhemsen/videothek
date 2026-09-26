@@ -146,6 +146,29 @@ export function deleteItemsUnderDir(db, dir) {
 }
 
 /**
+ * Lists every distinct `dir` value with at least one row at or under
+ * `prefix` (inclusive of `prefix` itself). Used by the scanner's end-of-walk
+ * sweep (`scanner.js`, #33) to find directories that still have rows but
+ * were not visited by the walk that just completed — the scanner has no
+ * other way to discover a whole subdirectory that vanished, since it only
+ * ever asks about directories it already knows to look at.
+ * @param {import('node:sqlite').DatabaseSync} db
+ * @param {string} prefix
+ * @returns {string[]}
+ */
+export function listDirsUnderDir(db, prefix) {
+  const [lower, upper] = subtreeBounds(prefix);
+  const rows = /** @type {{ dir: string }[]} */ (
+    /** @type {unknown} */ (
+      db
+        .prepare('SELECT DISTINCT dir FROM library_items WHERE dir = ? OR (dir >= ? AND dir < ?)')
+        .all(prefix, lower, upper)
+    )
+  );
+  return rows.map((row) => row.dir);
+}
+
+/**
  * Checks whether any indexed item lies anywhere under `dir`, without loading
  * rows. Used for root safety (D7): a category root that still has rows but
  * is missing, unreadable or empty must not be swept.
