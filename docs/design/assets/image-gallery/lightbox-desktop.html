@@ -14,7 +14,7 @@
       --text-muted: #9aa0aa;
       --surface-btn: #1c2029;
       --border-btn: #2a2f3a;
-      --accent-focus: #f5b301;
+      --accent-focus: #ff7a1a;
     }
 
     body {
@@ -49,7 +49,7 @@
     }
 
     /* Strict Keyboard focus state specification */
-    .focus-ring-amber {
+    .focus-ring-primary {
       outline: 2px solid var(--accent-focus);
       outline-offset: 2px;
     }
@@ -66,7 +66,7 @@
 <span>12</span> / <span>148</span>
 </div>
 <!-- Close Button -->
-<button aria-label="Schließen" class="btn-circle btn-close w-[44px] h-[44px] rounded-full flex items-center justify-center cursor-pointer focus:outline-none focus-visible:ring-2 focus-visible:ring-[#f5b301] focus-visible:ring-offset-2 focus-visible:ring-offset-[#0f1115]" data-purpose="close-lightbox" title="Schließen" type="button">
+<button aria-label="Schließen" class="btn-circle btn-close w-[44px] h-[44px] rounded-full flex items-center justify-center cursor-pointer focus:outline-none focus-visible:ring-2 focus-visible:ring-[#ff7a1a] focus-visible:ring-offset-2 focus-visible:ring-offset-[#0f1115]" data-purpose="close-lightbox" title="Schließen" type="button">
 <!-- Close (X) Icon -->
 <svg aria-hidden="true" class="w-5 h-5 text-[#e8eaed]" fill="none" stroke="currentColor" stroke-linecap="round" stroke-linejoin="round" stroke-width="2" viewbox="0 0 24 24">
 <line x1="18" x2="6" y1="6" y2="18"></line>
@@ -78,7 +78,7 @@
 <!-- BEGIN: CenterStage -->
 <main class="flex-1 min-h-0 relative flex items-center justify-center px-6" data-purpose="stage-container">
 <!-- Previous Image Navigation Button -->
-<button aria-label="Vorheriges Bild" class="btn-circle absolute left-6 top-1/2 -translate-y-1/2 w-[56px] h-[56px] rounded-full flex items-center justify-center cursor-pointer z-10 focus:outline-none focus-visible:ring-2 focus-visible:ring-[#f5b301] focus-visible:ring-offset-2 focus-visible:ring-offset-[#0f1115]" data-purpose="nav-previous" title="Vorheriges Bild" type="button">
+<button aria-label="Vorheriges Bild" class="btn-circle absolute left-6 top-1/2 -translate-y-1/2 w-[56px] h-[56px] rounded-full flex items-center justify-center cursor-pointer z-10 focus:outline-none focus-visible:ring-2 focus-visible:ring-[#ff7a1a] focus-visible:ring-offset-2 focus-visible:ring-offset-[#0f1115]" data-purpose="nav-previous" title="Vorheriges Bild" type="button">
 <!-- Chevron Left Icon -->
 <svg aria-hidden="true" class="w-6 h-6 text-[#e8eaed]" fill="none" stroke="currentColor" stroke-linecap="round" stroke-linejoin="round" stroke-width="2" viewbox="0 0 24 24">
 <polyline points="15 18 9 12 15 6"></polyline>
@@ -89,7 +89,7 @@
 <img alt="Kolosseum in Rom bei Sonnenuntergang" class="max-w-[calc(100vw-160px)] max-h-[calc(100vh-140px)] object-contain rounded-[4px] shadow-[0_8px_30px_rgba(0,0,0,0.60)]" data-purpose="main-photo" src="https://lh3.googleusercontent.com/aida-public/AB6AXuDnjnHkjxxo0_1kE6fB0tFH_QcbuYO0dfzt6Mzb1B1Wp5MXbG7chb02tlaKZfnvAk_SVC4osPiNtP7VQVFkRbyytyXyLn4GNDWU2W5PvGDjpp3Fe4uRkR7_GOawZIuWCv4H27u8J-4-KpTRT-6P6N-x2iIDez-gXUp-JWHFxT_kNFAx5egCPM8TUA9xDZuCQiF9B6syvFhYU2BZgeem--R1Lqk4dxjUsLiWGeHMQ3wNwZshNN9WY_QniERSO2xyCGcfdm5t4YAsr_F9"/>
 </div>
 <!-- Next Image Navigation Button with Focus State Demonstration -->
-<button aria-label="Nächstes Bild" class="btn-circle focus-ring-amber absolute right-6 top-1/2 -translate-y-1/2 w-[56px] h-[56px] rounded-full flex items-center justify-center cursor-pointer z-10" data-purpose="nav-next" title="Nächstes Bild" type="button">
+<button aria-label="Nächstes Bild" class="btn-circle focus-ring-primary absolute right-6 top-1/2 -translate-y-1/2 w-[56px] h-[56px] rounded-full flex items-center justify-center cursor-pointer z-10" data-purpose="nav-next" title="Nächstes Bild" type="button">
 <!-- Chevron Right Icon -->
 <svg aria-hidden="true" class="w-6 h-6 text-[#e8eaed]" fill="none" stroke="currentColor" stroke-linecap="round" stroke-linejoin="round" stroke-width="2" viewbox="0 0 24 24">
 <polyline points="9 18 15 12 9 6"></polyline>
