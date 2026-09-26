@@ -551,3 +551,11 @@ Firefox, desktop and a 390 px phone viewport):
   tokens once in Design; item-less states hide the title block and make the
   panel heading the `<h1>`/`document.title`; the MKV QA line says how to
   reach a non-linked item; retry QA line added.
+- 2026-09-26: implementation (#39, `src/http/range.js`) — oversized digit
+  strings (start/end/suffix beyond `Number.MAX_SAFE_INTEGER`) are detected via
+  `BigInt(digits) > BigInt(Number.MAX_SAFE_INTEGER)` rather than `Number()`
+  parsing, which would silently round instead of flagging the value; the
+  regex `^(\d*)-(\d*)$` on the trimmed single spec doubles as the syntax
+  check (both groups empty, e.g. `bytes=-` or `bytes=`, falls through to
+  `none` alongside non-digit specs like `bytes=abc`), so no separate
+  digits-only validation was needed.
