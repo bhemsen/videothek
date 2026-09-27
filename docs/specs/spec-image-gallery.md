@@ -300,6 +300,7 @@ optional RSS line.
 | QA fixture tree (`MEDIA_ROOT=test/fixtures/media`): `Bilder/Urlaub 2024/Italien/` with `IMG_0412.jpg` (II, thumb, orientation 1, DateTimeOriginal 2024-07-14 09:14), `IMG_0415.jpg` (MM, thumb, orientation 6, 10:28), `IMG_0419.jpg` (thumb, orientation 8, 11:45), `IMG_0424.jpg` (no EXIF), `IMG_0431.heic`, `VID_0433.webm` (playable), `VID_0434.mov` (not playable), `Screenshot 2.png`, `Screenshot 10.png`, subfolders `Tag 1 – Rom/IMG_0501.jpg`, `Tag 2 – Florenz/IMG_0601.jpg`; `Bilder/Familie/geburtstag.jpg` (IFD0 DateTime only); `Bilder/root.gif`; `Bilder/.versteckt.jpg` and `Bilder/@eaDir/x.jpg` (skipped by P2); `Photos/Familie/alias.jpg` (merges into `Familie`). | Covers every visible rule once; P2's QA tree (`Filme/`, `Serien/`) sits beside it. | 2026-09-26 |
 | Category id `images` (plural) everywhere — SQL filters, tests, API; imported from `CATEGORIES`, not re-spelled where the module is available. | Cross-phase consolidation D3. | 2026-09-26 |
 | No progress for anything under `images`: the lightbox never loads P4's `progress.js`. | Cross-phase consolidation D11 / H9: P4 returns `not_resumable` for category `images`. | 2026-09-26 |
+| **`test/api/gallery.test.js`'s suite split across three files:** `gallery.test.js` (shape, breadcrumb, subtree counts, cover choice, alias merge, sort, URL mapping, the `\` key case), `gallery-validation.test.js` (invalid/unknown folder keys, the 5,000-item folder) and `gallery-test-helpers.js` (`get`, `seedItem`, `seedItemWithMeta`, `idOf`). | The single-file suite exceeded the constitution's 300-line/file limit; the same split already exists at the library layer (`test/library/gallery.test.js` + `gallery-thumb.test.js` + `gallery-test-helpers.js`), so this mirrors an established precedent rather than inventing a new one. | 2026-09-27 |
 
 ## Tracking
 
@@ -592,6 +593,20 @@ Human QA (Chromium + Firefox; desktop 1280 px and 390 px mobile emulation;
   otherwise leaves it out. Capture dates/times for the fixture files the QA
   tree row leaves unpinned (Tag 1/Tag 2, `geburtstag.jpg`, `alias.jpg`) were
   chosen to keep chronological order plausible.
+- 2026-09-27 (#81, `src/api/thumb.js`): implemented exactly per the
+  Thumbnail route decision row, as one sequential guard-clause chain (id
+  regex + safe integer -> `getThumbSource` -> category/kind/playable/
+  recorded-thumbnail -> `resolveMediaPath` -> `verifyThumb` -> `sendMedia`),
+  each failure answering the same `404 {"error":"not_found"}` through one
+  `notFound(res)` helper; `deps.openFile` is forwarded to both `verifyThumb`
+  and `sendMedia` unconditionally (each has its own default when it is
+  `undefined`), so the route itself carries no open-file logic of its own.
+  `test/api/thumb.test.js` table-drives the seven pre-check failure
+  scenarios (`Object.entries` of async seed functions) to stay under the
+  300-line file cap while keeping one assertion per scenario; the "recorded
+  offset no longer starts FF D8" fixture reuses a real thumbnail's own APP1
+  marker bytes (offset 2 = `FF E1`) instead of corrupting the file, so the
+  scenario needs no separate malformed-thumbnail builder.
 - 2026-09-27: Issue #136 closed two robustness gaps from #122's post-merge
   review: `insertMetaStubs`' catch block now guards its `ROLLBACK` in its own
   `try`/`catch` (matching `migrate.js`/`users.js`) so a SQLite auto-abort
