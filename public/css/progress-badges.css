@@ -1,0 +1,44 @@
+/*
+ * Progress bar / "Gesehen" badge on movie cards and episode rows
+ * (docs/specs/spec-progress-resume.md "Grid decoration"). Appended to a P2
+ * host element (`.media-card__tile` / `.episode-row`, both already
+ * `position: relative`), never a class on the host itself.
+ *
+ * Every length/colour here is a token from tokens.css, or a calc() built
+ * from one — no raw value outside tokens.css (enforced by
+ * test/frontend-rules.test.js).
+ */
+
+.progress-badge-bar {
+  position: absolute;
+  bottom: 0;
+  left: 0;
+  width: calc(var(--progress, 0) * 100%);
+  height: var(--space-1);
+  background: var(--color-primary);
+  border-bottom-left-radius: inherit;
+  border-bottom-right-radius: inherit;
+}
+
+.progress-badge-pill {
+  position: absolute;
+  top: var(--space-2);
+  right: var(--space-2);
+  display: inline-flex;
+  align-items: center;
+  gap: var(--space-1);
+  padding: 0 var(--space-2);
+  border: var(--border-width) solid var(--color-border);
+  border-radius: var(--radius-full);
+  background: var(--color-background);
+  color: var(--color-foreground);
+  font-size: var(--text-xs);
+  font-weight: var(--weight-semibold);
+  white-space: nowrap;
+}
+
+.progress-badge-pill svg {
+  width: var(--space-4);
+  height: var(--space-4);
+  color: var(--color-accent);
+}
