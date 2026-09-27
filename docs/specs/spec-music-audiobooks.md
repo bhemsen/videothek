@@ -338,12 +338,12 @@ QA-only, optional:
 | **Queue (`public/js/audio/queue.js`, pure):** `createQueue(items, { startIndex = 0 })` keeps only `playable` items (a non-playable start item → the next playable one); API `current()`, `index()`, `advance()` → next item or `null` at the end, `back(currentTimeS)` → `{ item, restart }` (`currentTimeS > 3` or first item → restart current, else the previous item), `jump(itemId)` → item or `null`. A queue is one album or one book. | Standard player behaviour; pure so it is unit-tested. | 2026-09-26 |
 | **Player (`public/js/audio/player.js`):** `createAudioPlayer({ audio, track = trackPlayback, headMedia = defaultHeadMedia })` — `audio` is the one `HTMLAudioElement`; `track` is Phase 4's `trackPlayback` (test seam); `headMedia(id) → Promise<number>` returns the HTTP status of `fetch('/media/<id>', { method: 'HEAD', credentials: 'same-origin' })` and resolves `0` on a network error (never rejects) — the default is that `fetch` call, tests inject a stub — → `{ playQueue(items, { startIndex, mode: 'music' \| 'audiobook', groupId }), toggle(), next(), previous(), seekBy(seconds), seekTo(seconds), state() → { item, groupId, mode, playing, error } \| null, onChange(listener) → unsubscribe }`. Queue items: `{ id, title, subtitle, groupTitle, coverId, duration, playable, start }`. One persistent `<audio preload="metadata">` is reused. When **no** previous handle exists (the first play of the page), `playQueue` sets `src = /media/<id>`, creates the handle and calls `play()` synchronously inside the caller's click task — no `await` before `play()`, and every caller has its queue data loaded before the click (see Views: resume-album prefetch), so iOS Safari's transient user activation is never spent on a network wait. Every later switch (advance, previous/next, new queue, row click) first waits for `stop()` of the previous handle, bounded: `await Promise.race([prev.stop(), delay(1000)])` — this relies on Phase 4's `stop()` doing, **synchronously inside the call and before its first `await`**, (a) dispatching its final report (payload read from the element) and (b) detaching every listener and timer; only the network settle is awaited. So when the 1 s cap wins, the old handle can no longer react to the new `src` (no "repeat seek on next `loadedmetadata`", no report under the old item id), and the cap only stops a slow LAN from delaying auto-advance. The player issue checks the merged Phase 4 `progress.js` for this order; if it detaches only after an await, that is a Phase 4 defect fixed in `progress.js` by a `fix:` issue — P5 adds no workaround. Then the player sets `src`, creates the new handle and calls `play()` (a rejected promise leaves the bar paused; the element was unlocked by the first gesture, so later programmatic `play()` is allowed). `ended` → `advance()`; queue end → stop, bar stays visible with the last item. An `error` event (code ≠ 1) → `HEAD /media/<id>`: 401 → `toLogin()`; otherwise the bar shows "Titel konnte nicht abgespielt werden" (`role="status"`, 5 s) and advances. Leaving the section is a page load; `trackPlayback`'s `pagehide` report saves the position. | Reusing the element keeps the autoplay unlock from the first gesture across auto-advance; a synchronous first `play()` keeps the gesture valid on iOS Safari (review); the 1 s cap bounds the keepalive PUT round trip on a slow network (review); the HEAD check mirrors Phase 3's error disambiguation for the expired-session case. | 2026-09-26 |
 | **Audio section URLs (H8 = D14):** `public/music.html` and `public/audiobooks.html` replace Phase 1's placeholders; both have Phase 1's placeholder head/body skeleton plus `audio.css`, `audio-music.css`, `audio-books.css` and load the one module `public/js/audio/app.js` instead of `placeholder.js`; they differ only in `<title>` (`Musik · Videothek` / `Hörbücher · Videothek`, Phase 1's `{Seite} · Videothek` form). The `<body>` carries **no** `data-category` attribute (that hook belongs to `placeholder.js`): `app.js` derives the section from `location.pathname` alone, because `pushState` moves between `/music` and `/audiobooks` without a reload and a static attribute would go stale. Routes (`public/js/audio/routes.js`, pure `parseAudioUrl(pathname, search) → { section: 'music' \| 'audiobooks', view: 'overview' \| 'album' \| 'grid' \| 'book', id }` and `audioUrl(route)`): `/music`, `/music?album=<id>`, `/audiobooks`, `/audiobooks?book=<id>`; an invalid id → the section overview via `replaceState`. `app.js` intercepts clicks on `a[href]` whose URL is same-origin with pathname `/music` or `/audiobooks` (primary button, no modifier key, no `target`/`download`) — this covers Phase 1's two nav links and all in-section links — then `pushState` (skipped when the URL is unchanged), renders the view, calls `setActive(section)` and scrolls to top (`history.scrollRestoration = 'manual'`); `popstate` renders from `location`. No nav edits, no redirect stubs. `document.title` = view heading + " · Videothek". | Human decision at spec-acceptance gate (H8); the query-string URLs survive Phase 1's `/login?next=` round trip, which a hash would not (review BLOCKING-4). | 2026-09-26 |
-| **View contract:** each `public/js/audio/views/*.js` exports `render({ container, id, player, navigate }) → Promise<{ title: string, dispose?: () => void }>`; `app.js` owns `container` (inside the shell's `main`), calls `dispose` before the next view and never re-creates the player. The shell issue ships the four view modules and two view CSS files as minimal stubs (heading only / comment only); the view issues replace them. | Lets the shell, music views and audiobook views be built in parallel without touching each other's files. | 2026-09-26 |
+| **View contract:** each `public/js/audio/views/*.js` exports `render({ container, id, player, navigate }) → Promise<{ title: string, dispose?: () => void }>`; `app.js` owns `container` (inside the shell's `main`), calls `dispose` before the next view and never re-creates the player. `render` never rejects: `app.js` has no catch around it, so every view renders its own loading/error/404 state (see "States and copy") into `container` and always resolves. The shell issue ships the four view modules and two view CSS files as minimal stubs (heading only / comment only); the view issues replace them. | Lets the shell, music views and audiobook views be built in parallel without touching each other's files. | 2026-09-26 |
 | **Views:** Musik overview = "Weiterhören" card when `resume` is set (cover, title, "artist · album", progress bar of height `var(--space-1)` in `primary` = position/duration, meta `formatRemaining`, a non-interactive "Fortsetzen" pill `<span>`; the card is one `<button>` that plays the album queue from that track at `position` and navigates to the album). **Resume-album prefetch:** when `resume` is set, the view fetches `GET /api/music/albums/<albumId>` in parallel with rendering and shows the card only once that album has loaded (album request fails → no card, the rest of the page renders), so the click handler calls `playQueue` synchronously with data in hand. Artist sections (`<h2>` name + `muted` "n Alben"/"1 Album") each with a grid of 1:1 album cards (`<a href="/music?album=<id>">`, cover `loading="lazy"`, title, year muted). Album detail = back link "‹ Musik", cover, title, artist, meta "2019 · 12 Titel · 48 Min." (year omitted when null, "1 Titel" singular), primary "Alle abspielen", track rows with "CD n" sub-headings only when `discCount` > 1. Hörbücher grid = page heading "Hörbücher" + `muted` "n Hörbücher"/"1 Hörbuch" (all books) + "Weiterhören" row (books with `state = 'in_progress'`, `lastPlayedAt` desc, max 20, horizontally scrollable, hidden when empty) + all books as 1:1 cards (`<a href="/audiobooks?book=<id>">`): title, author, `primary` bar of height `var(--space-1)` + "34 %" when in progress, "Gehört" when finished, else "n Dateien · 7 Std. 12 Min.". Book detail = back link "‹ Hörbücher", cover, overline "Hörbuch", title, author, "n Dateien · Dauer", overall bar + "34 % gehört" (when fraction non-null), primary button "Abspielen" (`new`) / "Fortsetzen · <file title> – <m:ss>" (`in_progress`) / "Von vorn hören" (`finished`), secondary "Von vorn hören" when in progress, file rows with per-file bar and "Gehört" for finished files. Book-card clicks open the detail; playback always starts from a button. All bars (card, overall, per-file) use height `var(--space-1)` — no literal lengths (D5). | design.md components (media card, grid/list, progress wherever started); committed exports (counts and the "Fortsetzen" pill adopted, review); the prefetch keeps the first `play()` inside the click's user activation on iOS Safari (review). | 2026-09-26 |
 | **Rows:** playable track/file rows are full-width `<button type="button">` (≥ `--row-min`, number `font-mono` muted, title, duration right); the playing row gets `aria-current="true"`, `primary` text and an equaliser glyph instead of the number. Track click → album queue from that track at 0; file click → book queue from that file at its start rule. Non-playable rows are non-focusable `<div>`s with `muted` text and the `destructive` "Nicht abspielbar" badge. | design.md: ≥ 48 px rows, keyboard reachable; no opacity dimming (AA). | 2026-09-26 |
 | **Grid (H3):** album and book grids use `grid-template-columns: repeat(auto-fill, minmax(min(var(--grid-min), calc(50% - var(--space-2))), 1fr))`, gap `var(--space-4)`. | Human decision at spec-acceptance gate (H3) — always ≥ 2 columns on phones; `--space-2` (8 px) replaces H3's literal. | 2026-09-26 |
 | **Bar layout (`public/js/audio/player-bar.js` + `audio.css`):** `<section class="audio-bar" aria-label="Audioplayer">` on `secondary`, fixed at the bottom, `hidden` until the first `playQueue`. Contents: cover (48 px token-sized square via `--space-12`), title + subtitle (one line, ellipsis; music: artist, audiobook: "book · author"), controls, seek `<input type="range" aria-label="Position">` with elapsed/total (`formatClock`, `–:–`). Music mode: previous, play/pause, next. Audiobook mode: previous, "15 s zurück", play/pause, "30 s vor", next — below 768 px only 15 s zurück / play-pause / 30 s vor (previous/next file stay reachable via the file list). All controls are `<button>`s ≥ `--tap-min` with German `aria-label`s: "Wiedergabe"/"Pause", "Vorheriger Titel", "Nächster Titel", "15 Sekunden zurück", "30 Sekunden vor". Below 768 px the bar sits directly above Phase 1's bottom nav at `bottom: calc(var(--bar-height-mobile) + env(safe-area-inset-bottom))` — the same sum Phase 1 pads `main` with, since the nav occupies the inset — and needs no inset padding of its own; ≥ 768 px (no bottom nav) at `bottom: 0` with `padding-bottom: env(safe-area-inset-bottom)`. A spacer element after the view container gets the bar's measured height via `ResizeObserver` → `el.style.setProperty('height', …)`, so the last row is never hidden. No page-level keyboard shortcuts. | design.md: persistent bottom bar on `secondary`, ≥ 44 px targets; D5 (CSSOM for dynamic values, only 768/1024 breakpoint literals — replaces the draft's 600 px). | 2026-09-26 |
-| **Media Session (`public/js/audio/media-session.js`, `bindMediaSession(player)`, no-op without `navigator.mediaSession`):** metadata title, artist (music: track artist; audiobook: author ?? book title), album (album/book title), artwork `[{ src: '/media/<coverId>/cover' }]`; handlers play, pause, previoustrack, nexttrack, seekbackward (15 s), seekforward (30 s), seekto; `setPositionState` on `durationchange`, `seeked`, `play`, `pause` (inside `try`, skipped for non-finite durations). The artwork URL is always set (every group has a `coverId`); when it 404s the browser shows its own default artwork — lock screens have no broken-image state, so no placeholder is generated for Media Session. | Built-in API giving lock-screen and hardware-key control. | 2026-09-26 |
+| **Media Session (`public/js/audio/media-session.js`, `bindMediaSession(player, audio)`, no-op without `navigator.mediaSession`):** metadata title, artist (music: track artist; audiobook: author ?? book title), album (album/book title), artwork `[{ src: '/media/<coverId>/cover' }]`; handlers play, pause, previoustrack, nexttrack, seekbackward (15 s), seekforward (30 s), seekto; `setPositionState` on `durationchange`, `seeked`, `play`, `pause` (inside `try`, skipped for non-finite durations). The artwork URL is always set (every group has a `coverId`); when it 404s the browser shows its own default artwork — lock screens have no broken-image state, so no placeholder is generated for Media Session. | Built-in API giving lock-screen and hardware-key control. | 2026-09-26 |
 | **Cover images (`public/js/audio/cover-img.js`, `coverImg({ coverId, kind: 'album' \| 'book', alt = '', lazy = false }) → HTMLElement`):** returns a square wrapper holding `<img src="/media/<coverId>/cover" alt decoding="async">` (`loading="lazy"` when `lazy`). On the image's `error` event (a 404 or any load failure) — or immediately when `coverId` is null — the `<img>` is removed and replaced by a placeholder: `surface` background with a centred `muted` glyph from `icons.js` (music note for `album`, book for `book`, as in the exports), `aria-hidden="true"` (the title next to it names the item). A broken-image icon is never shown. Used by album/book cards, the album/book detail header, the Musik "Weiterhören" card and the bar cover (the bar re-creates it on every item change). | Outcome "items without any cover show the placeholder, never a broken-image icon"; one module so every cover surface behaves the same (review). | 2026-09-26 |
 | **German formatting (`public/js/audio/format.js`):** `formatDuration(s)` = P4's `formatClock` or `–:–` for null; `formatTotal(s)` → `48 Min.` / `7 Std. 12 Min.` / `7 Std.` (minutes rounded, minimum `1 Min.`), `–:–` for null; `formatPercent(f)` → `34 %` (floored, `Math.floor(f * 100)`). | Consistent German copy; reuses Phase 4's clock format. | 2026-09-26 |
 | **States and copy:** loading shows only the heading; empty Musik "Keine Musik gefunden." + "Lege Musik im Ordner „Musik“ ab, z. B. „Musik/Interpret/Album/01 Titel.mp3“."; empty Hörbücher "Keine Hörbücher gefunden." + "Lege Hörbücher im Ordner „Hörbücher“ ab, z. B. „Hörbücher/Autor/Titel/01.mp3“."; request error "Die Bibliothek konnte nicht geladen werden." + button "Erneut versuchen"; API 404 "Album nicht gefunden." / "Hörbuch nicht gefunden." + link back to the section. No first-scan state: lists fill as the pass writes rows. `401` → Phase 1's `request` redirects to login. | Mirrors Phase 2's copy; the audio API does not expose scan status. | 2026-09-26 |
@@ -698,6 +698,97 @@ compared with the exports):
   28.999999999999996`) — the visible contract (floored whole percent) is
   unchanged, only the float rounding underneath it; `defaultHeadMedia` gained
   direct test coverage via a stubbed `globalThis.fetch`.
+- 2026-09-27: issue #72 implementation (audio section shell, bar, Media
+  Session, cover images) — `player-bar.js` owns creating its own layout
+  spacer and the `ResizeObserver` that sizes it
+  (`createPlayerBar({ player, audio }) → { bar, spacer }`), since the "Bar
+  layout" row attributes the spacer entirely to this module; `app.js` only
+  appends both. Media Session's per-mode artist/album ("music: track
+  artist; audiobook: author ?? book title" / "album/book title") and the
+  bar's own subtitle line ("book · author" for audiobook mode) are both
+  read off the `QueueItem`'s two existing generic fields instead of adding
+  new ones: `subtitle` carries the artist for a music item and the author
+  for an audiobook item, `groupTitle` the album/book title — the
+  music-overview/album and audiobook-grid/detail view issues must build
+  their queue items on this convention. `public/js/audio/icons.js` carries
+  only the six transport glyphs the bar needs (play, pause, previous, next,
+  rewind, forward); "30 s vor" reuses the rewind path mirrored via a CSS
+  class (`.icon-mirror { transform: scaleX(-1) }`) instead of a second
+  path, and the album/book cover placeholders reuse the existing
+  `music`/`audiobooks` glyphs from `../lib/icons.js` rather than
+  duplicating them. `app.js` implements "an invalid id → the section
+  overview via `replaceState`" generically: it always diffs `audioUrl(route)`
+  against the current location and only calls `replaceState`/`pushState`
+  when they differ, so a bad query string is cleaned the same way a stale
+  one from a click would be. The seek slider previews the position on
+  `input` and only commits (`player.seekTo`) on `change` (drag end), so a
+  drag never fights the `timeupdate`-driven position; live position/duration
+  are read from the raw `<audio>` element directly, since `createAudioPlayer`'s
+  `state()` exposes no `currentTime`/`duration`. Not exercised in-browser
+  for this PR: `src/server.js`/app assembly (issue #17, Phase 1) is not yet
+  merged, so the app cannot be started end-to-end yet; `npm run verify`
+  (`tsc` strict + all `node:test` suites, incl. the new
+  `frontend-rules.test.js` no-innerHTML/no-style-attribute/no-raw-length
+  checks) is green, and the Chromium/Firefox walk (bar persists across
+  Musik ↔ Hörbücher, no CSP violation) is deferred to the milestone QA gate
+  once #17 and the other Phase 5 view/API issues have landed.
+- 2026-09-27: PR #132 review resolutions (issue #72) — blocking:
+  `bindMediaSession`'s signature changes to `bindMediaSession(player, audio)`
+  (the "Media Session" row updated to match), since `setPositionState` needs
+  the raw `<audio>` element's `duration`/`currentTime`/`playbackRate` and
+  `createAudioPlayer`'s `state()` exposes none of them (same reason
+  `player-bar.js` already takes `audio` directly); it is called on
+  `durationchange`, `seeked`, `play` and `pause`, wrapped in `try` and
+  skipped while `audio.duration` is not finite. `audio.css` gained
+  `.audio-bar__controls button[hidden] { display: none; }` — the class rule's
+  `display: flex` otherwise beat the UA `[hidden]` default, so
+  `rewind.hidden`/`forward.hidden` had no visible effect and both buttons
+  showed in music mode. `app.js`'s `renderRoute` swaps a fresh target
+  element into the live `container` synchronously (via `replaceChildren`),
+  before the view's own awaited work starts, so a cold load shows the view's
+  loading state and the previous view disappears at once; only `currentView`
+  and `document.title`, which need the resolved result, are guarded by a
+  monotonic `navToken` — a superseded render's result never becomes
+  `currentView` or sets the title and is `dispose`d instead. A superseded
+  view that keeps writing into its (already detached) target does no harm,
+  since that element is no longer in `container`. Non-blocking, also
+  applied: `onClick` now calls `navigate(parseAudioUrl(...))` instead of
+  pushing the raw clicked URL, so an in-section link with a non-canonical
+  query is cleaned the same way `syncFromLocation` cleans one; Media
+  Session's `play`/`pause` handlers check `audio.paused` before calling
+  `player.toggle()`, since a stale OS action firing while already in that
+  state would otherwise flip it the wrong way; `player-bar.js`'s seek slider
+  also clears `dragging` on `pointerup`/`pointercancel` (some browsers fire
+  no `change` when a drag ends back on the starting value); the audiobook
+  subtitle joins only the non-null `groupTitle`/`subtitle` parts, so a null
+  author no longer leaves a trailing " · "; `observeHeight` reads
+  `borderBoxSize[0].blockSize` (falling back to `contentRect.height`) so the
+  spacer accounts for the bar's own padding/border. Deferred, per the
+  findings' own alternatives: the artwork-always-set wording deviation
+  (harmless given the nullable `coverId` type) and a catch/fallback for a
+  rejected view promise (needs a per-section default-route decision beyond
+  this fix's scope; every view must handle its own errors until then).
+- 2026-09-27: PR #132 second review resolutions (issue #72) — blocking:
+  `app.js`'s click interception no longer swallows fragment-only links:
+  `onClick` returns early when the link keeps path + query and only adds a
+  non-empty hash (`isFragmentOnlyChange` in `routes.js`), so the shell's
+  "Zum Inhalt springen" `#main` skip link keeps its native in-page jump
+  (WCAG 2.4.1); because browsers also fire `popstate` for fragment steps,
+  `app.js` tracks the canonical URL it last rendered and the `popstate`
+  handler re-renders only when `needsRender(location, renderedUrl)` (both
+  helpers pure and unit-tested). This refines the "Audio section URLs"
+  row's "intercepts clicks on `a[href]` whose URL is same-origin with
+  pathname `/music` or `/audiobooks`" and "`popstate` renders from
+  `location`" without changing any URL. Non-blocking, also applied: every
+  `setActionHandler` call in `media-session.js` is wrapped in its own
+  `try` (an unsupported action throws `TypeError` and must not take the
+  other handlers or the section down; covered by
+  `test/public/audio-media-session.test.js`); `player-bar.js` resets the elapsed
+  label, seek value/max and total label when the item changes; the "View
+  contract" row now states that `render` never rejects. Still deferred to
+  the milestone QA gate: the Chromium/Firefox walk (bar persists across
+  Musik ↔ Hörbücher, skip link, no CSP violation) — `src/server.js`
+  (issue #17) is still not on `main`, so the app cannot be started.
 - 2026-09-27: issue #69 implementation (`src/api/audiobook-resume.js`,
   `src/api/audiobooks.js`) — the "Audiobook resume" row excludes non-playable
   files from state/*L*/resume/`fraction` by name but does not name
