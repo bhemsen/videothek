@@ -706,3 +706,248 @@ Chromium and Firefox, mobile ≤ 767 px and desktop ≥ 1024 px viewport):
   order. `check()` returns `retryAfterSec: null` when `allowed` is `true`,
   matching the `number | null` convention used elsewhere in this spec
   (`ApiError.retryAfterSec`).
+- 2026-09-26: Issue #22 (`public/js/lib/{dom,icons,api}.js`) implementation
+  choices not fixed elsewhere: `el()` treats `null`/`undefined`/`false` attribute
+  values as omitted and `true` as a boolean attribute (`setAttribute(key, '')`);
+  `class` additionally accepts a `string[]` (falsy entries filtered, joined with
+  a space) for conditional classes; children that are `null`/`undefined`/`false`
+  are silently skipped so callers can write `cond && el(...)`. Icon path data
+  (`icons.js`) is self-authored, minimal, single/double-`<path>` glyphs on the
+  24x24 grid colored via `fill="currentColor"` (no stroke icons), since the
+  Stitch exports show icons only at thumbnail size with no vector handoff;
+  visual fit is confirmed at milestone UI QA once a page mounts them. `api.js`
+  treats any body text that fails `JSON.parse` (2xx or error) as `null` /
+  `'unknown'` respectively rather than throwing, and `Retry-After` is accepted
+  only as a non-negative-integer digit string (`^\d+$`) per the spec's
+  "never sends the HTTP-date form" note.
+- 2026-09-26: Issue #26 (`README.md`/`.env.example`) implemented — README
+  covers install, the config table (incl. `ADMIN_USER`/`ADMIN_PASSWORD`
+  validation and the `config_invalid`/`admin_missing` failure paths), first
+  start, a systemd unit (`Restart=on-failure`), Caddy and nginx reverse-proxy
+  snippets (both preserving the host and setting `X-Forwarded-Proto`), backup
+  (stop, copy `videothek.db*`) and recovery via
+  `npm run reset-password -- <username>`; `.env.example` blanks
+  `ADMIN_PASSWORD` so copying it unedited fails loudly instead of creating an
+  admin with a known password. No new design decisions.
+- 2026-09-26: Issue #9 `src/config.js` implemented. `MEDIA_ROOT` is validated
+  as-given (must already be absolute; unlike `DATA_DIR` it is never resolved
+  against `cwd`), so a relative value is its own problem
+  (`"MEDIA_ROOT: must be an absolute path"`), distinct from missing
+  (`"MEDIA_ROOT: required"`) and from existing-but-invalid
+  (`"MEDIA_ROOT: must be a readable directory"`, covering both non-directory
+  and unreadable/missing-on-disk). `requireMediaRoot: false` (the CLI path)
+  never raises a `MEDIA_ROOT`/`DATA_DIR` problem at all — including the
+  "inside `MEDIA_ROOT`" containment check — and passes through an absolute
+  `MEDIA_ROOT` value uncontained/unverified so `reset-password` keeps working
+  with the media disk unmounted; a relative or unset value yields
+  `mediaRoot: ''` in that mode, keeping `Config.mediaRoot` a plain `string`
+  (matching this table's row) so every other phase's `string`-typed
+  parameters accept it without a cast. `PORT`/`RESCAN_INTERVAL_MIN` accept
+  only a bare non-negative integer literal (`^\d+$`, no sign, decimal or
+  whitespace) before the range check.
+- 2026-09-26: Issue #21 (tokens/base/favicon/frontend-rules test) implemented:
+  `favicon.svg` reuses only `--color-secondary` (rounded square) and
+  `--color-primary` (play triangle), matching the exports' wordmark mark.
+  `.visually-hidden` sizes itself with `var(--border-width)` (exactly 1 px)
+  instead of a new raw literal, so the sr-only technique needs no length
+  outside `tokens.css`. `test/frontend-rules.test.js` parses `docs/design.md`'s
+  front matter directly (regex, no dependency) to keep `tokens.css` verifiably
+  in sync; added a regression-guard test after the initial parser silently
+  dropped every `color:` entry (each has a trailing `# comment`), which would
+  have made the colour-mirror assertions pass vacuously over an empty set.
+- 2026-09-26: Issue #15 (`src/http/{router,respond,cookies,guards}.js`)
+  implementation notes: `router.js` matches path shape independently of
+  method via a literal/param trie, recursively backtracking from a literal
+  child to the param child at each segment when the literal subtree yields
+  no handler or `{ allow }` candidate at the matched path length — "literal
+  beats param" holds only when both would otherwise match the same path
+  (equal segment count), not merely because a literal child exists; `{
+  allow }` is the union of methods across every subtree that fully matches
+  the path, not just the first one found. A duplicate leaf/method collision
+  throws even when the colliding pattern text differs (a stricter superset
+  of the literal `(method, pattern)` rule); a later pattern reusing a trie
+  position under a different `:name` also throws at registration, since one
+  node carries exactly one param name. `respond.js`'s `sendNoContent`/
+  `redirect` additionally send `Cache-Control: no-store` (only `sendJson`/
+  `sendError` were required to) since every call site (`/logout`, deletes,
+  login/page redirects) is session-dependent; `readJson` drains an oversized
+  body with `req.resume()` instead of `req.destroy()`, so the `413` response
+  reaches the client instead of the socket closing first.
+- 2026-09-26 (#12): `src/db/{users,sessions}.js` implemented. `UserRow`
+  mirrors the raw `users` row verbatim, incl. the snake_case
+  `password_hash`/`created_at` keys (no camelCase mapping in the repository
+  layer — that is `src/api/users.js`'s job); `getSessionWithUser` does map to
+  camelCase (`expiresAt`, nested `user: { id, username, role }`) since it is
+  already a joined, computed shape with no single backing row. `node:sqlite`'s
+  `StatementSync.get()`/`.all()` type as `Record<string, SQLOutputValue>`
+  (a union of `null | number | bigint | string | Uint8Array`), so every column
+  read is narrowed to its concrete field type with a per-field JSDoc `@type`
+  cast rather than one whole-row cast, to stay correct regardless of
+  `Record`-to-named-type assignability in a given TypeScript version.
+  `setRoleGuarded`/`deleteUserGuarded` share a `countOtherAdmins(db, id)`
+  helper and guard only the case that actually removes the last admin (current
+  role `admin`, target role/`DELETE` non-admin, zero *other* admins) — a
+  same-role update (incl. the sole admin re-confirming `admin`) is therefore
+  never refused, matching the API's "same role = no-op 200". Both guards
+  follow `migrate.js`'s rollback shape: `BEGIN IMMEDIATE` inside the `try`, a
+  nested `try/catch` around `ROLLBACK` so a failed `BEGIN` itself cannot mask
+  the original error. `deleteExpiredSessions` treats `expires_at <= now` as
+  expired (inclusive) — a session expiring at exactly `now` is purged rather
+  than kept for one more tick. "Last-admin refusal incl. concurrent demotion"
+  is tested by driving the guard from two separate `DatabaseSync` connections
+  opened on the same `DATA_DIR` (one demotes/deletes and commits, the other
+  then attempts the same on the last remaining admin) — real thread-level
+  interleaving is not exercisable against a synchronous `node:sqlite` handle
+  in a single-threaded test process; the two-connection form still proves the
+  guard reads committed DB state rather than an in-process cache.
+- 2026-09-26: Issue #23 (app shell, nav, home, category placeholders, 404)
+  implementation notes: the empty state on placeholder pages ships without
+  the exports' icon-in-circle graphic — `createEmptyState({ title, text })`
+  (#22, frozen) takes no icon parameter and `base.css`'s `.empty-state`
+  (#21, frozen) has no card surface, and this issue's Files list adds no CSS
+  file a placeholder page could use to introduce one, so the exports' card
+  is treated as layout reference only, not part of the fixed component. The
+  account-menu button's accessible name comes from an `aria-label` ("Konto
+  von {username} ({role label})") set once `/api/me` resolves, not from the
+  visible username text, since that text is `display: none` below 768 px;
+  the visible avatar-initial/username spans are `aria-hidden` to avoid a
+  double announcement on desktop. The disclosure's outside-click listener is
+  registered on `document` with `capture: true` specifically so opening the
+  menu (which registers the listener) cannot also close it on the same
+  click, and it tests `button.contains(event.target)` rather than
+  `=== button` so a click on the button's own icon does not read as
+  "outside". `public/404.html` ships with neither a `<script>` nor a
+  `<noscript>` line: it is fully static and works without JavaScript (Module
+  layout lists no `404.js`), so the page-skeleton's per-page-script rule does
+  not apply to it. The live Chromium/Firefox walk-through this issue's
+  acceptance checklist asks for is deferred to the milestone QA gate, as its
+  own wording allows ("at latest at milestone QA") — `src/app.js`/
+  `src/server.js` (issue #17) are not yet merged, so nothing can be started
+  and served yet on this branch.
+- 2026-09-26 (#14): `src/auth/{sessions,bootstrap}.js` implemented. Both
+  `createSessionStore({ db, now })` and `ensureAdmin({ ..., now })` default
+  `now` to `Date.now`, matching the `now = Date.now` convention already used
+  by `rate-limit.js`/`log.js`, even though the module-layout table's
+  shorthand omits the default — every real caller and every test still
+  injects its own clock. `resolve()`'s expiry check reuses
+  `deleteExpiredSessions`'s inclusive rule (`expiresAt <= now` = expired) for
+  consistency, but does not itself delete the expired row — that stays
+  `purgeExpired()`'s (and the startup/hourly timer's) job, so `resolve` stays
+  a pure read-or-refresh path. The "at most one write per session per day"
+  property needs no extra bookkeeping: since a session refreshes only when
+  fewer than 29 of its 30-day lifetime remain, a refresh always pushes
+  `expiresAt` back out to a full 30 days, so a second resolve on the same day
+  can never again drop under the 29-day threshold. `ensureAdmin` independently
+  validates `adminUser`/`adminPassword` with `validateUsername`/
+  `validatePassword` even though `src/config.js` already requires the pair to
+  be both-set-or-both-unset — `loadConfig` never checks their *format*, so an
+  invalid username or a too-short password reaching `ensureAdmin` on an empty
+  database is exactly the "invalid vars" `BootstrapError` case the acceptance
+  criteria name. `admin_missing` logs at `error` (it precedes the process
+  exiting 1); `admin_env_ignored` logs at `warn` (non-fatal, but flags a
+  configuration the operator should probably clean up); `admin_bootstrapped`
+  logs at `info`.
+- 2026-09-26 (#20): `src/cli/reset-password.js` implemented. Runs `migrate(db,
+  { log })` itself before calling `resetPassword` (mirroring `server.js`'s
+  config → DB → migrate order) so the CLI also works against a `DATA_DIR` the
+  server has never started against yet; `migrate` is idempotent so this is a
+  no-op on an already-current DB. Prompting uses one persistent reader
+  (`createPromptReader`) with a single `'data'` listener kept attached across
+  both prompts and an internal buffer, instead of two independent
+  one-shot listeners: an initial one-shot-per-prompt version lost the second
+  prompt's answer whenever both lines arrived in a single chunk (the normal
+  case for a piped shell flushing `printf 'a\nb\n'` at once, and for a
+  keystroke typed immediately after Enter on a real TTY) — the first
+  listener's `data` handler took only its own line and discarded the rest of
+  the chunk, leaving the second prompt awaiting input that would never
+  arrive and the process exiting silently (code 0, no error) once stdin hit
+  EOF with nothing left keeping the event loop alive. Caught via a manual
+  end-to-end run of the built CLI (piped input), not by the unit tests
+  (which drove the old one-shot-per-call readers directly and happened not
+  to reuse a stale buffer); the regression is now also covered directly by
+  `fakeInput` delivering every queued line as one chunk on the single
+  listener `createPromptReader` attaches. Messages not fixed elsewhere:
+  missing argument → "Benutzername fehlt. Verwendung: npm run
+  reset-password -- <username>"; mismatch is checked before the length
+  validation (matches the failure-list order in Acceptance/Verification:
+  "missing argument, unknown user, mismatch, invalid password"); the invalid-
+  password text reuses the admin-API's `invalid_password` copy verbatim for
+  one wording across the app. `resetPassword`'s username lookup/messages use
+  `normalizeUsername` (trim/NFC/lower-case) so `npm run reset-password --
+  " Julia "` still finds `julia`; the success/error text after that point
+  uses the stored, already-normalized `user.username` rather than echoing
+  the raw argument back. `config` stays a required part of the fixed
+  `resetPassword({ args, config, db, input, output, log, isTTY })` signature
+  (module-layout table) for parity with the other DI-style contracts (e.g.
+  `createApp`) even though the function body does not read it — `main()`'s
+  wiring is what actually needs it (`loadConfig(undefined, { requireMediaRoot:
+  false })` → `config.dataDir` → `openDatabase`). Entry detection reuses the
+  spec's fixed `realpathSync(process.argv[1]) === realpathSync(fileURLToPath(
+  import.meta.url))` check (this is its first use in the repo; `src/server.js`
+  does not exist yet).
+- 2026-09-27 (#20 review): PR #121 review fixes. (1) Failures were landing on
+  stdout (`output`) instead of stderr, contradicting H1 ("message on stderr,
+  exit 1") and the issue's acceptance criteria; `resetPassword` now takes an
+  additional `errorOutput` dependency (not in the module-layout table's
+  signature — an explicit, intentional deviation, kept minimal since every
+  other dependency in that signature is likewise passed in rather than
+  defaulted) that all four failure messages write to, and `main()` wires it to
+  `process.stderr` (prompts/success still go to `output`/stdout). (2)
+  `createPromptReader` never listened for `'end'`/`'close'`, so empty or
+  closed stdin, or a final line with no trailing newline, left a prompt's
+  promise pending forever; the process then exited 0 silently once the event
+  loop drained instead of reporting a failure. It now resolves a pending
+  `readNext()` with whatever is left in the buffer when the stream ends (and
+  any later call resolves the same way immediately), which naturally fails
+  the existing length/mismatch checks instead of hanging. (3) TTY keystroke
+  handling treated an entire `'data'` chunk as one keystroke, so a pasted
+  password arriving as a multi-character chunk ending in `\r` had the `\r`
+  appended to the secret instead of submitting; `onKeystroke` now runs once
+  per character in the chunk (`for (const ch of text)`).
+- 2026-09-26 (#16): `src/http/{security,static}.js` implemented.
+  `createStaticHandler`'s returned function matches the module table's
+  `Promise<boolean>` contract exactly: `false` — nothing served — for a
+  method other than `GET`/`HEAD`, a decode failure or path-safety
+  rejection, a well-formed `/<name>` with no matching page file,
+  `*.html`/`/index`/`/404`/an unknown extension, or an asset that does not
+  resolve inside `publicDir`; `true` only once it has written a response
+  (200, 304 or a redirect). `app.js`'s own dispatch (built by #17) decides
+  every `false` case per the server contract (`allow` -> `405`; else
+  `/api/*` -> `404` JSON, other -> `404` page). `sendNotFoundPage`
+  (streamed `public/404.html`, or the plain German fallback line) is
+  exported from `static.js` so that "other -> 404 page" branch reuses the
+  same renderer instead of app.js duplicating it. Review finding fixed: an
+  earlier version rendered the 404 page itself and always returned `true`
+  for every unmatched case, which pre-empted `app.js`'s `allow` -> `405`
+  branch for a `GET`/`HEAD` request on a path registered only under other
+  methods (e.g. `GET /logout`, registered only as `POST`, would have 404'd
+  instead of 405'd); dispatch now sees `false` and decides correctly. Path
+  safety decodes the whole pathname once as a single string (never per
+  segment — decoding only after splitting would miss a `%2F` that reveals
+  a hidden `..` once decoded) and rejects a NUL byte, a literal backslash,
+  or any segment starting with `.`; a containment check (`resolved ===
+  root || resolved.startsWith(root + sep)`) after `path.join` +
+  `path.resolve` is the second, independent layer against traversal for
+  extension-matched asset paths. `sendFile` streams via the `pipeline`
+  helper from `node:stream/promises` (not `.pipe()`), so a client aborting
+  mid-transfer destroys the source `fs.ReadStream`/fd instead of leaking
+  it. A stream error once headers are already sent (page, asset or the 404
+  page itself) logs `request_error {method, path, stack}` with `path` set
+  to `ctx.url.pathname` throughout — the same shape as the app's own
+  top-level dispatch error log, since a failure this late can no longer
+  become a thrown `HttpError` for app.js to catch — and destroys the
+  socket.
+  `isSameOrigin`/`isHttps` take the first value of a comma-separated or
+  array-valued forwarded header; `isSameOrigin` compares `Origin`'s
+  `.host` (scheme-independent, default ports dropped) case-insensitively
+  against the first `X-Forwarded-Host` value, else `Host`. Review finding
+  fixed: `URL.host` only drops a default port (80/443) for its *own*
+  scheme, so a proxy forwarding `X-Forwarded-Host`/`Host` with an explicit
+  default port (a real nginx/Traefik/Caddy config shape) fell through as a
+  false origin mismatch (`403 forbidden_origin` on every mutation); both
+  sides now strip a trailing `:80`/`:443` the same way before comparing.
+  Open question for the spec owner: this also normalizes an
+  `Origin: http://host:443` against `Host: host` (mismatched scheme's
+  default port), slightly widening the spec's `hostname[:port]` equality
+  rule; flagged in review as practically harmless but not yet a confirmed
+  spec change.

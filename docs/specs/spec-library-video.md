@@ -436,7 +436,9 @@ metadata in their own tables and never rewrite `library_items`.
     apply because the walk never visits skipped directories). An event's
     `filename` is joined to the watched directory's relative path. `gone`
     closes the watch of that directory and all below it; `sweep` closes every
-    watch whose directory was not visited (only after full scans). Each watch
+    watch whose directory was not visited (only after full scans), except
+    `''` (MEDIA_ROOT) itself, which `sweep` never closes since the scanner's
+    walk never visits MEDIA_ROOT and so never lists `''` as visited. Each watch
     handles its own `error`: close it, log `library_watch_error { dir, code }`,
     and `requestPaths([dir])` (the rescan re-adds it). `ENOSPC`/`EMFILE` from
     `fs.watch` → log `library_watch_limit { count }` once, stop adding watches
@@ -750,7 +752,7 @@ substitute was not accepted, so this line is run on the Pi).
 | One serialised scan queue with coalescing; watcher and timer only enqueue | Constitution/brief: no overlapping scans; serialises all index writes. | 2026-09-26 |
 | Debounce, max wait, backoff, batch size are code constants; only `RESCAN_INTERVAL_MIN` is configurable (already validated by P1) | Constitution fixes the env-var list; P1 owns `src/config.js`. | 2026-09-26 |
 | `startLibrary` returns synchronously; watcher start and the initial scan are deferred; `library` is built in `server.js` `start()`, passed to `createApp` as an extra key, stopped in `stop()` before the DB closes; `src/app.js` only gains the optional `library` in its `AppDeps` typedef | D4 and P1's server contract: wiring never delays `listen`; `createApp` passes extra keys through to route modules. | 2026-09-26 |
-| Logging through the injected `log` as JSON events (`library_scan_complete`, `library_scan_failed`, `library_dir_failed`, `library_root_protected`, `library_names_undecodable`, `library_watch_error`, `library_watch_limit`, `library_listener_failed`) | D4: no `console.*` in modules; one log format for the whole app. | 2026-09-26 |
+| Logging through the injected `log` as JSON events (`library_scan_complete`, `library_scan_failed`, `library_dir_failed`, `library_root_protected`, `library_names_undecodable`, `library_watch_error`, `library_watch_limit`, `library_listener_failed`, `library_scan_run_failed`, `library_scan_queue_oncomplete_failed`) | D4: no `console.*` in modules; one log format for the whole app; the last two are `scan-queue.js`-internal (unexpected `runFull`/`runPaths` failure, `onComplete` failure), distinct from the scanner's own `library_scan_failed`/`library_listener_failed`. | 2026-09-26 |
 | API timestamps are ISO-8601 strings (`addedAt`, `scan.lastCompletedAt`); DB keeps epoch ms | D4 cross-phase JSON convention. | 2026-09-26 |
 | `next` and `subtitles` appear only in `GET /api/library/items/:id` and are added by Phase 3; P2's `toItemJson` and list responses never carry them | Cross-phase consolidation D10 + human gate decision H4 (subtitles = `.vtt` sidecars discovered at request time, never indexed). | 2026-09-26 |
 | Page URLs `/movies`, `/series`, `/series-detail?id=<seriesId>`; player links `/player?id=<itemId>`; P2 replaces P1's `movies.html`/`series.html` placeholders and never edits nav or `placeholder.js` | Cross-phase consolidation D1. | 2026-09-26 |
@@ -932,6 +934,32 @@ and desktop 1440 px, compared with the design exports):
   extension/MIME table with `{ kind, playable, sniff, mime }`; added `jfif`,
   `jxl`, `weba`; `svg` indexed, never playable; `SCAN_VERSION` moved into
   `compat.js` (D9, D6; review BLOCKING 4).
+- 2026-09-26: `scan-queue.js` — `drainPathsBetweenDirs()` is a nested-call
+  contract: it assumes it is only ever invoked from within the currently
+  running `runFull`, so it neither toggles the queue's own in-flight state
+  nor triggers chaining itself; only the top-level dispatch (`startNext`)
+  owns those. This keeps "at most one run in flight" correct without a
+  re-entrancy flag. A thrown/rejected `onComplete` at this internal
+  scan-queue seam (between `scan-queue.js` and `scanner.js`, before
+  `scanner.js` dispatches to its own public `onScanComplete` listeners) is
+  logged as `library_scan_queue_oncomplete_failed`, distinct from
+  `library_listener_failed` (D6's event name for a public listener's own
+  failure) so the two are told apart in logs. A rejected (not just thrown)
+  `onComplete` is caught and logged the same way, since Node 24 terminates
+  the process on an unhandled rejection.
+- 2026-09-26: `scan-queue.js` treats a `'paths'` run's resolved value as
+  opaque except for one field: a truthy `escalate` (the shape `reconcile.js`
+  returns per the path-reconcile rules above) makes the queue set its
+  pending kind to `'full'` — never downgrading an already-pending
+  `'initial'` — so the top-level `MEDIA_ROOT`-or-category-root escalation
+  case chains into one follow-up full run instead of waiting for the
+  periodic rescan. Applies identically to a top-level `'paths'` job and one
+  run inline via `drainPathsBetweenDirs()`. A thrown/rejected `runFull` or
+  `runPaths` is logged as `library_scan_run_failed`, an internal
+  scan-queue-only event distinct from the scanner's own `library_scan_failed`
+  (which covers an expected, handled abort such as an unreadable
+  `MEDIA_ROOT` and still resolves normally); `library_scan_run_failed` fires
+  only for an unexpected failure that escapes `scanner.js`'s own handling.
 - 2026-09-26: cross-phase consolidation — `next`/`subtitles` only in the
   single-item response, added by Phase 3 (D10, H4).
 - 2026-09-26: cross-phase consolidation — migration 002 `STRICT` +
@@ -955,3 +983,108 @@ and desktop 1440 px, compared with the design exports):
   `onScanComplete` not fired for aborted runs; `sort` default and invalid
   URL values; file-size format; "Folgen 1–2" label; season-less series meta;
   README section "Medienordner".
+- 2026-09-26 (#27): `src/db/library-repo.js`'s write functions take/return
+  plain objects whose keys are the table's snake_case column names verbatim
+  (`rel_path`, `mtime_ms`, …), not a camelCase JS-side shape — so
+  `item-builder.js`'s (#32) `buildItem()` result can be passed into
+  `upsertItem()` unchanged, and a loaded row can be passed into
+  `toItemJson()` unchanged. `playable` is accepted as a JS boolean and
+  coerced to `0`/`1` at the bind boundary (`node:sqlite` cannot bind a JS
+  `boolean`). The upsert functions use `... ON CONFLICT ... RETURNING id` in
+  one round trip instead of a separate lookup `SELECT`.
+- 2026-09-26 (#27): added `deleteItem(db, relPath)` (exact single-row delete)
+  alongside the range-form `deleteItemsUnderDir(db, dir)` the issue names —
+  needed by the planned `reconcile.js` (#33) for a single vanished/
+  unplayable/skipped file, distinct from a whole-subtree delete.
+- 2026-09-26 (#29): `sniffMp4Codecs(absPath)` is async (`Promise<SniffedCodecs
+  | null>`) — the spec's arrow notation left this implicit; callers (P2's
+  item builder) must `await` it. Within one `trak`, a missing `mdia`, `hdlr`,
+  `minf`, `stbl`, `stsd`, or an empty `stsd` skips only that track (it
+  contributes nothing to `video`/`audio`) rather than aborting the whole
+  file — only an actual guard violation (box count/depth/size-fits-parent/
+  64 KiB read budget) or a real I/O truncation aborts the walk and yields
+  `null`. This keeps a track type the sniffer doesn't care about (hint,
+  timecode, …) from ever downgrading a file to "unknown", while a moov
+  literally missing is still treated as `null` per spec.
+- 2026-09-26: change detection (#31) — `MEDIA_ROOT` itself is watched by
+  `watcher.js`'s `start()` calling `dirObserver.seen('')` directly, not by the
+  scanner's walk: the scanner (#33) only calls `seen(relDir)` for category
+  roots and their descendants (readdir(MEDIA_ROOT) enumerates roots but is
+  never itself passed to `syncDirectory`), yet "MEDIA_ROOT and every directory
+  the walk visits get one watch" requires it watched too. `seen('')` is
+  idempotent, so `startLibrary` (#34) needs no special-casing either way.
+- 2026-09-26: change detection (#31) — "the same backoff applies to the
+  Linux MEDIA_ROOT watch" is implemented by having `watcher.js` intercept
+  `dirObserver`'s `onWatchError('')` (the root's entry in the same
+  per-directory watch set, not a second parallel watch) and run it through
+  the identical 5 s→5 min doubling reconnect + "one full scan on recovery"
+  used for the macOS/Windows recursive watch, instead of the generic
+  per-directory `requestPaths([dir])` handling every other directory gets.
+- 2026-09-26: change detection (#31) — `dir-watch.js`'s ENOSPC/EMFILE
+  "stop adding watches" flag is cleared inside `sweep()` (only ever called
+  after a full scan), so watches resume being attempted starting with the
+  next full scan's walk, matching "stops adding watches until the next full
+  scan" without a separate reset signal.
+- 2026-09-26: change detection (#31), review fix — the entry above settled
+  how `''` gets *watched*, but not how it survives `sweep()`: since the
+  scanner's walk never visits MEDIA_ROOT, its `visitedDirs` set never
+  contains `''`, so a `sweep()` that closed every unvisited key like any
+  other directory would close the root watch after the very first full scan,
+  with no code path ever calling `seen('')` again. Fixed by having `sweep()`
+  unconditionally skip the `''` key — its lifecycle stays owned by
+  `start()`/`stop()`, outside the scanner-driven visited set entirely. Covered
+  by a `dir-watch.test.js` case asserting `sweep(new Set(['Filme']))` leaves
+  `''` open. (The matching ENOSPC-on-`''` edge case — `seen('')` itself
+  failing with a limit error before any watch exists — is left for `startLibrary`
+  (#34)/the scanner (#33) to close, since a `sweep()`-side retry would race
+  `watcher.js`'s own root backoff bookkeeping in `rootRetrying`/`attemptRootWatch`.)
+- 2026-09-26 (issue #28): review caught that `cleanName`'s empty-result
+  rescue masked the episode-title fallback rule ("Empty → `episodeCode(...)`")
+  for a suffix that is release tags with real words (e.g.
+  `.German.1080p.WEB.x264`), producing `"German 1080p WEB x264"` instead of
+  the code and breaking the `Dark.S01E03...` QA-fixture line. Fixed in
+  `src/library/parsers/text.js` by splitting `cleanName` into an exported
+  `cutReleaseTokens` step (no rescue) and the rescue itself; the
+  episode-title fallback now checks `cutReleaseTokens` emptiness before the
+  rescue can reintroduce release tags as text. `cleanName`'s own
+  input/output contract is unchanged. The QA fixture's stated title
+  `"S01E03"` stands as originally specified.
+- 2026-09-26 (issue #32): `item-builder.js`'s `buildItem({ mediaRoot, relPath,
+  category, stat, now })` takes `relPath` relative to `MEDIA_ROOT` (matching
+  `library_items.rel_path` verbatim, including the leading category-root
+  segment), not relative to the category folder — it strips the first path
+  segment itself before calling `parseMovie`/`parseEpisode`, so callers never
+  need to know which alias folder ("Filme" vs "Movies") matched on disk. For
+  `category: 'series'` the returned row carries two extra fields beyond
+  `LibraryItemInput` — `series_key` (-> `library_series.series_key`) and
+  `series_year` (-> `library_series.year`) — since `item-builder.js` never
+  touches the database (architecture: `src/library/` has no DB access) and so
+  cannot resolve `series_id` itself; `series_title` doubles as both the
+  series' own title and the denormalised `library_items.series_title` column,
+  since both are the same value. `dir-sync.js` (a later step) upserts
+  `library_series` from `series_key`/`series_title`/`series_year`, sets
+  `series_id` on the row, and can then pass it into `upsertItem()` unchanged,
+  matching the (#27) hand-off note. `video_codec`/`audio_codec` are each the
+  *first* sniffed fourcc of their track type (`codecs.video[0] ?? null` /
+  `codecs.audio[0] ?? null`), matching the migration's column comments.
+  `walk.js`'s `listDirectory(absDir, { statFn? })` takes an optional,
+  test-only `statFn` (default `fs.stat`) to let tests inject a deterministic
+  non-`ENOENT` `stat` failure without relying on platform-specific
+  permission tricks; production callers always call it with one argument.
+  Hidden names and the known NAS/OS system folders are skipped silently
+  (uncounted, per `isSkippedName`); symlinks and U+FFFD (undecodable) names
+  are counted in `skipped` since the scanner logs their counts once per run.
+- 2026-09-26 (#36): `library-format.js` exports one generic
+  `pluralize(n, singular, plural)` (covers Titel/Titel, Serie/Serien,
+  Staffel/Staffeln, Folge/Folgen) instead of one function per word, and
+  `formatFileSize(bytes)` for the 1024-based B/KB/MB/GB rule;
+  `episodeNumber`/`episodeCode`/`episodeLabel` all take the same
+  `{ season, episode, episodeEnd }` shape `LibraryItem` already carries, plus
+  `title` for `episodeLabel`. `media-card.js` exports
+  `createPosterTile`/`createUnplayableBadge`/`createMovieCard`/
+  `createSeriesCard`/`createEpisodeRow`: series cards are always links (the
+  badge shows only when `playableCount` is 0), movie cards and episode rows
+  become a non-interactive `<div>` with the German title attribute when
+  unplayable. `library-api.js`'s `getCategory`/`getSeries` return the parsed
+  JSON typed via JSDoc (`CategoryItemsResponse | CategorySeriesResponse`,
+  `SeriesDetail`) for later phases to consume directly.
