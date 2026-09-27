@@ -28,6 +28,9 @@ import { readFlac } from './flac.js';
  * @property {'id3v2' | 'flac' | null} format
  */
 
+/** Per-call (per-file) read budget of the file-backed `readAt`, in bytes. */
+export const READ_BUDGET_BYTES = 256 * 1024;
+
 const NULL_TAGS = Object.freeze({
   title: null, artist: null, albumArtist: null, album: null,
   trackNo: null, discNo: null, year: null, durationMs: null, format: null,
@@ -58,7 +61,7 @@ export async function readAudioTags(absPath, { ext, size }, { openFile = default
   let fh;
   try {
     fh = await openFile(absPath);
-    const readAt = makeFileReadAt(fh);
+    const readAt = createBudgetedReadAt(fh);
     return lowerExt === 'mp3' ? await readMp3Tags(readAt, size) : await readFlacTags(readAt, size);
   } finally {
     await fh?.close().catch(() => {});
@@ -86,7 +89,7 @@ export async function readPictureRef(absPath, { ext }, { openFile = defaultOpenF
   let fh;
   try {
     fh = await openFile(absPath);
-    const readAt = makeFileReadAt(fh);
+    const readAt = createBudgetedReadAt(fh);
     if (lowerExt === 'mp3') {
       const tag = await readId3v2(readAt);
       return tag?.picture ?? null;
@@ -161,7 +164,7 @@ function parseLeadingInt(raw) {
   if (raw === undefined) return null;
   const trimmed = raw.trim();
   if (trimmed === '') return null;
-  const numPart = trimmed.split('/')[0];
+  const numPart = trimmed.split('/')[0].trim();
   return /^\d+$/.test(numPart) ? Number(numPart) : null;
 }
 
@@ -178,14 +181,24 @@ function parseYear(raw) {
 }
 
 /**
- * Wraps an open `FileHandle` as a budgeted `readAt` seam: short buffer at
- * EOF, positional reads only (no shared cursor).
- * @param {import('node:fs/promises').FileHandle} fh @returns {ReadAt} */
-function makeFileReadAt(fh) {
+ * Wraps an open `FileHandle` as a budgeted `readAt` seam: positional reads
+ * only (no shared cursor), short buffer at EOF. Every read is clamped to the
+ * bytes left of `budget`, and once the budget is used up every further read
+ * returns an empty buffer — the backstop that keeps the total I/O per file at
+ * or below the budget whatever the format readers ask for ("Read budget":
+ * exhaustion ends parsing with the partial result).
+ * @param {import('node:fs/promises').FileHandle} fh open handle
+ * @param {number} [budget] total bytes this `readAt` may read (default `READ_BUDGET_BYTES`)
+ * @returns {ReadAt}
+ */
+export function createBudgetedReadAt(fh, budget = READ_BUDGET_BYTES) {
+  let remaining = budget;
   return async (position, length) => {
-    if (length <= 0) return Buffer.alloc(0);
-    const buf = Buffer.allocUnsafe(length);
-    const { bytesRead } = await fh.read(buf, 0, length, position);
+    const want = Math.min(length, remaining);
+    if (want <= 0) return Buffer.alloc(0);
+    const buf = Buffer.allocUnsafe(want);
+    const { bytesRead } = await fh.read(buf, 0, want, position);
+    remaining -= bytesRead;
     return buf.subarray(0, bytesRead);
   };
 }

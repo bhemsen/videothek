@@ -4,7 +4,11 @@ import assert from 'node:assert/strict';
 import { mkdtemp, writeFile, rm, open as fsOpen } from 'node:fs/promises';
 import { tmpdir } from 'node:os';
 import path from 'node:path';
-import { readAudioTags, readPictureRef } from '../../../src/library/tags/index.js';
+import {
+  readAudioTags, readPictureRef, createBudgetedReadAt, READ_BUDGET_BYTES,
+} from '../../../src/library/tags/index.js';
+import { readId3v2 } from '../../../src/library/tags/id3v2.js';
+import { readMpegDurationMs } from '../../../src/library/tags/mpeg.js';
 import {
   ENCODING, buildId3v2Tag, buildFrame, textFrameBody, apicFrameBody, buildMpegFrame,
 } from '../../helpers/mp3-fixture.js';
@@ -58,8 +62,8 @@ test('readAudioTags: mp3 dispatch maps ID3v2.4 fields and MPEG duration', async 
     buildFrame({ id: 'TPE1', body: textFrameBody(ENCODING.UTF8, 'Interpret') }),
     buildFrame({ id: 'TPE2', body: textFrameBody(ENCODING.UTF8, 'Album-Interpret') }),
     buildFrame({ id: 'TALB', body: textFrameBody(ENCODING.UTF8, 'Album') }),
-    buildFrame({ id: 'TRCK', body: textFrameBody(ENCODING.UTF8, '3/12') }),
-    buildFrame({ id: 'TPOS', body: textFrameBody(ENCODING.UTF8, '1') }),
+    buildFrame({ id: 'TRCK', body: textFrameBody(ENCODING.UTF8, '3 / 12') }),
+    buildFrame({ id: 'TPOS', body: textFrameBody(ENCODING.UTF8, '1/2') }),
     buildFrame({ id: 'TDRC', body: textFrameBody(ENCODING.UTF8, '2019-05-01') }),
   ];
   const tag = buildId3v2Tag({ version: 4, frames });
@@ -232,4 +236,52 @@ test('readAudioTags: a large embedded PICTURE still costs at most 256 KiB of rea
   const tags = await readAudioTags(file, { ext: 'flac', size: buf.length }, { openFile: spy.openFile });
   assert.equal(tags.title, 'Flac Big');
   assert.ok(spy.bytesRead() <= 256 * 1024, `read ${spy.bytesRead()} bytes`);
+});
+
+test('createBudgetedReadAt: clamps to the budget, then returns empty buffers (backstop)', async (t) => {
+  assert.equal(READ_BUDGET_BYTES, 256 * 1024);
+  const file = await writeAudioFile(t, Buffer.alloc(400 * 1024, 0x11), 'budget.bin');
+  const spy = spyOpenFile();
+  const fh = await spy.openFile(file);
+  t.after(() => fh.close());
+  const readAt = createBudgetedReadAt(fh);
+  assert.equal((await readAt(0, 200 * 1024)).length, 200 * 1024);
+  assert.equal((await readAt(200 * 1024, 100 * 1024)).length, 56 * 1024, 'clamped to the remaining budget');
+  assert.equal((await readAt(0, 4)).length, 0, 'exhausted -> empty buffer');
+  assert.equal(spy.bytesRead(), READ_BUDGET_BYTES);
+});
+
+test('createBudgetedReadAt: a short read at EOF only consumes the bytes actually read', async (t) => {
+  const file = await writeAudioFile(t, Buffer.alloc(100, 0x22), 'short.bin');
+  const fh = await fsOpen(file, 'r');
+  t.after(() => fh.close());
+  const readAt = createBudgetedReadAt(fh, 150);
+  assert.equal((await readAt(50, 1000)).length, 50, 'short at EOF');
+  assert.equal((await readAt(0, 1000)).length, 100, '100 of 150 budget bytes left');
+  assert.equal((await readAt(0, 1000)).length, 0);
+});
+
+test('createBudgetedReadAt: exhaustion by the tag leaves the MPEG reader nothing (duration null, reads <= cap)', async (t) => {
+  const tag = buildId3v2Tag({ frames: [buildFrame({ id: 'TIT2', body: textFrameBody(ENCODING.UTF8, 'Vorn') })] });
+  const audio = Buffer.concat(Array.from({ length: 20 }, () => buildMpegFrame()));
+  const size = tag.length + audio.length;
+  const file = await writeAudioFile(t, Buffer.concat([tag, audio]), 'tiny-budget.mp3');
+  /** @param {number} budget */
+  const run = async (budget) => {
+    const spy = spyOpenFile();
+    const fh = await spy.openFile(file);
+    try {
+      const readAt = createBudgetedReadAt(fh, budget);
+      const parsed = await readId3v2(readAt);
+      const tagBytes = spy.bytesRead();
+      const durationMs = await readMpegDurationMs(readAt, parsed?.tagEnd ?? 0, size);
+      return { parsed, tagBytes, durationMs, total: spy.bytesRead() };
+    } finally { await fh.close(); }
+  };
+  const control = await run(READ_BUDGET_BYTES);
+  assert.ok(control.durationMs !== null, 'control: duration resolves with the full budget');
+  const exhausted = await run(control.tagBytes);
+  assert.equal(exhausted.parsed?.fields.TIT2, 'Vorn', 'tag result intact');
+  assert.equal(exhausted.durationMs, null, 'MPEG reader gets only empty buffers');
+  assert.equal(exhausted.total, control.tagBytes);
 });
