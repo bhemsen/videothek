@@ -162,6 +162,29 @@ command exits non-zero with a message on stderr for an unknown username, a
 password confirmation mismatch, or a password outside the 8–256 character
 range.
 
+## Bilder
+
+Pictures and videos under a `Bilder`/`Pictures`/`Photos` folder in your
+`MEDIA_ROOT` are browsable as a folder gallery at `/images`, with EXIF-based
+thumbnails and a lightbox for viewing images and playing videos inline.
+
+Displayable image formats: `jpg`/`jpeg`/`jfif`, `png`, `gif`, `webp`, `avif`,
+`bmp`. Formats the browser cannot display — including `heic`/`heif`, `tif`/
+`tiff`, `jxl` and `svg` — are listed with a "Nicht anzeigbar" badge instead of
+a preview; videos follow the same direct-play compatibility rules as the
+`Filme`/`Serien` categories, with non-playable ones marked "Nicht abspielbar".
+
+**HEIC/HEIF photos (iPhone):** iOS stores photos as HEIC by default, which no
+browser can display. Either take new photos with **Settings → Camera →
+Formats → "Maximale Kompatibilität"** so the camera saves JPEG instead, or
+export existing HEIC photos as JPEG (e.g. via the Fotos app's Share → "Foto
+kopieren" after switching the camera setting, or a conversion tool) before
+copying them into `MEDIA_ROOT`.
+
+Videos placed inside picture folders (e.g. a phone's `VID_*.mp4`) play inline
+in the lightbox next to the photos, using the same playability check as the
+`Filme`/`Serien` categories.
+
 ## Development
 
 - `npm run verify` — type check (`tsc --noEmit`) plus the test suite; run

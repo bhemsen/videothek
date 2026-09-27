@@ -592,3 +592,11 @@ Human QA (Chromium + Firefox; desktop 1280 px and 390 px mobile emulation;
   otherwise leaves it out. Capture dates/times for the fixture files the QA
   tree row leaves unpinned (Tag 1/Tag 2, `geburtstag.jpg`, `alias.jpg`) were
   chosen to keep chronological order plausible.
+- 2026-09-27 (#85, `test/fixtures/media/Bilder/Urlaub 2024/Italien/VID_0433.webm`):
+  a local `ffmpeg` was available, so the Fixtures row's QA fallback (an H.264
+  MP4 copied in) was not needed. Generated with `libvpx-vp9`, 64×64 px, 10 fps,
+  ~30 kbit/s, 2 s: a `color` source with a `drawbox` filter drawing an 8×8
+  marker sliding left-to-right, so the content is visibly synthetic and moving
+  (not a static frame). Output is ~1 KiB, well under the 50 KiB cap; fixed
+  mtime applied via `exif-jpeg.js --write`'s existing "leave present files'
+  mtime alone" behaviour for this file.
