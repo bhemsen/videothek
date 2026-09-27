@@ -49,12 +49,16 @@
   position: fixed;
   left: 0;
   right: 0;
-  bottom: calc(var(--bar-height-mobile) + env(safe-area-inset-bottom));
+  /* Phase 1's fixed bottom nav is not `--bar-height-mobile` tall (its real
+     height comes from `.nav-link`'s min-height plus border plus its own
+     safe-area padding, issue 193) — `trackNavOffset` in player-bar.js
+     measures the nav live and keeps this property equal to it, so the bar's
+     bottom edge always sits flush with the nav's top edge. */
+  bottom: var(--audio-bar-nav-offset, 0);
   z-index: 15;
   display: flex;
-  flex-wrap: wrap;
-  align-items: center;
-  gap: var(--space-2) var(--space-4);
+  flex-direction: column;
+  gap: var(--space-2);
   padding: var(--space-2) var(--space-4);
   background: var(--color-secondary);
   border-top: var(--border-width) solid var(--color-border);
@@ -62,6 +66,15 @@
 
 .audio-bar[hidden] {
   display: none;
+}
+
+/* Cover, title/subtitle and transport controls stay on one row (never wrap
+   independently, even at 390 px, issue 193) — the seek row goes below. */
+.audio-bar__row {
+  display: flex;
+  flex-wrap: nowrap;
+  align-items: center;
+  gap: var(--space-4);
 }
 
 .audio-bar__cover {
@@ -118,8 +131,23 @@
   display: none;
 }
 
-.audio-bar__toggle {
-  color: var(--color-primary);
+/* Play/pause is the bar's visual anchor: a filled primary circle, not a
+   plain glyph (issue 193). The `.audio-bar__controls` prefix outweighs
+   `.audio-bar__controls button`'s own specificity (class + type). */
+.audio-bar__controls .audio-bar__toggle {
+  min-width: var(--space-12);
+  min-height: var(--space-12);
+  border-radius: var(--radius-full);
+  background: var(--color-primary);
+  color: var(--color-background);
+}
+
+.audio-bar__controls .audio-bar__toggle:hover {
+  background: var(--color-primary-hover);
+}
+
+.audio-bar__controls .audio-bar__toggle:active {
+  background: var(--color-primary-active);
 }
 
 .audio-bar__controls svg {
@@ -151,7 +179,6 @@
 
 .audio-bar__seek {
   display: flex;
-  flex: 1 1 100%;
   align-items: center;
   gap: var(--space-2);
 }
@@ -203,7 +230,6 @@
 }
 
 .audio-bar__status {
-  flex: 1 1 100%;
   margin: 0;
   color: var(--color-destructive);
   font-size: var(--text-sm);
@@ -218,9 +244,20 @@
 }
 
 @media (min-width: 768px) {
+  /* No bottom nav here — back to a single row (cover, title, controls,
+     seek), unwrapping `.audio-bar__row` so its children rejoin the bar's
+     own flex layout exactly as before issue 193's mobile-only split. */
   .audio-bar {
+    flex-direction: row;
+    flex-wrap: wrap;
+    align-items: center;
+    gap: var(--space-2) var(--space-4);
     bottom: 0;
     padding-bottom: calc(var(--space-2) + env(safe-area-inset-bottom));
+  }
+
+  .audio-bar__row {
+    display: contents;
   }
 
   .audio-bar[data-mode='audiobook'] .audio-bar__prev,
@@ -230,5 +267,9 @@
 
   .audio-bar__seek {
     flex: 2 1 0%;
+  }
+
+  .audio-bar__status {
+    flex: 1 1 100%;
   }
 }

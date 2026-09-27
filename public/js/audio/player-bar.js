@@ -31,6 +31,7 @@ export function createPlayerBar({ player, audio }) {
     dragging = value;
   });
   observeHeight(parts.bar, spacer);
+  trackNavOffset(parts.bar);
 
   player.onChange(() => applyState(player.state(), parts, (id) => {
     const changed = id !== lastItemId;
@@ -66,12 +67,17 @@ function buildBar() {
   );
   const status = el('p', { class: 'audio-bar__status', role: 'status' });
   status.hidden = true;
-  const bar = el(
-    'section',
-    { class: 'audio-bar', 'aria-label': 'Audioplayer' },
+  const row = el(
+    'div',
+    { class: 'audio-bar__row' },
     cover,
     el('div', { class: 'audio-bar__meta' }, title, subtitle),
     el('div', { class: 'audio-bar__controls' }, prev, rewind, toggle, forward, next),
+  );
+  const bar = el(
+    'section',
+    { class: 'audio-bar', 'aria-label': 'Audioplayer' },
+    row,
     el('div', { class: 'audio-bar__seek' }, elapsed, seek, total),
     status,
   );
@@ -153,6 +159,25 @@ function observeHeight(bar, spacer) {
 function borderBoxHeight(entry) {
   const box = entry.borderBoxSize && entry.borderBoxSize[0];
   return box ? box.blockSize : entry.contentRect.height;
+}
+
+/**
+ * Keeps `--audio-bar-nav-offset` on `bar` equal to the live rendered height
+ * of Phase 1's fixed mobile bottom nav (`.app-nav`, incl. border and its own
+ * safe-area padding) instead of assuming it equals `--bar-height-mobile` —
+ * that assumption left a gap between the bar and the nav (issue 193).
+ * `audio.css` reads the property for `.audio-bar`'s `bottom`; the >= 768 px
+ * breakpoint overrides `bottom` to 0 and ignores it. No-op without a
+ * `.app-nav` in the DOM or without `ResizeObserver`.
+ * @param {HTMLElement} bar
+ * @returns {void}
+ */
+function trackNavOffset(bar) {
+  const nav = document.querySelector('.app-nav');
+  if (nav === null || typeof ResizeObserver === 'undefined') return;
+  const update = () => bar.style.setProperty('--audio-bar-nav-offset', `${nav.getBoundingClientRect().height}px`);
+  update();
+  new ResizeObserver(update).observe(nav);
 }
 
 /**
