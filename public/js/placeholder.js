@@ -12,7 +12,7 @@ const entry = NAV_ENTRIES.find((candidate) => candidate.id === category) ?? null
 const { main } = mountShell({ active: category });
 
 main.append(
-  el('h1', {}, entry ? entry.label : ''),
+  el('h1', { class: 'shell-title' }, entry ? entry.label : ''),
   createEmptyState({
     title: 'Noch nicht verfügbar',
     text: 'Diese Kategorie wird in einer späteren Version freigeschaltet.',

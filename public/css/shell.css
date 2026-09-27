@@ -175,6 +175,7 @@
 .account-menu-item svg {
   width: var(--space-4);
   height: var(--space-4);
+  flex-shrink: 0;
   color: var(--color-muted);
 }
 
@@ -190,6 +191,14 @@
 
 #main {
   padding: var(--space-6) var(--space-4) calc(var(--bar-height-mobile) + var(--space-6) + env(safe-area-inset-bottom));
+}
+
+/* Shell page heading ("Start", category labels): mockup sizes (24 px mobile,
+   32 px desktop), consistent with the admin page's .admin-title — the base
+   48 px h1 makes these headings visibly larger than the rest of the shell */
+.shell-title {
+  font-size: var(--text-xl);
+  font-weight: var(--weight-semibold);
 }
 
 @media (min-width: 768px) {
@@ -229,5 +238,9 @@
 
   #main {
     padding: var(--space-8) var(--space-6);
+  }
+
+  .shell-title {
+    font-size: var(--text-2xl);
   }
 }
