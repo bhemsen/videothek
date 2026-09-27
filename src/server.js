@@ -136,11 +136,13 @@ async function runStart(providedConfig, log) {
   log.info('startup');
   const config = providedConfig ?? loadConfig();
   const db = openDatabase(config.dataDir);
+  /** @type {import('./library/index.js').LibraryService | null} */
+  let library = null;
   try {
     migrate(db, { log });
     await ensureAdmin({ db, adminUser: config.adminUser, adminPassword: config.adminPassword, log });
 
-    const library = startLibrary({ db, config, log });
+    library = startLibrary({ db, config, log });
     const app = createApp({ config, db, log, library });
     await listen(app.server, config.host, config.port);
     log.info('listening', { host: config.host, port: config.port });
@@ -154,8 +156,14 @@ async function runStart(providedConfig, log) {
     // Nothing past `openDatabase` succeeded (or `listen` itself failed): the
     // process is about to exit, but the DB connection must not leak — on
     // Windows in particular, an open `DatabaseSync` keeps `videothek.db*`
-    // locked, which would otherwise fail a caller's own cleanup.
-    db.close();
+    // locked, which would otherwise fail a caller's own cleanup. A library
+    // already started (createApp/listen failed after it) is stopped first,
+    // so no scan or watch outlives the DB it writes to.
+    try {
+      await library?.stop();
+    } finally {
+      db.close();
+    }
     throw err;
   }
 }
