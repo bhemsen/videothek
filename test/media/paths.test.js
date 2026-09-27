@@ -82,6 +82,83 @@ test('resolveMediaPath: rejects a path to a missing file', async (t) => {
   assert.equal(await resolveMediaPath(root, 'missing.mp4'), null);
 });
 
+/**
+ * Creates each colon-containing target under `root` and returns the relative
+ * paths that now exist. On NTFS `name:stream` creates a real alternate data
+ * stream (so `fs.realpath` resolves it); elsewhere it creates a literal
+ * colon name. A directory named `b:c` cannot exist on NTFS, so that case is
+ * dropped there instead of failing.
+ *
+ * @param {string} root
+ * @returns {Promise<string[]>}
+ */
+async function createColonTargets(root) {
+  await writeFile(root, 'movie.mp4');
+  await fs.mkdir(path.join(root, 'sub'));
+  /** @type {Array<[string, () => Promise<unknown>]>} */
+  const cases = [
+    ['sub/C:evil', () => writeFile(path.join(root, 'sub'), 'C:evil')],
+    ['movie.mp4:Zone.Identifier', () => writeFile(root, 'movie.mp4:Zone.Identifier')],
+    ['Star Wars: Episode IV (1977).mp4', () => writeFile(root, 'Star Wars: Episode IV (1977).mp4')],
+    ['a/b:c/d', async () => {
+      await fs.mkdir(path.join(root, 'a', 'b:c'), { recursive: true });
+      await writeFile(path.join(root, 'a', 'b:c'), 'd');
+    }],
+  ];
+  const created = [];
+  for (const [relPath, create] of cases) {
+    try {
+      await create();
+      created.push(relPath);
+    } catch {
+      // Not representable on this filesystem (NTFS: directory `b:c`).
+    }
+  }
+  return created;
+}
+
+test('resolveMediaPath: rejects NTFS alternate-data-stream selectors on win32 even when the target exists', async (t) => {
+  const root = await makeTempDir('vt-paths-');
+  t.after(() => cleanup(root));
+  const created = await createColonTargets(root);
+  // The ADS-shaped targets are creatable on every filesystem the tests run on.
+  assert.ok(created.includes('sub/C:evil') && created.includes('movie.mp4:Zone.Identifier'));
+
+  for (const relPath of created) {
+    // Precondition: without the win32 colon rule the path resolves, so the
+    // null below can only come from that rule (not from a missing file).
+    assert.notEqual(await resolveMediaPath(root, relPath, { platform: 'linux' }), null, relPath);
+    assert.equal(
+      await resolveMediaPath(root, relPath, { platform: 'win32' }),
+      null,
+      `expected null for ${JSON.stringify(relPath)} on win32`,
+    );
+  }
+  assert.equal(await resolveMediaPath(root, 'a/b:c/d', { platform: 'win32' }), null);
+});
+
+test('resolveMediaPath: a colon inside a segment stays legal on non-win32 platforms', async (t) => {
+  const root = await makeTempDir('vt-paths-');
+  t.after(() => cleanup(root));
+  const created = await createColonTargets(root);
+  if (process.platform !== 'win32') {
+    assert.deepEqual(created, [
+      'sub/C:evil',
+      'movie.mp4:Zone.Identifier',
+      'Star Wars: Episode IV (1977).mp4',
+      'a/b:c/d',
+    ]);
+  }
+
+  for (const relPath of created) {
+    assert.equal(
+      await resolveMediaPath(root, relPath, { platform: 'linux' }),
+      await fs.realpath(path.join(root, ...relPath.split('/'))),
+      relPath,
+    );
+  }
+});
+
 test('resolveMediaPath: rejects a junction that escapes the root', async (t) => {
   const root = await makeTempDir('vt-paths-');
   const outside = await makeTempDir('vt-paths-outside-');
