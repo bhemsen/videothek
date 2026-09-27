@@ -84,6 +84,14 @@ entweder eine einzelne Mediendatei darin stehen lassen, oder den Dienst
 stoppen und die Datenbankdatei unter `DATA_DIR` löschen (siehe „Backup“) —
 beim nächsten Start wird die gesamte Bibliothek neu eingelesen.
 
+**Achtung:** Die Datenbankdatei enthält nicht nur den Bibliotheksindex,
+sondern auch alle Konten, Sitzungen und den gesamten Wiedergabefortschritt
+aller Nutzer — all das geht beim Löschen verloren. Beim nächsten Start
+existiert kein Konto mehr: `ADMIN_USER`/`ADMIN_PASSWORD` müssen gesetzt sein,
+damit das Admin-Konto neu angelegt wird (siehe „First start“), und alle
+weiteren Konten muss der Admin neu erstellen. Vorher ein Backup anlegen; im
+Zweifel ist „eine Datei stehen lassen“ der schonendere Weg.
+
 ## First start
 
 1. `npm ci`

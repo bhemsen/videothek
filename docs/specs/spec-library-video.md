@@ -1273,3 +1273,23 @@ and desktop 1440 px, compared with the design exports):
   reverting `src/server.js`/`src/app.js` to their pre-#34 state, which made
   the hang disappear, then reproducing and fixing it with the flag; regression
   test added to `test/library/index.test.js`.
+- 2026-09-27 (#34), review follow-up: the ENOSPC/EMFILE-on-`seen('')` edge
+  case the #31 entry above left open is **deferred, not closed** here.
+  `startLibrary()` only calls `watcher.start()`; fixing it means changing how
+  `dir-watch.js` reports a limit error for `''` (today it sets `limitReached`
+  without calling `onWatchError`, so `watcher.js`'s root backoff never
+  retries and `sweep()` never re-sees `''`), which belongs to the
+  change-detection modules, not this wiring issue. Impact is bounded: a host
+  whose very first watch already hits the inotify limit has no watch budget
+  at all, `library_watch_limit` is logged once, category and sub-directory
+  watches are re-attempted from the next full scan on (`sweep()` clears the
+  flag), and only a new top-level folder directly under `MEDIA_ROOT` then
+  waits for the periodic rescan — inside the vision's "at the latest after
+  the periodic rescan interval" bound. Follow-up candidate: route a `''`
+  limit error through `onWatchError('')` so the existing root backoff
+  retries it.
+- 2026-09-27 (#34), review follow-up: the D7 "how to empty a category"
+  guidance now also lives in `docs/architecture.md` (key flow 1), and both
+  it and `README.md` warn that deleting the DB file also deletes every
+  account, session and all playback progress (the admin is re-created from
+  `ADMIN_USER`/`ADMIN_PASSWORD`).
