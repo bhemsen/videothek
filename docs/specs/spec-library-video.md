@@ -1038,3 +1038,53 @@ and desktop 1440 px, compared with the design exports):
   failing with a limit error before any watch exists — is left for `startLibrary`
   (#34)/the scanner (#33) to close, since a `sweep()`-side retry would race
   `watcher.js`'s own root backoff bookkeeping in `rootRetrying`/`attemptRootWatch`.)
+- 2026-09-26 (issue #28): review caught that `cleanName`'s empty-result
+  rescue masked the episode-title fallback rule ("Empty → `episodeCode(...)`")
+  for a suffix that is release tags with real words (e.g.
+  `.German.1080p.WEB.x264`), producing `"German 1080p WEB x264"` instead of
+  the code and breaking the `Dark.S01E03...` QA-fixture line. Fixed in
+  `src/library/parsers/text.js` by splitting `cleanName` into an exported
+  `cutReleaseTokens` step (no rescue) and the rescue itself; the
+  episode-title fallback now checks `cutReleaseTokens` emptiness before the
+  rescue can reintroduce release tags as text. `cleanName`'s own
+  input/output contract is unchanged. The QA fixture's stated title
+  `"S01E03"` stands as originally specified.
+- 2026-09-26 (issue #32): `item-builder.js`'s `buildItem({ mediaRoot, relPath,
+  category, stat, now })` takes `relPath` relative to `MEDIA_ROOT` (matching
+  `library_items.rel_path` verbatim, including the leading category-root
+  segment), not relative to the category folder — it strips the first path
+  segment itself before calling `parseMovie`/`parseEpisode`, so callers never
+  need to know which alias folder ("Filme" vs "Movies") matched on disk. For
+  `category: 'series'` the returned row carries two extra fields beyond
+  `LibraryItemInput` — `series_key` (-> `library_series.series_key`) and
+  `series_year` (-> `library_series.year`) — since `item-builder.js` never
+  touches the database (architecture: `src/library/` has no DB access) and so
+  cannot resolve `series_id` itself; `series_title` doubles as both the
+  series' own title and the denormalised `library_items.series_title` column,
+  since both are the same value. `dir-sync.js` (a later step) upserts
+  `library_series` from `series_key`/`series_title`/`series_year`, sets
+  `series_id` on the row, and can then pass it into `upsertItem()` unchanged,
+  matching the (#27) hand-off note. `video_codec`/`audio_codec` are each the
+  *first* sniffed fourcc of their track type (`codecs.video[0] ?? null` /
+  `codecs.audio[0] ?? null`), matching the migration's column comments.
+  `walk.js`'s `listDirectory(absDir, { statFn? })` takes an optional,
+  test-only `statFn` (default `fs.stat`) to let tests inject a deterministic
+  non-`ENOENT` `stat` failure without relying on platform-specific
+  permission tricks; production callers always call it with one argument.
+  Hidden names and the known NAS/OS system folders are skipped silently
+  (uncounted, per `isSkippedName`); symlinks and U+FFFD (undecodable) names
+  are counted in `skipped` since the scanner logs their counts once per run.
+- 2026-09-26 (#36): `library-format.js` exports one generic
+  `pluralize(n, singular, plural)` (covers Titel/Titel, Serie/Serien,
+  Staffel/Staffeln, Folge/Folgen) instead of one function per word, and
+  `formatFileSize(bytes)` for the 1024-based B/KB/MB/GB rule;
+  `episodeNumber`/`episodeCode`/`episodeLabel` all take the same
+  `{ season, episode, episodeEnd }` shape `LibraryItem` already carries, plus
+  `title` for `episodeLabel`. `media-card.js` exports
+  `createPosterTile`/`createUnplayableBadge`/`createMovieCard`/
+  `createSeriesCard`/`createEpisodeRow`: series cards are always links (the
+  badge shows only when `playableCount` is 0), movie cards and episode rows
+  become a non-interactive `<div>` with the German title attribute when
+  unplayable. `library-api.js`'s `getCategory`/`getSeries` return the parsed
+  JSON typed via JSDoc (`CategoryItemsResponse | CategorySeriesResponse`,
+  `SeriesDetail`) for later phases to consume directly.

@@ -65,7 +65,10 @@ test('migrate applies the shipped 001-users-sessions migration with working cons
   const dataDir = makeTempDir();
   const db = openDatabase(dataDir);
   try {
-    assert.deepEqual(migrate(db), [1, 2, 5]);
+    const applied = migrate(db);
+    // Containment, not an exact list: sibling migrations must not break this test.
+    assert.ok(applied.includes(1));
+    assert.deepEqual(applied, [...applied].sort((a, b) => a - b));
 
     const insertUser = db.prepare(
       'INSERT INTO users (username, password_hash, role, created_at) VALUES (?, ?, ?, ?)'
