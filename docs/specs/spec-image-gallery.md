@@ -592,3 +592,17 @@ Human QA (Chromium + Firefox; desktop 1280 px and 390 px mobile emulation;
   otherwise leaves it out. Capture dates/times for the fixture files the QA
   tree row leaves unpinned (Tag 1/Tag 2, `geburtstag.jpg`, `alias.jpg`) were
   chosen to keep chronological order plausible.
+- 2026-09-27 (#81, `src/api/thumb.js`): implemented exactly per the
+  Thumbnail route decision row, as one sequential guard-clause chain (id
+  regex + safe integer -> `getThumbSource` -> category/kind/playable/
+  recorded-thumbnail -> `resolveMediaPath` -> `verifyThumb` -> `sendMedia`),
+  each failure answering the same `404 {"error":"not_found"}` through one
+  `notFound(res)` helper; `deps.openFile` is forwarded to both `verifyThumb`
+  and `sendMedia` unconditionally (each has its own default when it is
+  `undefined`), so the route itself carries no open-file logic of its own.
+  `test/api/thumb.test.js` table-drives the seven pre-check failure
+  scenarios (`Object.entries` of async seed functions) to stay under the
+  300-line file cap while keeping one assertion per scenario; the "recorded
+  offset no longer starts FF D8" fixture reuses a real thumbnail's own APP1
+  marker bytes (offset 2 = `FF E1`) instead of corrupting the file, so the
+  scenario needs no separate malformed-thumbnail builder.
