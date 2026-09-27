@@ -178,16 +178,24 @@ test('entries are ordered by updatedAt desc (itemId desc on ties), limit applied
     const newest = upsertItem(app.db, makeMovie({ rel_path: 'Filme/Newest.mp4', title: 'Newest' }), 1);
     seedProgress(app.db, { relPath: 'Filme/Newest.mp4', positionSeconds: 40, updatedAt: 300 });
 
+    const tieLow = upsertItem(app.db, makeMovie({ rel_path: 'Filme/TieLow.mp4', title: 'TieLow' }), 1);
+    seedProgress(app.db, { relPath: 'Filme/TieLow.mp4', positionSeconds: 40, updatedAt: 250 });
     const { e1, e2 } = seedShow(app.db, 'B');
     seedProgress(app.db, { relPath: e1.relPath, finished: true, positionSeconds: 1400, updatedAt: 250 });
+    const tieHigh = upsertItem(app.db, makeMovie({ rel_path: 'Filme/TieHigh.mp4', title: 'TieHigh' }), 1);
+    seedProgress(app.db, { relPath: 'Filme/TieHigh.mp4', positionSeconds: 40, updatedAt: 250 });
+    assert.ok(older < newest && newest < tieLow && tieLow < e2.id && e2.id < tieHigh);
 
-    const res = await getJson(app.baseUrl, '/api/progress?category=movies,series&limit=2', cookie);
-    assert.equal(res.status, 200);
-    assert.deepEqual(
-      res.body.items.map((/** @type {any} */ item) => item.itemId),
-      [newest, e2.id],
-    );
-    assert.ok(!res.body.items.some((/** @type {any} */ item) => item.itemId === older));
+    /** @param {number} limit */
+    const ids = async (limit) =>
+      (await getJson(app.baseUrl, `/api/progress?category=movies,series&limit=${limit}`, cookie)).body.items.map(
+        (/** @type {any} */ item) => item.itemId,
+      );
+    // Three entries share updatedAt 250 (two in_progress, one next_up): itemId desc decides.
+    assert.deepEqual(await ids(5), [newest, tieHigh, e2.id, tieLow, older]);
+    // The limit cuts after the merge, inside the tie group.
+    assert.deepEqual(await ids(3), [newest, tieHigh, e2.id]);
+    assert.deepEqual(await ids(2), [newest, tieHigh]);
   } finally {
     await app.close();
   }

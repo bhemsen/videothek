@@ -123,15 +123,23 @@ function createGetItemHandler(db) {
 }
 
 /**
- * `PUT /api/progress/:id` handler: id -> body -> item -> resumable check ->
- * body validation -> write rule, in the spec's exact order.
+ * `PUT /api/progress/:id` handler, in the spec's exact order: id syntax (404)
+ * -> `readJson` (its 400/413/415, thrown as `HttpError`) -> item lookup (404)
+ * -> resumable check -> missing/non-object body (`invalid_json`) -> field
+ * validation (`invalid_progress`) -> write rule.
  * @param {import('node:sqlite').DatabaseSync} db
  * @param {() => number} now
  * @returns {import('../http/router.js').Handler}
  */
 function createPutItemHandler(db, now) {
   return async (req, res, ctx) => {
-    const item = lookupItem(db, ctx.params.id);
+    const id = parseItemId(ctx.params.id);
+    if (id === null) {
+      sendError(res, 404, 'not_found');
+      return;
+    }
+    const body = await readJson(req);
+    const item = getItemById(db, id);
     if (!item) {
       sendError(res, 404, 'not_found');
       return;
@@ -140,8 +148,7 @@ function createPutItemHandler(db, now) {
       sendError(res, 400, 'not_resumable');
       return;
     }
-    const body = await readJson(req);
-    if (typeof body !== 'object' || body === null) {
+    if (typeof body !== 'object' || body === null || Array.isArray(body)) {
       sendError(res, 400, 'invalid_json');
       return;
     }

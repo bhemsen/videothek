@@ -8,6 +8,7 @@
 
 import { test } from 'node:test';
 import assert from 'node:assert/strict';
+import http from 'node:http';
 import { upsertItem } from '../../src/db/library-repo.js';
 import { startTestApp } from '../helpers/app.js';
 import { request } from '../helpers/auth-http.js';
@@ -50,6 +51,29 @@ async function call(baseUrl, method, pathname, { cookie, json, headers = {} } = 
     json,
   });
   return { status: res.status, body: res.body.length > 0 ? JSON.parse(res.body) : null };
+}
+
+/**
+ * `PUT` with a raw body string and content type (the shared `request`
+ * helper only ever sends well-formed JSON).
+ * @param {string} url
+ * @param {string} cookie
+ * @param {string} body
+ * @param {string} contentType
+ * @returns {Promise<{ status: number, body: any }>}
+ */
+function rawPut(url, cookie, body, contentType) {
+  return new Promise((resolve, reject) => {
+    const headers = { Cookie: cookie, 'Content-Type': contentType };
+    const req = http.request(url, { method: 'PUT', headers, agent: false }, (res) => {
+      let text = '';
+      res.setEncoding('utf8');
+      res.on('data', (chunk) => (text += chunk));
+      res.on('end', () => resolve({ status: /** @type {number} */ (res.statusCode), body: JSON.parse(text) }));
+    });
+    req.on('error', reject);
+    req.end(body);
+  });
 }
 
 test('every progress route answers 401 without a session', async () => {
@@ -119,6 +143,36 @@ test('a body-less PUT answers 400 invalid_json', async () => {
     const res = await call(app.baseUrl, 'PUT', `/api/progress/${movieId}`, { cookie });
     assert.equal(res.status, 400);
     assert.deepEqual(res.body, { error: 'invalid_json' });
+  } finally {
+    await app.close();
+  }
+});
+
+test('PUT order: id syntax -> readJson codes -> lookup -> not_resumable -> invalid_json -> invalid_progress', async () => {
+  const app = await startTestApp();
+  try {
+    await app.createUser('alice', PASSWORD);
+    const cookie = await app.login('alice', PASSWORD);
+    const movie = upsertItem(app.db, makeMovie(), 1);
+    const image = upsertItem(app.db, makeMovie({ rel_path: 'Bilder/a.jpg', dir: 'Bilder', category: 'images', kind: 'image' }), 1);
+    const json = 'application/json';
+    /** @type {[string | number, string, string, number, string][]} */
+    const cases = [
+      ['abc', '{', json, 404, 'not_found'],
+      [999999, '{', json, 400, 'invalid_json'],
+      [999999, '{}', 'text/plain', 415, 'unsupported_media_type'],
+      [999999, 'x'.repeat(20000), json, 413, 'payload_too_large'],
+      [999999, '[]', json, 404, 'not_found'],
+      [image, '{', json, 400, 'invalid_json'],
+      [image, '[]', json, 400, 'not_resumable'],
+      [movie, '[]', json, 400, 'invalid_json'],
+      [movie, '"x"', json, 400, 'invalid_json'],
+      [movie, '{"position":"1","duration":2}', json, 400, 'invalid_progress'],
+    ];
+    for (const [id, body, type, status, error] of cases) {
+      const res = await rawPut(`${app.baseUrl}/api/progress/${id}`, cookie, body, type);
+      assert.deepEqual([res.status, res.body], [status, { error }], `${id} ${body.slice(0, 20)} ${type}`);
+    }
   } finally {
     await app.close();
   }
