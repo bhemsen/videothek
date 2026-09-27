@@ -93,7 +93,17 @@ export function createScanner({ db, mediaRoot, log, now, dirObserver = NOOP_DIR_
     }
     addDirStats(stats, result.stats);
     visited.add(relDir);
-    if (activeFullVisited) await queue.drainPathsBetweenDirs();
+    // Only the full scan's own root walk may drain inline: `visited` here is
+    // the exact same Set assigned to `activeFullVisited` only for that call
+    // chain (`runFullScan` -> `visitRoot` -> this `walkDir`). A `scanSubtree`
+    // call always builds its own local `visited` — whether it's a standalone
+    // 'paths' run or one nested inside an interleaved reconcile that is
+    // itself running during a full scan — so it must never drain here too:
+    // a nested drain's finds would land only in `activeFullVisited`, not in
+    // that subtree's own `visited`, and its own sweepPrefix() would then
+    // delete what the nested drain just indexed. Deferred paths instead run
+    // as their own later top-level queue job, after every enclosing sweep.
+    if (visited === activeFullVisited) await queue.drainPathsBetweenDirs();
     for (const child of result.dirs) {
       await walkDir(`${relDir}/${child}`, stats, visited, protectedPrefixes);
     }
@@ -212,6 +222,10 @@ export function createScanner({ db, mediaRoot, log, now, dirObserver = NOOP_DIR_
   async function runPathsReconcile(relPaths) {
     const start = Date.now();
     const { stats, escalate } = await reconcilePaths({ db, mediaRoot, now, dirObserver, scanSubtree }, relPaths);
+    // A 'paths' run can delete the last episode of a series (ENOENT, a
+    // changed file whose series changed, or a symlink/skipped name); without
+    // this, the now-empty series row would linger until the next full scan.
+    deleteOrphanedSeries(db);
     return { stats: { ...stats, durationMs: Date.now() - start }, escalate };
   }
 

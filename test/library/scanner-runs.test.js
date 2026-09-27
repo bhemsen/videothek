@@ -87,6 +87,66 @@ test('createScanner: a standalone paths subtree walk does not drain a nested rec
   );
 });
 
+test('createScanner: a reconcile nested inside another reconcile interleaved into a running full scan survives both sweeps', async (t) => {
+  const { stat: realStat } = await import('node:fs/promises');
+  let injectedOuter = false;
+  let injectedInner = false;
+  /** @type {{ scanner?: ReturnType<typeof createScanner> }} */
+  const holder = {};
+  /** @param {string} absPath */
+  const statFn = async (absPath) => {
+    if (!injectedOuter && absPath.endsWith('trigger.webm')) {
+      injectedOuter = true;
+      // A fresh directory the outer full walk's own listing of 'Filme'
+      // never saw (it didn't exist yet) — same shape as the existing
+      // "reconcile interleaved into a running full scan" test, except this
+      // one's own subtree walk (run via drainPathsBetweenDirs, nested
+      // inside the running full scan) contains a second trigger.
+      await writeMediaFile(root, 'Filme/ZZZ_NEW/Sub/sub-trigger.webm');
+      holder.scanner?.requestPaths(['Filme/ZZZ_NEW']);
+    }
+    if (!injectedInner && absPath.endsWith('sub-trigger.webm')) {
+      injectedInner = true;
+      // Discovered only once the outer reconcile's own subtree walk reaches
+      // 'Filme/ZZZ_NEW/Sub' — never part of that walk's own directory
+      // listing of 'Filme/ZZZ_NEW' (captured before 'New' existed).
+      await writeMediaFile(root, 'Filme/ZZZ_NEW/New/new.webm');
+      holder.scanner?.requestPaths(['Filme/ZZZ_NEW/New']);
+    }
+    return realStat(absPath);
+  };
+  const { root, db, scanner } = await setup(t, { statFn });
+  holder.scanner = scanner;
+  await writeMediaFile(root, 'Filme/AAA/trigger.webm');
+
+  scanner.requestFull(); await scanner.idle();
+
+  assert.equal(injectedOuter, true, 'the outer hook must have fired mid-walk');
+  assert.equal(injectedInner, true, 'the inner (doubly-nested) hook must have fired mid-walk');
+  assert.ok(
+    loadRow(db, 'Filme/ZZZ_NEW/New/new.webm'),
+    "a directory discovered by a reconcile nested inside another reconcile's own subtree walk, both during the same full scan, must survive every enclosing sweep"
+  );
+});
+
+test('createScanner: a paths run that deletes the last episode also deletes the now-empty series row', async (t) => {
+  const { root, db, scanner } = await setup(t);
+  const episodePath = 'Serien/Dark (2017)/Staffel 1/Dark S01E01 - Geheimnisse.webm';
+  await writeMediaFile(root, episodePath);
+  scanner.requestFull(); await scanner.idle();
+  assert.equal(db.prepare('SELECT * FROM library_series').all().length, 1);
+
+  await rm(join(root, ...episodePath.split('/')));
+  scanner.requestPaths([episodePath]);
+  await scanner.idle();
+
+  assert.equal(
+    db.prepare('SELECT * FROM library_series').all().length,
+    0,
+    'the orphaned series row must not linger until the next full scan'
+  );
+});
+
 test('createScanner: a paths run reports the full ScanStats shape, not just added/updated/removed/unchanged', async (t) => {
   const { root, scanner } = await setup(t);
   await writeMediaFile(root, 'Filme/Arrival (2016).webm');
@@ -223,4 +283,16 @@ test('createScanner: the QA fixture tree smoke test — 7 movies (3 not playable
   );
   assert.equal(darkEpisodes.length, 7);
   assert.equal(new Set(darkEpisodes.map((e) => e.season)).size, 4, 'seasons 1, 2, 0 (specials) and null (Weitere Folgen)');
+  const darkNumberedStaffeln = new Set(darkEpisodes.map((e) => e.season).filter((s) => typeof s === 'number' && s > 0));
+  assert.equal(darkNumberedStaffeln.size, 2, '2 numbered Staffeln (Specials is season 0, Extras is "Weitere Folgen")');
+
+  const babylonEpisodes = /** @type {any[]} */ (
+    db.prepare('SELECT * FROM library_items WHERE series_id = ?').all(byTitle['Babylon Berlin'].id)
+  );
+  assert.equal(babylonEpisodes.length, 1);
+
+  const strombergEpisodes = /** @type {any[]} */ (
+    db.prepare('SELECT * FROM library_items WHERE series_id = ?').all(byTitle['Stromberg'].id)
+  );
+  assert.equal(strombergEpisodes.length, 2);
 });

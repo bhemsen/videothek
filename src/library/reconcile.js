@@ -62,11 +62,34 @@ function emptyStats() {
 /**
  * @param {string} relPath
  * @returns {boolean} whether `relPath` is `''` (MEDIA_ROOT) or has no `/` (a
- *   top-level entry) — either escalates to a full scan, since a structural
- *   change at that level can add, remove or rename a whole category root
+ *   top-level entry) — either is a candidate to escalate to a full scan,
+ *   since a structural change at that level can add, remove or rename a
+ *   whole category root (see `canIgnoreTopLevel` for the entries that
+ *   never can)
  */
 function isTopLevel(relPath) {
   return relPath === '' || !relPath.includes('/');
+}
+
+/**
+ * Whether a top-level path reported by change detection can be safely
+ * ignored instead of escalating to a full scan: the spec restricts
+ * escalation to "MEDIA_ROOT itself or a top-level *folder*" — a hidden/known
+ * NAS-or-OS name, or a plain file (never a category root, which is always a
+ * directory), matches neither. `MEDIA_ROOT` itself (`relPath === ''`) always
+ * escalates: only a full `discoverRoots()` listing can tell what changed
+ * directly inside it.
+ * @param {string} mediaRoot
+ * @param {string} relPath non-empty, single-segment (checked by the caller)
+ * @returns {Promise<boolean>}
+ */
+async function canIgnoreTopLevel(mediaRoot, relPath) {
+  if (isSkippedName(relPath)) return true;
+  try {
+    return (await lstat(join(mediaRoot, relPath))).isFile();
+  } catch {
+    return false; // missing or unreadable: a category root may have been removed/broken
+  }
 }
 
 /**
@@ -232,6 +255,7 @@ export async function reconcilePaths(ctx, relPaths) {
 
   for (const relPath of relPaths) {
     if (isTopLevel(relPath)) {
+      if (relPath !== '' && (await canIgnoreTopLevel(ctx.mediaRoot, relPath))) continue;
       escalate = true;
       continue;
     }

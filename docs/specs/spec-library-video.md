@@ -1171,3 +1171,29 @@ and desktop 1440 px, compared with the design exports):
   `scanner.js` was left over the 300-line limit by these fixes; `emptyStats`/
   `addDirStats`/`sweepPrefix` moved out to a new `scan-stats.js` (table
   above), a pure split with no behavioural change.
+- 2026-09-27 (#33, PR review round 2): one blocking fix. `walkDir`'s
+  `drainPathsBetweenDirs()` call (guarded by `if (activeFullVisited)` per the
+  round-1 fix above) still let a reconcile nested inside another interleaved
+  reconcile lose its finds: the round-1 guard is true for the *whole
+  duration* of a full scan, not just its own root walk, so a `scanSubtree`
+  call running because of an interleaved reconcile — itself already running
+  because `activeFullVisited` was set — drained a second, doubly-nested
+  reconcile inline too. That inner reconcile's directory was merged only
+  into `activeFullVisited`, never into the *outer* `scanSubtree`'s own local
+  `visited`, so that outer subtree's own `sweepPrefix` deleted it moments
+  later, in the same run. Fixed by checking `visited === activeFullVisited`
+  instead of mere truthiness: only the full scan's own root walk (which
+  passes that exact `Set`) may drain inline; every `scanSubtree` call now
+  always defers its own discoveries to a later, separate top-level `'paths'`
+  queue job, whether standalone or nested arbitrarily deep inside a running
+  full scan — matching how the round-1 fix already made standalone runs
+  behave. Three cheap non-blocking fixes rode along: `runPathsReconcile` now
+  also calls `deleteOrphanedSeries(db)` (previously only `runFullScan` did),
+  so a `'paths'` run that deletes a series' last episode no longer leaves an
+  empty `library_series` row until the next full scan; `reconcile.js`'s
+  `isTopLevel` escalation gained `canIgnoreTopLevel` (skipped/hidden names,
+  or an existing plain file — never a category root, which the spec's own
+  "top-level *folder*" wording restricts this to), so OS metadata churn
+  directly under `MEDIA_ROOT` (`Thumbs.db`, `.DS_Store`) no longer forces a
+  full rescan; and the QA fixture smoke test gained the 2-Staffeln, Babylon
+  Berlin and Stromberg episode-count assertions it was missing.
