@@ -1,7 +1,7 @@
 import { test } from 'node:test';
 import assert from 'node:assert/strict';
 import net from 'node:net';
-import { mkdirSync, mkdtempSync, rmSync } from 'node:fs';
+import fs, { mkdirSync, mkdtempSync, rmSync } from 'node:fs';
 import { tmpdir } from 'node:os';
 import path from 'node:path';
 import { createLogger } from '../src/log.js';
@@ -191,6 +191,64 @@ test('start() on a fresh DB without admin env exits before listening (admin_miss
     assert.equal(listeningServerCount(), serversBefore);
   } finally {
     process.exit = originalExit;
+    cleanup();
+  }
+});
+test('start() hands the library service to the app, and stop() stops it before closing the DB', async (t) => {
+  const start = await loadStart();
+  const { config, cleanup } = buildTestConfig();
+  const { log } = silentLogger();
+  try {
+    const result = await start({ config, log });
+    const library = result.app.deps.library;
+    assert.ok(library, 'createApp must receive the running library service as deps.library');
+    assert.equal(typeof library.status, 'function');
+
+    /** @type {string[]} */
+    const order = [];
+    const originalStop = library.stop.bind(library);
+    const originalClose = result.db.close.bind(result.db);
+    t.mock.method(library, 'stop', async () => {
+      order.push('library.stop');
+      await originalStop();
+      order.push('library.stopped');
+    });
+    t.mock.method(result.db, 'close', () => {
+      order.push('db.close');
+      originalClose();
+    });
+
+    await result.stop();
+    assert.deepEqual(order, ['library.stop', 'library.stopped', 'db.close']);
+  } finally {
+    cleanup();
+  }
+});
+
+test('a listen failure after the library started stops it before closing the DB (no watch or scan leaks)', async (t) => {
+  const start = await loadStart();
+  const { config, cleanup } = buildTestConfig();
+  const blocker = net.createServer();
+  await new Promise((resolve) => blocker.listen(0, '127.0.0.1', () => resolve(undefined)));
+  const address = /** @type {import('node:net').AddressInfo} */ (blocker.address());
+  const busyConfig = /** @type {import('../src/config.js').Config} */ ({ ...config, port: address.port });
+  const { log, logLines } = silentLogger();
+  const watch = t.mock.method(fs, 'watch');
+  const originalExit = process.exit;
+  process.exit = /** @type {typeof process.exit} */ (() => {
+    throw new Error('process.exit called');
+  });
+  try {
+    await assert.rejects(() => start({ config: busyConfig, log }));
+    // Give the library's deferred boot every chance to run had it not been stopped.
+    await new Promise((resolve) => setImmediate(resolve));
+    await new Promise((resolve) => setImmediate(resolve));
+    assert.equal(watch.mock.callCount(), 0, 'no watch may be opened by a library whose server never started');
+    assert.ok(logLines.some((line) => line.includes('startup_failed')));
+    assert.ok(!logLines.some((line) => line.includes('library_scan')), 'no scan may run against the closed DB');
+  } finally {
+    process.exit = originalExit;
+    await new Promise((resolve) => blocker.close(() => resolve(undefined)));
     cleanup();
   }
 });
