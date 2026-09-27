@@ -622,3 +622,13 @@ Firefox, desktop and a 390 px phone viewport):
   (e.g. a movie) normalizes to the same `EpisodeIdentity` shape
   `episodeCode` expects, satisfying `tsc --strict` without widening
   `library-format.js`'s own types.
+- 2026-09-27: implementation (#46, `src/api/item-detail.js`) — `handleItemDetail`
+  in `src/api/library.js` becomes `async` (it now awaits `toItemDetailJson`)
+  and its own `deps` JSDoc, plus `registerLibraryRoutes`'s, gained an explicit
+  `config: Config` field so `deps.config.mediaRoot` (already part of the real
+  `AppDeps` object every caller passes in) type-checks under `tsc --strict`;
+  no other line in the file changes, matching the spec's "single-line edit"
+  intent for the response construction itself. `listSubtitles`'s tracks are
+  mapped to `{ index, lang, label }` (dropping `path`) before being returned,
+  so the filesystem path decided in "Subtitle sidecars" never reaches the
+  JSON response.

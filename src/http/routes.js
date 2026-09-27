@@ -6,6 +6,7 @@ import { registerLibraryRoutes } from '../api/library.js';
 import { registerMediaRoutes } from '../api/media.js';
 import { registerMusicRoutes } from '../api/music.js';
 import { registerThumbRoutes } from '../api/thumb.js';
+import { registerUserRoutes } from '../api/users.js';
 
 /**
  * Registers every API module's routes onto `router` — one
@@ -24,4 +25,5 @@ export function registerRoutes(router, deps) {
   registerMusicRoutes(router, deps);
   registerThumbRoutes(router, deps);
   registerGalleryRoutes(router, deps);
+  registerUserRoutes(router, deps);
 }
