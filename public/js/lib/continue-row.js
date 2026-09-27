@@ -76,6 +76,35 @@ export function nextFocusIndex(count, removedIndex) {
 }
 
 /**
+ * Wraps one card's async removal so it runs at most once at a time and never
+ * again after it succeeded: a second "×" activation while the request is
+ * pending (or after the card is gone) is ignored. `setPending` mirrors the
+ * pending state onto the button; a failure re-arms the handler for a retry.
+ * @param {() => Promise<void>} remove
+ * @param {{ setPending: (pending: boolean) => void, onSuccess: () => void, onFailure: () => void }} hooks
+ * @returns {() => Promise<void>}
+ */
+export function guardRemoval(remove, { setPending, onSuccess, onFailure }) {
+  /** @type {'idle' | 'pending' | 'done'} */
+  let state = 'idle';
+  return async () => {
+    if (state !== 'idle') return;
+    state = 'pending';
+    setPending(true);
+    try {
+      await remove();
+    } catch {
+      state = 'idle';
+      setPending(false);
+      onFailure();
+      return;
+    }
+    state = 'done';
+    onSuccess();
+  };
+}
+
+/**
  * Builds the tile's content: the film icon plus, for an in-progress entry,
  * the progress bar and its hidden percentage text, or, for a `next_up`
  * entry, the "Nächste Folge" pill instead.
@@ -105,6 +134,7 @@ function buildTile(entry) {
  * @returns {void}
  */
 function removeCard(section, list, li) {
+  if (!li.isConnected) return;
   const cards = [...list.children];
   const target = nextFocusIndex(cards.length, cards.indexOf(li));
   li.remove();
@@ -118,26 +148,32 @@ function removeCard(section, list, li) {
 }
 
 /**
- * Wires a card's "×" button: on success it is removed per `removeCard`; on
- * failure it stays and `status` reports the German error line.
+ * Wires a card's "×" button through `guardRemoval`: while pending the button
+ * is `aria-disabled` (not `disabled`, so it keeps focus); on success the
+ * card is removed per `removeCard` and any earlier failure line is cleared;
+ * on failure the card stays and `status` reports the German error line.
  * @param {ProgressEntry} entry
  * @param {HTMLElement} section
  * @param {HTMLElement} list
  * @param {HTMLElement} li
  * @param {HTMLElement} status
+ * @param {HTMLButtonElement} button
  * @returns {() => Promise<void>}
  */
-function handleRemove(entry, section, list, li, status) {
-  return async () => {
-    try {
-      await removeProgress(entry.itemId);
-    } catch {
-      status.hidden = false;
+function handleRemove(entry, section, list, li, status, button) {
+  return guardRemoval(() => removeProgress(entry.itemId), {
+    setPending: (pending) => {
+      if (pending) button.setAttribute('aria-disabled', 'true');
+      else button.removeAttribute('aria-disabled');
+    },
+    onSuccess: () => {
+      status.textContent = '';
+      removeCard(section, list, li);
+    },
+    onFailure: () => {
       status.textContent = REMOVE_FAILED_TEXT;
-      return;
-    }
-    removeCard(section, list, li);
-  };
+    },
+  });
 }
 
 /**
@@ -164,7 +200,7 @@ function buildCard(entry, section, list, status) {
     const button = /** @type {HTMLButtonElement} */ (
       el('button', { type: 'button', class: 'continue-row__remove', 'aria-label': 'Aus Weiterschauen entfernen' }, '×')
     );
-    button.addEventListener('click', handleRemove(entry, section, list, li, status));
+    button.addEventListener('click', handleRemove(entry, section, list, li, status, button));
     li.append(button);
   }
   return li;
@@ -211,7 +247,9 @@ export async function mountContinueRow(container) {
   }
   if (entries.length === 0) return false;
 
-  const status = el('p', { class: 'continue-row__status', role: 'status', hidden: true });
+  // Rendered (empty) from the start so screen readers register the live
+  // region before its text is ever set.
+  const status = el('p', { class: 'continue-row__status', role: 'status' });
   const list = el('ul', {
     class: 'continue-row__list',
     onKeydown: (/** @type {Event} */ event) => handleArrowKeys(/** @type {KeyboardEvent} */ (event), list),
