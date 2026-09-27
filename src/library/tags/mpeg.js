@@ -7,6 +7,8 @@
 
 const SYNC_WINDOW = 64 * 1024;
 const PROBE_SIZE = 1024;
+/** Most bytes one `readMpegDurationMs` call reads (scan window + probe); `readId3v2` reserves it. */
+export const MPEG_READ_MAX = SYNC_WINDOW + PROBE_SIZE;
 /** @type {Record<number, number[]>} versionBits (0=MPEG2.5, 2=MPEG2, 3=MPEG1) -> sample rates */
 const SAMPLE_RATE_TABLE = { 3: [44100, 48000, 32000], 2: [22050, 24000, 16000], 0: [11025, 12000, 8000] };
 const BITRATE_L3_V1 = [0, 32, 40, 48, 56, 64, 80, 96, 112, 128, 160, 192, 224, 256, 320, 0];

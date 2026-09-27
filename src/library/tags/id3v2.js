@@ -1,18 +1,22 @@
 // @ts-check
 // Minimal, budgeted ID3v2.3/2.4 tag reader over a caller-supplied `readAt`
 // seam. Never throws on malformed input; returns what it could parse.
+import { MPEG_READ_MAX } from './mpeg.js';
 
 /** @typedef {(position: number, length: number) => Promise<Buffer>} ReadAt */
 /** @typedef {{ offset: number, length: number, mime: string }} PictureRef */
 /** @typedef {{ version: number, fields: Record<string, string>, picture: PictureRef | null, tagEnd: number }} Id3v2Tag */
 /** @typedef {{ budgetLeft: number, pictureCandidate: PictureRef | null, type3Candidate: PictureRef | null }} WalkState */
 
-const MAX_BUDGET = 256 * 1024;
+// The 256 KiB per-file budget minus the MPEG duration scan's fixed reads, so both fit together.
+const MAX_BUDGET = 256 * 1024 - MPEG_READ_MAX;
 const CHUNK_SIZE = 64 * 1024;
 const MAX_PICTURE_BYTES = 10 * 1024 * 1024;
 const APIC_HEADER_MAX = 512;
 const KNOWN_TEXT_IDS = new Set(['TIT2', 'TPE1', 'TPE2', 'TALB', 'TRCK', 'TPOS', 'TDRC', 'TYER']);
 const FRAME_ID_RE = /^[A-Z0-9]{4}$/;
+/** @type {Record<number, number>} Frame flags byte 2 that make a body unreadable as-is (v2.3: compression/encryption/grouping; v2.4: grouping/compression/encryption/unsync/DLI). */
+const SKIP_FLAGS = { 3: 0xe0, 4: 0x4f };
 
 /**
  * Reads an ID3v2.3/2.4 tag through a budgeted, chunked `readAt` seam.
@@ -171,18 +175,13 @@ async function handleTextFrame(readAt, bodyStart, size, id, state, fields) {
   fields[id] = decodeTextFrame(body);
 }
 
-/** Skips compressed/encrypted frames and a v2.4 unsync/DLI-flagged APIC; reads known text frames and APIC; ignores the rest.
+/** Skips frames flagged per SKIP_FLAGS; reads known text frames and APIC; ignores the rest.
  * @param {ReadAt} readAt @param {string} id @param {number} flagsByte2 @param {number} version
  * @param {number} bodyStart @param {number} size @param {Record<string, string>} fields @param {WalkState} state
  * @returns {Promise<void>} */
 async function processFrame(readAt, id, flagsByte2, version, bodyStart, size, fields, state) {
-  const compressedMask = version === 4 ? 0x08 : 0x80;
-  const encryptedMask = version === 4 ? 0x04 : 0x40;
-  if ((flagsByte2 & compressedMask) !== 0 || (flagsByte2 & encryptedMask) !== 0) return;
-  if (id === 'APIC') {
-    if (version === 4 && (flagsByte2 & 0x03) !== 0) return; // v2.4 unsync/DLI: ignore (robustness row)
-    return handleApic(readAt, bodyStart, size, state);
-  }
+  if ((flagsByte2 & SKIP_FLAGS[version]) !== 0) return;
+  if (id === 'APIC') return handleApic(readAt, bodyStart, size, state);
   if (KNOWN_TEXT_IDS.has(id) && size > 0 && size <= CHUNK_SIZE && !(id in fields)) {
     await handleTextFrame(readAt, bodyStart, size, id, state, fields);
   }
@@ -210,7 +209,7 @@ async function walkFrames(readAt, startPos, tagEnd, version, fields, state) {
     const id = header.toString('latin1', 0, 4);
     if (!FRAME_ID_RE.test(id)) break;
     let size = header.readUInt32BE(4);
-    if (version === 4) {
+    if (version === 4 && (size & 0x80808080) === 0) { // a set top bit can only be a plain (iTunes) size
       const synchsafe = decodeSynchsafe32(header, 4);
       if (await isPlausibleNext(readAt, pos + 10 + synchsafe, tagEnd, state)) size = synchsafe;
     }
@@ -246,7 +245,7 @@ function skipExtendedHeaderInMemory(buf, pos, version) {
  * @param {Buffer} buf @param {number} pos @param {number} bufLen @param {number} version @returns {number} */
 function decodeFrameSizeSync(buf, pos, bufLen, version) {
   const plain = buf.readUInt32BE(pos + 4);
-  if (version !== 4) return plain;
+  if (version !== 4 || (plain & 0x80808080) !== 0) return plain;
   const synchsafe = decodeSynchsafe32(buf, pos + 4);
   const candidateEnd = pos + 10 + synchsafe;
   const plausible = candidateEnd === bufLen ||
@@ -270,9 +269,7 @@ function walkFramesInMemory(buf, startPos, version, fields) {
     const bodyStart = pos + 10;
     const bodyEnd = bodyStart + size;
     if (bodyEnd > bufLen) break;
-    const compressedMask = version === 4 ? 0x08 : 0x80;
-    const encryptedMask = version === 4 ? 0x04 : 0x40;
-    const readable = (flagsByte2 & compressedMask) === 0 && (flagsByte2 & encryptedMask) === 0;
+    const readable = (flagsByte2 & SKIP_FLAGS[version] & ~0x02) === 0; // buffer is already de-unsynced
     if (readable && id !== 'APIC' && KNOWN_TEXT_IDS.has(id) && size > 0 && !(id in fields)) {
       fields[id] = decodeTextFrame(buf.subarray(bodyStart, bodyEnd));
     }

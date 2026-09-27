@@ -76,14 +76,47 @@ test('v2.3 whole-tag unsynchronisation is reversed and pictures are ignored', as
   assert.equal(result?.picture, null);
 });
 
-test('iTunes non-synchsafe v2.4 frame size falls back to plain big-endian', async () => {
-  const title = buildFrame({
-    id: 'TIT2', version: 4, forcePlainSize: true, body: textFrameBody(ENCODING.UTF8, 'x'.repeat(198)),
+// 200 bytes: size byte 0xC8 has its top bit set (plain size taken directly); 300 bytes:
+// 00 00 01 2C is a valid synchsafe value whose frame end is implausible (lookahead fallback).
+for (const bodyLength of [200, 300]) {
+  test(`iTunes non-synchsafe v2.4 frame size (${bodyLength} bytes) falls back to plain big-endian`, async () => {
+    const text = 'x'.repeat(bodyLength - 2);
+    const title = buildFrame({ id: 'TIT2', version: 4, forcePlainSize: true, body: textFrameBody(ENCODING.UTF8, text) });
+    const artist = buildFrame({ id: 'TPE1', version: 4, body: textFrameBody(ENCODING.UTF8, 'Band') });
+    const result = await read(makeReadAt(buildId3v2Tag({ version: 4, frames: [title, artist] })));
+    assert.equal(result?.fields.TIT2, text);
+    assert.equal(result?.fields.TPE1, 'Band');
   });
+}
+
+test('v2.4 plain size with a top bit set is not misread as synchsafe when zeros sit at the synchsafe end', async () => {
+  // 13 header bytes + 187 zero bytes = 200 (0xC8); synchsafe would read 72, where only zeros are.
+  const apic = buildFrame({ id: 'APIC', version: 4, forcePlainSize: true, body: apicFrameBody({ mime: 'image/png', data: Buffer.alloc(187) }) });
   const artist = buildFrame({ id: 'TPE1', version: 4, body: textFrameBody(ENCODING.UTF8, 'Band') });
-  const result = await read(makeReadAt(buildId3v2Tag({ version: 4, frames: [title, artist] })));
-  assert.equal(result?.fields.TIT2, 'x'.repeat(198));
+  const result = await read(makeReadAt(buildId3v2Tag({ version: 4, frames: [apic, artist] })));
   assert.equal(result?.fields.TPE1, 'Band');
+  assert.equal(result?.picture?.length, 187);
+});
+
+/** @type {Array<[number, number, string]>} */
+const FLAGGED = [[3, 0x0020, 'v2.3 grouping'], [4, 0x0040, 'v2.4 grouping'], [4, 0x0002, 'v2.4 unsync'], [4, 0x0001, 'v2.4 DLI']];
+for (const [version, flags, name] of FLAGGED) {
+  test(`${name}-flagged text frame is skipped, the next frame is still read`, async () => {
+    const title = buildFrame({ id: 'TIT2', version, flags, body: textFrameBody(ENCODING.LATIN1, 'Garbled') });
+    const artist = buildFrame({ id: 'TPE1', version, body: textFrameBody(ENCODING.LATIN1, 'Band') });
+    const result = await read(makeReadAt(buildId3v2Tag({ version, frames: [title, artist] })));
+    assert.equal(result?.fields.TIT2, undefined);
+    assert.equal(result?.fields.TPE1, 'Band');
+  });
+}
+
+test('a frame whose size runs past the tag end stops the walk, earlier fields are kept', async () => {
+  const artist = buildFrame({ id: 'TPE1', body: textFrameBody(ENCODING.UTF8, 'Band') });
+  const broken = buildFrame({ id: 'TALB', body: textFrameBody(ENCODING.UTF8, 'Album') });
+  broken.writeUInt32BE(0x7f7f7f7f, 4); // synchsafe ~256 MiB, far past the tag end
+  const result = await read(makeReadAt(buildId3v2Tag({ frames: [artist, broken] })));
+  assert.equal(result?.fields.TPE1, 'Band');
+  assert.equal(result?.fields.TALB, undefined);
 });
 
 test('APIC prefers the front-cover type and reports a correct PictureRef offset', async () => {

@@ -667,10 +667,12 @@ compared with the exports):
   big-endian, excludes itself; v2.4: synchsafe, includes itself) since only
   the skip length matters, never the content. v2.4's per-frame
   unsynchronisation and data-length-indicator flags are not specially
-  handled (outside the robustness row's explicit list; real v2.4 writers in
-  the supported field set do not set them). Unknown frame ids are always
-  skipped by offset with zero reads, so the 256 KiB budget is spent only on
-  the 8 known text ids and APIC. `test/helpers/mp3-fixture.js`'s API
+  handled (superseded by the PR #108 round-2 entry below: such frames are
+  now skipped). Unknown frame bodies are always skipped by offset without
+  reading them; only their 10-byte header (plus, for a v2.4 frame whose
+  size bytes are all < `0x80`, a 4-byte lookahead for the iTunes-bug check)
+  is read, so the budget is otherwise spent only on the 8 known text ids and
+  APIC. `test/helpers/mp3-fixture.js`'s API
   (`buildId3v2Tag`, `buildFrame`, `textFrameBody`, `apicFrameBody`,
   `buildMpegFrame`, `withXingHeader`, `withVbriHeader`, `makeReadAt`,
   `instrumentReadAt`) is not fixed by this spec; it is designed for reuse by
@@ -713,16 +715,34 @@ compared with the exports):
   per-frame unsync/DLI on `APIC` is not "outside the robustness row's
   explicit list" — the row names pictures explicitly ("pictures in
   unsynchronised tags/frames are ignored"), so both flags had to be honoured
-  for that frame type. The same flags on a text frame remain the documented
-  deviation below (unchanged: real v2.4 writers in the supported field set do
-  not set them on the eight known text ids). Also, for consistency with the
+  for that frame type. (The same flags on a text frame are now skipped too —
+  see the round-2 entry below.) Also, for consistency with the
   Xing/Info "0 frames = absent" rule from the prior round,
   `mpeg.js`'s `tryVbriFrames` now treats a `frames = 0` VBRI header as absent
-  (`null`) rather than fabricating a 0 ms duration. Noted for #64
-  (`src/library/tags/index.js`): `readMpegDurationMs`'s fixed 64 KiB scan +
-  1 KiB probe read is independent of `readId3v2`'s 256 KiB budget: if a file's
-  ID3v2 tag alone exhausts a shared budget, #64's `readAt` must still hand
-  the MPEG reader its own full window rather than a truncated remainder.
+  (`null`) rather than fabricating a 0 ms duration.
+- 2026-09-27: PR #108 review resolutions, round 2 — blocking: the 256 KiB
+  per-file cap of the Read budget row holds for the MP3 pair as a whole.
+  `readId3v2` caps its own reads at 256 KiB − `MPEG_READ_MAX` (exported by
+  `mpeg.js`: the 64 KiB sync window + 1 KiB probe = 65 KiB), i.e. 191 KiB,
+  so `readId3v2` followed by `readMpegDurationMs` never exceeds 256 KiB even
+  when the tag alone would exhaust the budget (e.g. a v2.3 whole-tag-
+  unsynchronised tag with a 5 MiB APIC; covered by a combined instrumented
+  test in `mpeg.test.js`). For #64 (`src/library/tags/index.js`): its
+  file-backed `readAt` still enforces the 256 KiB per-file total as the
+  backstop — once exhausted it returns short/empty buffers, and the MPEG
+  reader then gets only what remains (duration `null` on exhaustion, per
+  "Budget exhaustion ends parsing with the partial result"); it never grants
+  the MPEG reader reads beyond the cap. Non-blocking, applied: a v2.4 frame
+  whose size bytes have any top bit set is taken as plain big-endian at once
+  (a synchsafe value never has one), so zero bytes inside picture data at
+  the synchsafe offset can no longer end the walk early; frames flagged with
+  grouping (v2.3 `0x20`, v2.4 `0x40`) or, in v2.4, frame-level
+  unsynchronisation (`0x02`) / data-length indicator (`0x01`) are skipped
+  for every frame type (text frames included, not only APIC), next to
+  compression/encryption, instead of yielding a garbled value — in the
+  in-memory whole-tag-unsync walk the per-frame unsync flag is ignored since
+  that buffer is already de-unsynchronised. The random-bytes fuzz case in
+  `mpeg.test.js` now uses a seeded PRNG so it is reproducible.
 - 2026-09-26: `src/library/audio-groups.js` (#62) — the "Group assembly" row
   names no total-duration field, so `buildAlbums`/`buildBooks` add
   `durationMs` to each group object (sum of known member `durationMs`, `null`
