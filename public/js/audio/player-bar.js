@@ -10,6 +10,7 @@ import { formatClock } from '../lib/progress.js';
 import { audioIcon } from './icons.js';
 import { coverImg } from './cover-img.js';
 import { formatDuration } from './format.js';
+import { trackNavOffset } from './nav-offset.js';
 
 /** @typedef {ReturnType<typeof import('./player.js').createAudioPlayer>} AudioPlayer */
 /** @typedef {NonNullable<ReturnType<AudioPlayer['state']>>} PlayerState */
@@ -31,6 +32,7 @@ export function createPlayerBar({ player, audio }) {
     dragging = value;
   });
   observeHeight(parts.bar, spacer);
+  trackNavOffset(parts.bar);
 
   player.onChange(() => applyState(player.state(), parts, (id) => {
     const changed = id !== lastItemId;
@@ -66,12 +68,17 @@ function buildBar() {
   );
   const status = el('p', { class: 'audio-bar__status', role: 'status' });
   status.hidden = true;
-  const bar = el(
-    'section',
-    { class: 'audio-bar', 'aria-label': 'Audioplayer' },
+  const row = el(
+    'div',
+    { class: 'audio-bar__row' },
     cover,
     el('div', { class: 'audio-bar__meta' }, title, subtitle),
     el('div', { class: 'audio-bar__controls' }, prev, rewind, toggle, forward, next),
+  );
+  const bar = el(
+    'section',
+    { class: 'audio-bar', 'aria-label': 'Audioplayer' },
+    row,
     el('div', { class: 'audio-bar__seek' }, elapsed, seek, total),
     status,
   );
