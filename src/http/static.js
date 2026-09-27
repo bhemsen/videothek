@@ -5,10 +5,7 @@ import path from 'node:path';
 import { redirect } from './respond.js';
 import { safeNext } from './security.js';
 
-/**
- * @typedef {import('./router.js').RequestContext} RequestContext
- */
-
+/** @typedef {import('./router.js').RequestContext} RequestContext */
 /** @typedef {{ error: (event: string, fields?: Record<string, unknown>) => void }} StaticLog */
 
 const PAGE_NAME_PATTERN = /^[a-z][a-z0-9-]*$/;
@@ -85,11 +82,12 @@ async function statFile(filePath) {
  * see for HEAD, but skipping the read here avoids opening the file at all).
  * Uses `pipeline` (not `.pipe()`) so a client aborting mid-transfer — or any
  * other stream error — destroys the source `fs.ReadStream` and its fd
- * instead of leaking it, and so this promise always settles. A stream error
- * once headers are already sent can no longer become a thrown `HttpError`,
- * so it is logged here — matching the app's own `request_error {method,
- * path, stack}` shape — and the socket is destroyed instead of trying to
- * send another response.
+ * instead of leaking it, and so this promise always settles. Once headers
+ * are sent, a failure can no longer become a thrown `HttpError`, so it is
+ * logged here as `request_error {method, path, stack}` and the socket is
+ * destroyed — except `ERR_STREAM_PREMATURE_CLOSE` (client gone during/after
+ * a fully-delivered response), which `src/http/stream.js` also treats as a
+ * non-failure: still destroyed, just not logged.
  * @param {import('node:http').IncomingMessage} req
  * @param {import('node:http').ServerResponse} res
  * @param {string} filePath
@@ -97,22 +95,27 @@ async function statFile(filePath) {
  * @param {Record<string, string>} headers
  * @param {StaticLog} log
  * @param {string} urlPath
+ * @param {(filePath: string) => import('node:stream').Readable} [openReadStream] -
+ *   Test seam (default `fs.createReadStream`) for observing fd release.
  * @returns {Promise<void>}
  */
-async function sendFile(req, res, filePath, status, headers, log, urlPath) {
+async function sendFile(req, res, filePath, status, headers, log, urlPath, openReadStream = createReadStream) {
   res.writeHead(status, headers);
   if (req.method === 'HEAD') {
     res.end();
     return;
   }
   try {
-    await pipeline(createReadStream(filePath), res);
+    await pipeline(openReadStream(filePath), res);
   } catch (err) {
-    log.error('request_error', {
-      method: req.method,
-      path: urlPath,
-      stack: /** @type {Error} */ (err).stack,
-    });
+    const code = err instanceof Error ? /** @type {NodeJS.ErrnoException} */ (err).code : undefined;
+    if (code !== 'ERR_STREAM_PREMATURE_CLOSE') {
+      log.error('request_error', {
+        method: req.method,
+        path: urlPath,
+        stack: /** @type {Error} */ (err).stack,
+      });
+    }
     res.destroy();
   }
 }
@@ -182,9 +185,10 @@ function resolveRedirect(name, ctx) {
  * @param {string} root
  * @param {StaticLog} log
  * @param {string | null} name
+ * @param {(filePath: string) => import('node:stream').Readable} [openReadStream] - See `sendFile`.
  * @returns {Promise<boolean>}
  */
-async function servePage(req, res, ctx, root, log, name) {
+async function servePage(req, res, ctx, root, log, name, openReadStream) {
   const filePath = path.join(root, `${name ?? 'index'}.html`);
   const info = await statFile(filePath);
   if (!info) return false;
@@ -198,7 +202,7 @@ async function servePage(req, res, ctx, root, log, name) {
     'Cache-Control': 'no-store',
     'Content-Length': String(info.size),
   };
-  await sendFile(req, res, filePath, 200, headers, log, ctx.url.pathname);
+  await sendFile(req, res, filePath, 200, headers, log, ctx.url.pathname, openReadStream);
   return true;
 }
 
@@ -229,9 +233,10 @@ function isNotModified(req, mtimeMs) {
  * @param {string} decoded
  * @param {string} contentType
  * @param {string} urlPath
+ * @param {(filePath: string) => import('node:stream').Readable} [openReadStream] - See `sendFile`.
  * @returns {Promise<boolean>}
  */
-async function serveAsset(req, res, root, log, decoded, contentType, urlPath) {
+async function serveAsset(req, res, root, log, decoded, contentType, urlPath, openReadStream) {
   const resolved = resolveInsideRoot(root, decoded);
   const info = resolved ? await statFile(resolved) : null;
   if (!resolved || !info) return false;
@@ -247,7 +252,7 @@ async function serveAsset(req, res, root, log, decoded, contentType, urlPath) {
     'Last-Modified': lastModified,
     'Content-Length': String(info.size),
   };
-  await sendFile(req, res, resolved, 200, headers, log, urlPath);
+  await sendFile(req, res, resolved, 200, headers, log, urlPath, openReadStream);
   return true;
 }
 
@@ -263,29 +268,33 @@ async function serveAsset(req, res, root, log, decoded, contentType, urlPath) {
  * response (200, 304 or a redirect). The app's own dispatch decides every
  * `false` case (`allow` -> `405`; else `/api/*` -> `404` JSON, other ->
  * `404` page via the exported `sendNotFoundPage`).
- * @param {{ publicDir: string, log: StaticLog }} options
+ * @param {{
+ *   publicDir: string,
+ *   log: StaticLog,
+ *   openReadStream?: (filePath: string) => import('node:stream').Readable,
+ * }} options `openReadStream` — test seam, see `sendFile`.
  * @returns {(
  *   req: import('node:http').IncomingMessage,
  *   res: import('node:http').ServerResponse,
  *   ctx: RequestContext,
  * ) => Promise<boolean>}
  */
-export function createStaticHandler({ publicDir, log }) {
+export function createStaticHandler({ publicDir, log, openReadStream }) {
   const root = path.resolve(publicDir);
   return async (req, res, ctx) => {
     if (req.method !== 'GET' && req.method !== 'HEAD') return false;
 
     const decoded = decodePathname(ctx.url.pathname);
     if (decoded === null || isUnsafePath(decoded)) return false;
-    if (decoded === '/') return servePage(req, res, ctx, root, log, null);
+    if (decoded === '/') return servePage(req, res, ctx, root, log, null, openReadStream);
 
     const name = decoded.slice(1);
     if (PAGE_NAME_PATTERN.test(name) && name !== 'index' && name !== '404') {
-      return servePage(req, res, ctx, root, log, name);
+      return servePage(req, res, ctx, root, log, name, openReadStream);
     }
 
     const contentType = ASSET_CONTENT_TYPES[path.extname(name).toLowerCase()];
     if (!contentType) return false;
-    return serveAsset(req, res, root, log, decoded, contentType, ctx.url.pathname);
+    return serveAsset(req, res, root, log, decoded, contentType, ctx.url.pathname, openReadStream);
   };
 }
