@@ -52,7 +52,7 @@ test('kindsFor returns the admitted kinds per category', () => {
   assert.deepEqual(kindsFor('series'), ['video']);
   assert.deepEqual(kindsFor('music'), ['audio']);
   assert.deepEqual(kindsFor('audiobooks'), ['audio']);
-  assert.deepEqual(kindsFor('images'), ['image']);
+  assert.deepEqual(kindsFor('images'), ['image', 'video']);
 });
 
 test('kindsFor returns frozen arrays', () => {

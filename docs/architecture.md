@@ -19,15 +19,17 @@
 | Library scanner | `src/library/scanner.js` | Walks `MEDIA_ROOT`, classifies files per category, upserts/removes index rows |
 | Change detection | `src/library/watcher.js` | Debounced recursive `fs.watch` + periodic rescan timer, both call the scanner |
 | Category parsers | `src/library/parsers/` | Per-category naming rules (movie, series, music, audiobook, image) and direct-play compatibility table |
-| Tag/EXIF readers | `src/library/tags/` | Minimal ID3v2 / FLAC / EXIF thumbnail parsers on file headers |
+| Tag/EXIF readers | `src/library/tags/` | Minimal ID3v2 / FLAC / EXIF (`exif.js`) header parsers, incl. IFD1 thumbnail extraction and the JPEG SOI check |
+| Image metadata sync | `src/library/image-meta.js` | Post-scan sync filling `image_meta` (capture date, orientation, thumbnail offset/length) from EXIF headers |
+| Gallery shaping | `src/library/image-folders.js`, `src/library/gallery.js` | Folder-key derivation and pure, URL-free view shaping for the `/images` gallery |
 | Persistence | `src/db/` | `node:sqlite` connection, schema migrations (numbered SQL), repository functions per table |
 | Next episode | `src/db/episodes.js` | `getNextEpisode`: next-episode order for the player's "Nächste Folge" button, reused by P4's next-up list |
 | Auth | `src/auth/` | scrypt hashing, validation, login throttle, session store, admin bootstrap |
-| API handlers | `src/api/` | `/api/library/*`, `/api/progress/*`, `/api/users/*`, `src/api/auth.js` (`/login`, `/logout`, `/api/me`) — thin, call library/db/auth |
+| API handlers | `src/api/` | `/api/library/*`, `/api/progress/*`, `/api/users/*`, `src/api/auth.js` (`/login`, `/logout`, `/api/me`), `/api/gallery`, `/media/:id/thumb` — thin, call library/db/auth |
 | Media routes | `src/api/media.js` | `GET /media/:id` (streams any playable item of any category) and `GET /media/:id/subtitles/:n` (`.vtt` sidecars); authenticated, holds no file-format knowledge |
 | Health check | `src/api/health.js` | `GET /healthz` liveness (`ping(db)`), reachable without a session |
 | CLI tools | `src/cli/` | Offline admin tools (e.g. password reset); may import `src/config.js`, `src/db/`, `src/auth/`, never `src/http/` |
-| Frontend | `public/` | Static HTML/CSS/ES-module pages: login, category browse, player, gallery, admin |
+| Frontend | `public/` | Static HTML/CSS/ES-module pages: login, category browse, player, image gallery (`/images`) + lightbox, admin |
 | Tests | `test/` | `node:test` suites mirroring `src/`, fixture media tree in `test/fixtures/media/` |
 | Test harness | `test/helpers/app.js` | In-process `createApp` harness every phase's tests build on |
 
@@ -49,6 +51,7 @@
 3. **Stream:** `<video src="/media/:id">` -> `requireUser` -> id -> `library_items` row (`playable` check) -> path guard -> `stream.js` answers `Range` with 200/206/416 chunks and closes the file handle after a 60 s idle timeout with no chunk sent; `HEAD` returns the same headers with no body, letting the player disambiguate a missing file (`404`) from an unsupported codec (`2xx`). `GET /media/:id/subtitles/:n` serves the `n`-th `.vtt` sidecar discovered by `src/media/subtitles.js` the same way.
 4. **Progress:** identity is `(user, rel_path)`, never the index id -> `PUT /api/progress/:id` resolves the id to `rel_path` server-side, then upserts a keepalive report sent every ~10 s while playing and immediately on pause/ended/tab-hidden/`pagehide`. Opening an item fetches its position and seeks (auto-resume). The start page mounts the "Weiterschauen" row from `GET /api/progress?view=continue`, which merges the user's `in_progress` rows with next-up ("Nächste Folge") entries computed from series whose latest episode is finished.
 5. **Login:** `POST /login` -> scrypt verify -> session row + `HttpOnly; SameSite=Lax` cookie (`Secure` when behind HTTPS proxy). First start with empty users table creates the admin from `ADMIN_USER`/`ADMIN_PASSWORD`. JSON login, hashed session id, 30-day sliding expiry.
+6. **Image metadata:** scan completes -> `onScanComplete` -> stub rows inserted for new `images` items -> sequential EXIF header reads (one file at a time) -> `image_meta` updated (capture date, orientation, thumbnail offset/length).
 
 ## Where new code goes
 
