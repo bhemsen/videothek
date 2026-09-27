@@ -26,7 +26,7 @@ let users = [];
 // with its first message is not reliably announced.
 const status = el('p', { class: 'admin-status', role: 'status' });
 // Focus target when a dialog's trigger button no longer exists (row deleted).
-const heading = el('h1', { tabindex: '-1' }, 'Benutzerverwaltung');
+const heading = el('h1', { class: 'admin-title', tabindex: '-1' }, 'Benutzerverwaltung');
 const userList = createUserList();
 const createForm = createUserForm({ onCreate: createUser, onCreated: handleCreated });
 const deleteDialog = createDeleteDialog({ onConfirm: deleteUser, onDeleted: removeUser, fallbackFocus: heading });
