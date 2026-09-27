@@ -124,3 +124,11 @@ test('no src-less <img> is ever left in the wrapper, across the null/loaded/erro
   }
   assert.equal(flatten(wrapper).some((n) => n.tagName === 'img' && !n.getAttribute('src')), false);
 });
+
+test('the wrapper is a <div> by default and a <span> with tag: span (phrasing content inside a <button>)', () => {
+  const div = /** @type {FakeNode} */ (/** @type {unknown} */ (coverImg({ coverId: 3, kind: 'album' })));
+  const span = /** @type {FakeNode} */ (/** @type {unknown} */ (coverImg({ coverId: 3, kind: 'album', tag: 'span' })));
+  assert.equal(div.tagName, 'div');
+  assert.equal(span.tagName, 'span');
+  assert.equal(span.getAttribute('class'), 'cover-img');
+});
