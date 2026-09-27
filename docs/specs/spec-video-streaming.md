@@ -602,6 +602,16 @@ Firefox, desktop and a 390 px phone viewport):
   regular/specials chain split is a single `CASE WHEN ? = 1 THEN season = 0
   ELSE season >= 1 END` guard driven by one bound `isSpecial` flag computed
   from `row.season === 0`, rather than two branches with separate SQL text.
+- 2026-09-27: implementation (#45, `src/api/media.js`) — the `media_stream_error`
+  log's `id` is always the requested item id (`ctx.params.id`), for the
+  subtitle route too, rather than the sidecar's own path or index; a route
+  needs one correlation key and `id` is what `GET /api/library/items/:id`
+  already exposes to the operator reading the log. `handleMedia` and
+  `handleSubtitle` share no code beyond the id parser, `notFound` and the
+  logging helper — the two routes' pre-check orders differ enough
+  (`not_playable` only applies to the media route; the subtitle route's item
+  need not be playable) that a shared "load row, check X" helper would just
+  reintroduce a branch per route.
 - 2026-09-26: implementation (#48, `public/js/lib/player-format.js`) —
   `errorStateFor` returns one of the string literals `'file-missing'` |
   `'codec'` | `'connection-lost'` (not fixed by the spec text, which only
