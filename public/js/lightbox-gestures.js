@@ -44,12 +44,15 @@ export function keyAction({ key, targetTag, altKey, ctrlKey, metaKey }) {
  * Decides where focus must move before the prev/next buttons are
  * (re-)disabled, so a focused button that becomes `disabled` never drops
  * focus to `<body>` (outside the dialog, where its arrow-key listener no
- * longer fires).
- * @param {{ focused: 'prev' | 'next' | 'other', atStart: boolean, atEnd: boolean }} state
+ * longer fires). `focused: 'none'` means focus already left the open dialog
+ * (e.g. a focused `<video>` was replaced by the next slide); it is pulled
+ * back to Schließen for the same reason.
+ * @param {{ focused: 'prev' | 'next' | 'other' | 'none', atStart: boolean, atEnd: boolean }} state
  * @returns {'prev' | 'next' | 'close' | null} The control to focus, or
  *   `null` when the focused control stays enabled.
  */
 export function navFocusTarget({ focused, atStart, atEnd }) {
+  if (focused === 'none') return 'close';
   if (focused === 'prev' && atStart) return atEnd ? 'close' : 'next';
   if (focused === 'next' && atEnd) return atStart ? 'close' : 'prev';
   return null;

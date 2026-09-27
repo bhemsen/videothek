@@ -25,7 +25,7 @@ function pushEntry(id) {
  * not one per slide); `release()` from the dialog's `close` handler, which
  * steps back only while history still sits on the lightbox's own state (a
  * close reached via `popstate` has already moved past it); `dispose()`
- * removes the listener.
+ * removes the listeners.
  *
  * `history.back()` is asynchronous: until its `popstate` lands, history
  * still sits on the old lightbox entry. A re-open in that window is queued
@@ -53,7 +53,19 @@ export function createLightboxHistory({ onPop }) {
     }
     if (event.state?.lightbox == null) onPop();
   }
+  /**
+   * A back step that crossed documents (no `popstate` here) leaves this page;
+   * if the bfcache later restores it, the stale pending flag would swallow
+   * the next open's push, so it is cleared.
+   * @param {PageTransitionEvent} event @returns {void}
+   */
+  function onPageShow(event) {
+    if (!event.persisted) return;
+    backPending = false;
+    queuedId = null;
+  }
   window.addEventListener('popstate', onPopState);
+  window.addEventListener('pageshow', onPageShow);
 
   return {
     push(id) {
@@ -72,6 +84,7 @@ export function createLightboxHistory({ onPop }) {
     },
     dispose() {
       window.removeEventListener('popstate', onPopState);
+      window.removeEventListener('pageshow', onPageShow);
     },
   };
 }

@@ -33,6 +33,14 @@ function fakeDom() {
     prevButton: fakeButton('prev'),
     nextButton: fakeButton('next'),
     closeButton: fakeButton('close'),
+    // An open dialog that contains exactly the three buttons above.
+    dialog: {
+      open: true,
+      /** @param {unknown} node */
+      contains(node) {
+        return ['prev', 'next', 'close'].includes(/** @type {any} */ (node)?.name);
+      },
+    },
   });
 }
 
@@ -93,4 +101,22 @@ test('focus elsewhere is left untouched', () => {
   dom.closeButton.focus();
   renderChrome(dom, [item(1), item(2)], 1);
   assert.equal(fakeDocument.activeElement, dom.closeButton);
+});
+
+test('focus that left the open dialog (focused video replaced by the slide) returns to Schliessen', () => {
+  const dom = fakeDom();
+  const sequence = [item(1), item(2), item(3)];
+  renderChrome(dom, sequence, 0);
+  fakeDocument.activeElement = { name: 'body' };
+  renderChrome(dom, sequence, 1);
+  assert.equal(fakeDocument.activeElement, dom.closeButton, 'arrow keys need focus inside the dialog');
+});
+
+test('before showModal (dialog closed) focus outside is left alone', () => {
+  const dom = fakeDom();
+  /** @type {any} */ (dom.dialog).open = false;
+  const tile = { name: 'tile' };
+  fakeDocument.activeElement = tile;
+  renderChrome(dom, [item(1), item(2)], 0);
+  assert.equal(fakeDocument.activeElement, tile);
 });

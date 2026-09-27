@@ -134,7 +134,8 @@ function bindSwipe(stage, onNavigate) {
  * `sequence[index]`. When the button about to be disabled holds focus, focus
  * first moves to the other nav button (or Schließen when both ends apply),
  * so it never drops out of the dialog to `<body>` and the dialog's arrow-key
- * listener keeps working.
+ * listener keeps working. Focus that already left the open dialog (a focused
+ * `<video>` replaced by the new slide) is pulled back to Schließen.
  * @param {LightboxDom} dom
  * @param {GalleryItem[]} sequence
  * @param {number} index
@@ -148,7 +149,11 @@ export function renderChrome(dom, sequence, index) {
   const atStart = index <= 0;
   const atEnd = index >= sequence.length - 1;
   const active = document.activeElement;
-  const focused = active === dom.prevButton ? 'prev' : active === dom.nextButton ? 'next' : 'other';
+  /** @type {'prev' | 'next' | 'other' | 'none'} */
+  let focused = 'other';
+  if (active === dom.prevButton) focused = 'prev';
+  else if (active === dom.nextButton) focused = 'next';
+  else if (dom.dialog.open && !dom.dialog.contains(active)) focused = 'none';
   const target = navFocusTarget({ focused, atStart, atEnd });
   // Enable both first: the focus target may still be disabled from the
   // previous slide, and focus() on a disabled button is a silent no-op.

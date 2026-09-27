@@ -74,3 +74,8 @@ test('navFocusTarget leaves focus alone while the focused control stays enabled'
   assert.equal(navFocusTarget({ focused: 'next', atStart: true, atEnd: false }), null);
   assert.equal(navFocusTarget({ focused: 'other', atStart: true, atEnd: true }), null);
 });
+
+test('navFocusTarget pulls focus that left the dialog back to close', () => {
+  assert.equal(navFocusTarget({ focused: 'none', atStart: false, atEnd: false }), 'close');
+  assert.equal(navFocusTarget({ focused: 'none', atStart: true, atEnd: true }), 'close');
+});

@@ -58,6 +58,8 @@ class FakeHistory {
 
 /** @type {Set<(event: { state: unknown }) => void>} */
 let listeners;
+/** @type {Set<(event: { persisted: boolean }) => void>} */
+let pageShowListeners;
 /** @type {FakeHistory} */
 let fake;
 
@@ -65,11 +67,14 @@ beforeEach(() => {
   saved.window = g.window;
   saved.history = g.history;
   listeners = new Set();
+  pageShowListeners = new Set();
+  /** @param {string} type */
+  const setFor = (type) => /** @type {Set<any>} */ (type === 'popstate' ? listeners : pageShowListeners);
   g.window = {
-    /** @param {string} type @param {(event: { state: unknown }) => void} fn */
-    addEventListener: (type, fn) => type === 'popstate' && listeners.add(fn),
-    /** @param {string} type @param {(event: { state: unknown }) => void} fn */
-    removeEventListener: (type, fn) => type === 'popstate' && listeners.delete(fn),
+    /** @param {string} type @param {(event: any) => void} fn */
+    addEventListener: (type, fn) => setFor(type).add(fn),
+    /** @param {string} type @param {(event: any) => void} fn */
+    removeEventListener: (type, fn) => setFor(type).delete(fn),
   };
   fake = new FakeHistory((state) => {
     for (const fn of listeners) fn({ state });
@@ -148,6 +153,7 @@ test('dispose removes the popstate listener', () => {
   fake.back();
   assert.equal(pops, 0);
   assert.equal(listeners.size, 0);
+  assert.equal(pageShowListeners.size, 0);
 });
 
 test('reload with #bild-<id> that reopens: browser Back closes the lightbox and stays in the folder', () => {
@@ -224,4 +230,29 @@ test('after a pending back step lands, a later Back past the folder calls onPop 
   fake.back();
   fake.flush();
   assert.equal(pops, 1);
+});
+
+test('a bfcache restore clears a back step whose popstate never arrived, so the next open pushes', () => {
+  const lh = createLightboxHistory({ onPop: () => {} });
+  fake.async = true;
+  lh.push(7);
+  lh.release();
+  // The back step crossed documents: no popstate reaches this page. The
+  // browser later restores it from the bfcache.
+  fake.pending.length = 0;
+  fake.index = 0;
+  for (const fn of pageShowListeners) fn({ persisted: true });
+  lh.push(9);
+  assert.equal(fake.index, 1, 'push is applied at once, not queued behind a stale back step');
+  assert.deepEqual(fake.entries[1], { state: { lightbox: 9 }, url: '#bild-9' });
+});
+
+test('a normal (non-bfcache) pageshow keeps a pending back step', () => {
+  const lh = createLightboxHistory({ onPop: () => {} });
+  fake.async = true;
+  lh.push(7);
+  lh.release();
+  for (const fn of pageShowListeners) fn({ persisted: false });
+  lh.push(9);
+  assert.deepEqual(fake.entries[1].state, { lightbox: 7 }, 'still queued until the back step lands');
 });
