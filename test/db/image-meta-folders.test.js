@@ -6,6 +6,7 @@ import {
   listFolderItems,
   listSubtreeFolderCounts,
   findFolderCover,
+  saveMeta,
 } from '../../src/db/image-meta.js';
 import { makeDb, insertItem } from '../helpers/image-meta-seed.js';
 
@@ -46,6 +47,13 @@ test('listFolderItems loads only direct children, unsorted, with the full ItemRo
     const image = items.find((r) => r.id === a1);
     assert.equal(image?.takenAt, null);
     assert.equal(image?.thumbOffset, null);
+    saveMeta(db, a1, { takenAt: '2024-07-14T09:14:00', orientation: 6, thumbOffset: 512, thumbLength: 4096, sourceSize: 1000, sourceMtimeMs: 1_700_000_000_000, metaVersion: 1 });
+    assert.deepEqual(listFolderItems(db, 'A').find((r) => r.id === a1), {
+      id: a1, relPath: 'Bilder/A/a1.jpg', kind: 'image', playable: true, size: 1000, mtimeMs: 1_700_000_000_000,
+      takenAt: '2024-07-14T09:14:00', orientation: 6, thumbOffset: 512, thumbLength: 4096,
+      sourceSize: 1000, sourceMtimeMs: 1_700_000_000_000,
+    }, 'exactly the spec ItemRow keys, meta fields as stored');
+    assert.deepEqual(listFolderItems(db, ''), [], 'root has no direct items here');
   } finally {
     db.close();
   }
@@ -96,6 +104,10 @@ test('listSubtreeFolderCounts uses exact range bounds: a LIKE "_" wildcard would
       [{ folder: 'A_B/x', count: 1 }],
       'only the literal A_B subtree matches, not AxB'
     );
+    db.prepare("DELETE FROM image_meta WHERE folder = 'A_B/x'").run();
+    assert.equal(folderExists(db, 'A_B'), false, 'only AxB/y exists: A_B must not match it as a wildcard');
+    assert.equal(findFolderCover(db, 'A_B'), null, 'no cover leaks in from AxB/y');
+    assert.equal(findFolderCover(db, 'AxB')?.id, decoy);
   } finally {
     db.close();
   }
@@ -117,6 +129,9 @@ test('listSubtreeFolderCounts uses exact range bounds: a LIKE "%" wildcard would
       [{ folder: 'A%B/x', count: 1 }],
       'only the literal A%B subtree matches, not AxB'
     );
+    db.prepare("DELETE FROM image_meta WHERE folder = 'A%B/x'").run();
+    assert.equal(folderExists(db, 'A%B'), false, 'only AxB/y exists: A%B must not match it as a wildcard');
+    assert.equal(findFolderCover(db, 'A%B'), null, 'no cover leaks in from AxB/y');
   } finally {
     db.close();
   }
@@ -176,6 +191,11 @@ test('findFolderCover sorts rel_path in BINARY order, not NOCASE', () => {
     // Under NOCASE, 'a.jpg' would compare as 'A.jpg' and sort before 'B.jpg'.
     // Default BINARY collation sorts 'B' (0x42) before 'a' (0x61).
     assert.equal(findFolderCover(db, 'A')?.id, upper, 'binary collation: uppercase sorts before lowercase');
+    const inUpperFolder = insertItem(db, { rel_path: 'Bilder/P/B/x.jpg', dir: 'Bilder/P/B' });
+    const inLowerFolder = insertItem(db, { rel_path: 'Bilder/P/a/x.jpg', dir: 'Bilder/P/a' });
+    insertMetaStubs(db, [{ itemId: inLowerFolder, folder: 'P/a' }, { itemId: inUpperFolder, folder: 'P/B' }]);
+    // Under NOCASE, folder 'P/a' would sort before 'P/B'; BINARY puts 'B' first.
+    assert.equal(findFolderCover(db, 'P')?.id, inUpperFolder, 'folder is compared in binary order too');
   } finally {
     db.close();
   }

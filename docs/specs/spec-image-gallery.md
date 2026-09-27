@@ -544,17 +544,16 @@ Human QA (Chromium + Firefox; desktop 1280 px and 390 px mobile emulation;
   P1's 2,048-char `safeNext` cap fall back to `/` after login — accepted.
 - 2026-09-26: Issue #77 (`005-image-meta.sql` + `src/db/image-meta.js`)
   implemented exactly per D12/the repository row: `insertMetaStubs` wraps its
-  batch in one `BEGIN IMMEDIATE`/`COMMIT` (users.js's guarded-write pattern),
-  no-op when given an empty array; `folderExists`/`findFolderCover`/
+  batch in one `BEGIN IMMEDIATE`/`COMMIT`, no-op when given an empty array;
+  `BEGIN` sits outside the `try`, so a call inside a caller's open
+  transaction throws without rolling that transaction back (must not be
+  called inside one); `folderExists`/`findFolderCover`/
   `listSubtreeFolderCounts` use the `[key/, key0)` range trick throughout
-  (root short-circuits `folderExists` to `true` without a query); verified
-  005 applies standalone on a fresh DB (`[1, 2, 5]`, 003/004 absent, per the
-  Risks row) and that `image_meta` rejects a non-numeric value in an INTEGER
-  column (STRICT). Side effect for sibling migration issues (003/004): adding
-  005 to the shared `src/db/migrations/` directory changed the *count* of
-  migrations `migrate(db)` applies with its default directory, which two
-  already-merged tests hardcoded — `test/db/index.test.js` and
-  `test/db/library-repo.test.js` each asserted `[1, 2]` for that call. Both
-  were bumped to `[1, 2, 5]` in this PR (one-line each, same mechanical
-  update as the H9 test edits). Whichever of 003/004 merges next will need
-  the same one-line bump to the count array in both files.
+  (root short-circuits `folderExists` to `true` without a query). The image
+  repository tests migrate a temp-dir copy of exactly 001+002+005
+  (`test/helpers/image-meta-seed.js`), so they prove the Risks row (005 on a
+  DB at 002 without 003/004, and alongside synthetic 003/004) independently
+  of sibling migrations in `src/db/migrations/`. `test/db/index.test.js` and
+  `test/db/library-repo.test.js`, which migrate the shared default directory,
+  now assert containment of the versions they need instead of an exact
+  list, so adding a sibling migration no longer requires editing them.

@@ -1,3 +1,7 @@
+import { copyFileSync, mkdtempSync, rmSync } from 'node:fs';
+import { tmpdir } from 'node:os';
+import { dirname, join } from 'node:path';
+import { fileURLToPath } from 'node:url';
 import { DatabaseSync } from 'node:sqlite';
 import { migrate } from '../../src/db/migrate.js';
 
@@ -6,11 +10,33 @@ import { migrate } from '../../src/db/migrate.js';
  * `test/db/image-meta.test.js` and `test/db/image-meta-folders.test.js`).
  */
 
-/** @returns {import('node:sqlite').DatabaseSync} an in-memory DB with 001+002+005 applied, FKs on */
+export const REAL_MIGRATIONS_DIR = join(dirname(fileURLToPath(import.meta.url)), '../../src/db/migrations');
+
+/**
+ * Copies the named shipped migration files into a fresh temp directory, so a
+ * test controls exactly which migrations exist (independent of sibling
+ * migrations such as 003/004 in the shared directory). Caller removes it.
+ * @param {string[]} files - file names under `src/db/migrations/`
+ * @returns {string} the temp directory
+ */
+export function makeMigrationsDir(files) {
+  const dir = mkdtempSync(join(tmpdir(), 'videothek-image-meta-migrations-'));
+  for (const file of files) copyFileSync(join(REAL_MIGRATIONS_DIR, file), join(dir, file));
+  return dir;
+}
+
+export const IMAGE_META_MIGRATIONS = ['001-users-sessions.sql', '002-library.sql', '005-image-meta.sql'];
+
+/** @returns {import('node:sqlite').DatabaseSync} an in-memory DB with exactly 001+002+005 applied, FKs on */
 export function makeDb() {
   const db = new DatabaseSync(':memory:');
   db.exec('PRAGMA foreign_keys = ON');
-  migrate(db);
+  const dir = makeMigrationsDir(IMAGE_META_MIGRATIONS);
+  try {
+    migrate(db, { dir });
+  } finally {
+    rmSync(dir, { recursive: true, force: true });
+  }
   return db;
 }
 

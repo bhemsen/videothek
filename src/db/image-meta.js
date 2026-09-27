@@ -77,7 +77,9 @@ export function listItemsWithoutMeta(db, afterId, limit) {
  * Inserts one stub row per given item, in one transaction, ignoring rows
  * whose `item_id` already has a stub (`ON CONFLICT DO NOTHING` — a rerun
  * racing this call never overwrites an already-read header). A no-op when
- * `rows` is empty (no transaction is opened).
+ * `rows` is empty (no transaction is opened). Must NOT be called inside an
+ * open transaction: `BEGIN` then throws and the caller's transaction is left
+ * untouched (never rolled back here). A failed insert rolls back the batch.
  * @param {import('node:sqlite').DatabaseSync} db
  * @param {{ itemId: number, folder: string }[]} rows
  * @returns {void}
@@ -87,19 +89,15 @@ export function insertMetaStubs(db, rows) {
   const insert = db.prepare(
     'INSERT INTO image_meta (item_id, folder) VALUES (?, ?) ON CONFLICT(item_id) DO NOTHING'
   );
+  // BEGIN stays outside the try so a failed BEGIN never rolls back someone else's transaction.
+  db.exec('BEGIN IMMEDIATE');
   try {
-    db.exec('BEGIN IMMEDIATE');
     for (const row of rows) {
       insert.run(row.itemId, row.folder);
     }
     db.exec('COMMIT');
   } catch (err) {
-    try {
-      db.exec('ROLLBACK');
-    } catch {
-      // No transaction to roll back, e.g. BEGIN itself failed; the original
-      // error below is what matters.
-    }
+    db.exec('ROLLBACK');
     throw err;
   }
 }
