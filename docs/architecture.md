@@ -40,13 +40,14 @@
 - `src/db/` is the only place with SQL.
 - `public/` talks to the server exclusively via `/api/*` JSON, the JSON auth endpoints `POST /login` / `POST /logout`, page routes and media stream URLs.
 - Data split: `MEDIA_ROOT` (read-only source) vs `DATA_DIR` (SQLite file: users, sessions, progress, derived library index).
+- Progress is keyed by `(user_id, rel_path)` and never references `library_items` by id.
 
 ## Key flows
 
 1. **Scan:** startup, watcher event (debounced) or rescan timer -> `scanner` walks `MEDIA_ROOT` -> category parser classifies each file (category, grouping, title, playable flag) -> index rows upserted by relative path, vanished rows deleted. Progress rows referencing vanished items are kept (item may reappear).
 2. **Browse:** browser `GET /api/library/:category` -> session check -> DB query -> JSON list/grouping -> rendered by `public/` module.
 3. **Stream:** `<video src="/media/:id">` -> `requireUser` -> id -> `library_items` row (`playable` check) -> path guard -> `stream.js` answers `Range` with 200/206/416 chunks and closes the file handle after a 60 s idle timeout with no chunk sent; `HEAD` returns the same headers with no body, letting the player disambiguate a missing file (`404`) from an unsupported codec (`2xx`). `GET /media/:id/subtitles/:n` serves the `n`-th `.vtt` sidecar discovered by `src/media/subtitles.js` the same way.
-4. **Progress:** player reports `PUT /api/progress/:id {position, duration}` every ~10 s and on pause/ended/`pagehide` -> upsert (user, item); opening an item fetches the position and seeks; "continue" list = unfinished rows ordered by `updated_at`.
+4. **Progress:** identity is `(user, rel_path)`, never the index id -> `PUT /api/progress/:id` resolves the id to `rel_path` server-side, then upserts a keepalive report sent every ~10 s while playing and immediately on pause/ended/tab-hidden/`pagehide`. Opening an item fetches its position and seeks (auto-resume). The start page mounts the "Weiterschauen" row from `GET /api/progress?view=continue`, which merges the user's `in_progress` rows with next-up ("Nächste Folge") entries computed from series whose latest episode is finished.
 5. **Login:** `POST /login` -> scrypt verify -> session row + `HttpOnly; SameSite=Lax` cookie (`Secure` when behind HTTPS proxy). First start with empty users table creates the admin from `ADMIN_USER`/`ADMIN_PASSWORD`. JSON login, hashed session id, 30-day sliding expiry.
 
 ## Where new code goes

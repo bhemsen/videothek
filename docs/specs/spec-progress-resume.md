@@ -861,3 +861,17 @@ phone 390 px and desktop 1440 px, compared with the design exports):
   same pattern as `test/public/player-stage.test.js`) was added to
   `test/api/progress-next-up.test.js` to keep that call site checked going
   forward.
+- 2026-09-27: implementation (#54) — `src/api/progress.js` splits the `PUT`
+  body check in two, matching the spec's two distinct codes: `typeof body !==
+  'object' || body === null` (covers `readJson`'s `undefined` for a missing
+  body) answers `400 invalid_json` before `validateProgressBody` ever runs;
+  only a violation on an actual object answers `400 invalid_progress`.
+  `listContinueRows`'s SQL `LIMIT` is passed the same `limit` used for the
+  post-merge slice (not a separate "fetch everything" query): pre-limiting one
+  side of a top-K merge by the same sort key the merge itself uses is safe
+  (an item beyond position `limit` in a sorted list can never enter the
+  combined top-`limit` either), so the `next_up` merge stays correct without
+  an unbounded continue-row fetch. `GET`'s "no row" entry and `PUT`'s
+  finished-guard branch (existing row left untouched) both reuse
+  `toProgressEntryJson`/`entryFromProgressRow` rather than building the JSON
+  shape a second time.
