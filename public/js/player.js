@@ -50,7 +50,7 @@ const panelBox = el('div', { class: 'player-panel-box', 'aria-live': 'polite' },
 const nextSlot = el('div', { class: 'player-next-slot' });
 const hint = el(
   'p',
-  { class: 'player-hint' },
+  { class: 'player-hint', hidden: true },
   'Tastatur: Leertaste Wiedergabe/Pause · ←/→ 10 Sekunden · F Vollbild · M Ton aus',
 );
 document.body.append(el('main', { class: 'player-page' }, header, videoHost, panelBox, nextSlot, hint));
@@ -114,6 +114,7 @@ function goToNext(next) {
  */
 function showPanel(state, { hasItem, ext, next = null, onRetry }) {
   videoHost.hidden = true;
+  hint.hidden = true;
   renderNextButton(null);
   const { node, focusTarget, heading } = buildErrorPanel({
     state,
@@ -130,7 +131,13 @@ function showPanel(state, { hasItem, ext, next = null, onRetry }) {
   focusTarget.focus();
 }
 
-/** Builds the page's single `<video>` element (playable path only); tracks `lastTime` for a later retry. @param {PlayerItem} item @returns {HTMLVideoElement} */
+/**
+ * Builds the page's single `<video>` element (playable path only); tracks
+ * `lastTime` for a later retry, but only while metadata is loaded
+ * (`readyState >= 1`) — `load()` during a retry fires `timeupdate` at 0
+ * before `loadedmetadata`, which must not clobber the saved position.
+ * @param {PlayerItem} item @returns {HTMLVideoElement}
+ */
 function buildVideoElement(item) {
   return /** @type {HTMLVideoElement} */ (
     el('video', {
@@ -139,7 +146,8 @@ function buildVideoElement(item) {
       preload: 'metadata',
       'aria-label': headingFor(item),
       onTimeupdate: () => {
-        lastTime = /** @type {HTMLVideoElement} */ (video).currentTime;
+        const v = /** @type {HTMLVideoElement} */ (video);
+        if (v.readyState >= 1) lastTime = v.currentTime;
       },
       onError: () => handleVideoError(),
       onEnded: () => nextButtonRef?.focus(),
@@ -147,9 +155,8 @@ function buildVideoElement(item) {
   );
 }
 
-/** Appends subtitle tracks and starts playback — the P4 seam, called exactly once per page load. @param {PlayerItem} item @returns {void} */
-function startPlayback(item) {
-  const v = /** @type {HTMLVideoElement} */ (video);
+/** Appends subtitle tracks and starts playback — the P4 seam, called exactly once per page load. @param {HTMLVideoElement} v @param {PlayerItem} item @returns {void} */
+function startPlayback(v, item) {
   const labels = subtitleLabels(item.subtitles);
   item.subtitles.forEach((track, i) => {
     v.append(
@@ -171,15 +178,17 @@ function attachVideo(item) {
   stage = createStage(videoHost, video);
   videoHost.append(video);
   videoHost.hidden = false;
+  hint.hidden = false;
   panelBox.hidden = true;
   renderNextButton(item.next);
-  startPlayback(item);
+  startPlayback(video, item);
 }
 
 /** Re-attaches the same `<video>` near `lastTime` ("Erneut versuchen" for file-missing/codec/connection-lost). @returns {void} */
 function retryPlayback() {
   panelBox.hidden = true;
   videoHost.hidden = false;
+  hint.hidden = false;
   renderNextButton(currentItem?.next ?? null);
   /** @type {ReturnType<typeof createStage>} */ (stage).retry(lastTime);
 }
@@ -255,8 +264,8 @@ function applyKeyAction(action) {
     const max = Number.isFinite(v.duration) ? v.duration : Infinity;
     v.currentTime = Math.min(max, v.currentTime + 10);
   } else if (action === 'fullscreen') {
-    if (document.fullscreenElement) document.exitFullscreen();
-    else v.requestFullscreen();
+    if (document.fullscreenElement) document.exitFullscreen().catch(() => {});
+    else v.requestFullscreen().catch(() => {});
   } else {
     v.muted = !v.muted;
   }
