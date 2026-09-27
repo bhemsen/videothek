@@ -3,7 +3,7 @@
  * the item, and renders the not-found/not-playable/playback-error states
  * from docs/specs/spec-video-streaming.md's "Design" state table — or, on
  * the playable path, creates the page's single `<video>` element and starts
- * playback. `loadItem`/`startPlayback` are P4's seam (spec Decision log).
+ * playback. `loadItem`/`startPlayback` are P4's seam (spec-progress-resume.md).
  */
 import { el } from './lib/dom.js';
 import { request, ApiError, toLogin } from './lib/api.js';
@@ -12,7 +12,10 @@ import { keyAction } from './lib/player-keys.js';
 import { headingFor, overlineFor, nextLabel, subtitleLabels, errorStateFor, backTarget } from './lib/player-format.js';
 import { chevronIcon, skipIcon } from './player-icons.js';
 import { buildLoadingNode, buildErrorPanel } from './player-panel.js';
+import { getProgress, trackPlayback } from './lib/progress.js';
+import { showResumeToast } from './lib/resume-toast.js';
 
+/** @typedef {import('./lib/progress.js').ProgressEntry} ProgressEntry */
 /** @typedef {import('./player-panel.js').PanelState} PanelState */
 /** @typedef {{ id: number, title: string, season: number | null, episode: number | null, episodeEnd: number | null }} NextEpisode */
 /** @typedef {{ index: number, lang: string | null, label: string | null }} SubtitleTrack */
@@ -172,8 +175,8 @@ function startPlayback(v, item) {
   Promise.resolve(v.play()).catch(() => {});
 }
 
-/** Creates and attaches the page's one `<video>` element, shows the stage/next button, starts playback. @param {PlayerItem} item @returns {void} */
-function attachVideo(item) {
+/** Creates and attaches the page's one `<video>` element, shows the stage/next button, starts playback and arms P4's tracker (never re-run on retry). @param {PlayerItem} item @param {ProgressEntry} entry @returns {void} */
+function attachVideo(item, entry) {
   video = buildVideoElement(item);
   stage = createStage(videoHost, video);
   videoHost.append(video);
@@ -182,6 +185,7 @@ function attachVideo(item) {
   panelBox.hidden = true;
   renderNextButton(item.next);
   startPlayback(video, item);
+  trackPlayback(video, item.id, { entry, onResume: (p) => showResumeToast({ media: /** @type {HTMLVideoElement} */ (video), position: p }) });
 }
 
 /** Re-attaches the same `<video>` near `lastTime` ("Erneut versuchen" for file-missing/codec/connection-lost). @returns {void} */
@@ -204,13 +208,9 @@ async function handleVideoError() {
   if (v.error === null || v.error.code === 1) return;
   const mediaErrorCode = v.error.code;
   /** @type {ReturnType<typeof createStage>} */ (stage).detach();
-  /** @type {number | null} */
-  let headStatus = null;
+  /** @type {number | null} */ let headStatus = null;
   try {
-    const response = await fetch(`/media/${/** @type {PlayerItem} */ (currentItem).id}`, {
-      method: 'HEAD',
-      cache: 'no-store',
-    });
+    const response = await fetch(`/media/${/** @type {PlayerItem} */ (currentItem).id}`, { method: 'HEAD', cache: 'no-store' });
     headStatus = response.status;
   } catch {
     headStatus = null;
@@ -224,16 +224,18 @@ async function handleVideoError() {
 }
 
 /**
- * Fetches the item and renders the matching state: not-found (invalid id
- * already filtered by the caller, unknown id, or an unsupported category),
- * load-failed, not-playable, or the attached video.
+ * Fetches the item and renders the matching state: not-found, load-failed,
+ * not-playable, or the attached video. `getProgress(id)` (P4 seam) starts
+ * alongside the item fetch and is awaited only on the playable path.
  * @param {number} id @returns {Promise<void>}
  */
 async function loadItem(id) {
-  /** @type {PlayerItem} */
-  let item;
+  const itemPromise = request('GET', `/api/library/items/${id}`);
+  const noEntry = /** @type {ProgressEntry} */ ({ itemId: id, position: 0, duration: null, state: 'none', updatedAt: null });
+  const progressPromise = getProgress(id).catch(() => noEntry);
+  /** @type {PlayerItem} */ let item;
   try {
-    const { data } = await request('GET', `/api/library/items/${id}`);
+    const { data } = await itemPromise;
     item = /** @type {PlayerItem} */ (data);
   } catch (error) {
     const apiError = error instanceof ApiError ? error : null;
@@ -249,7 +251,7 @@ async function loadItem(id) {
   if (!item.playable) {
     return showPanel('not-playable', { hasItem: true, ext: item.ext.toUpperCase(), next: item.next });
   }
-  attachVideo(item);
+  attachVideo(item, await progressPromise);
 }
 
 /** Applies one keyboard action to the video element. @param {'toggle' | 'back' | 'forward' | 'fullscreen' | 'mute'} action @returns {void} */
