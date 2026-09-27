@@ -2,7 +2,7 @@
 import { test } from 'node:test';
 import assert from 'node:assert/strict';
 import { stat as fsStat } from 'node:fs/promises';
-import { join } from 'node:path';
+import { dirname, join, relative, sep } from 'node:path';
 import { createScanner } from '../../src/library/scanner.js';
 import { createWatcher } from '../../src/library/watcher.js';
 import { createMediaTree, removeMediaTree, writeMediaFile } from '../helpers/media-tree.js';
@@ -117,8 +117,10 @@ test('a file added while a slow full scan is still running appears without waiti
   // Two directories so the walk has a directory boundary to drain at
   // (drainPathsBetweenDirs() runs once a directory's own syncDirectory has
   // fully returned, never mid-directory) while a later directory keeps the
-  // overall scan in flight past that point. Both trigger files are slow, so
-  // the assertion window holds regardless of readdir's (unspecified) order.
+  // overall scan in flight past that point. Both trigger files are slow, and
+  // the new file lands in whichever directory the walk reaches first, so the
+  // assertion window holds regardless of readdir's (unspecified) order — on
+  // ext4 (hashed order) or tmpfs (newest first) just as on NTFS.
   await writeMediaFile(root, 'Filme/AAA/trigger-a.webm');
   await writeMediaFile(root, 'Filme/BBB/trigger-b.webm');
   const db = testDb();
@@ -126,18 +128,24 @@ test('a file added while a slow full scan is still running appears without waiti
   const { watchFn, watchers } = createRecordingWatchFn();
 
   let fired = false;
+  /** @type {string | null} */
+  let newRelPath = null;
   /** @param {string} absPath */
   const statFn = async (absPath) => {
     if (absPath.endsWith('trigger-a.webm') || absPath.endsWith('trigger-b.webm')) {
       if (!fired) {
         fired = true;
-        // Fires on whichever trigger file the walk reaches first — the
-        // owning directory's watch already exists at this point
-        // (dirObserver.seen() runs before a directory's own files are
-        // stat'ed) — then keeps that directory's sync in flight for well
-        // past the short debounce below.
-        await writeMediaFile(root, 'Filme/AAA/new.webm');
-        watchers.get(join(root, 'Filme', 'AAA'))?.emit('new.webm');
+        // Fires on whichever trigger file the walk reaches first and drops
+        // the new file into that same directory, whose watch is guaranteed
+        // to exist at this point (dirObserver.seen() runs before a
+        // directory's own files are stat'ed) — then keeps that directory's
+        // sync in flight for well past the short debounce below.
+        const dir = dirname(absPath);
+        newRelPath = relative(root, join(dir, 'new.webm')).split(sep).join('/');
+        await writeMediaFile(root, newRelPath);
+        const dirWatch = watchers.get(dir);
+        assert.ok(dirWatch, 'the directory being synced must already be watched');
+        dirWatch.emit('new.webm');
       }
       await sleep(150);
     }
@@ -156,7 +164,8 @@ test('a file added while a slow full scan is still running appears without waiti
   // right after), still well inside the second directory's own slow stat.
   await sleep(220);
   assert.equal(scanner.status().running, true, 'the full scan must still be in flight for this to prove interleaving');
-  assert.ok(loadRow(db, 'Filme/AAA/new.webm'), 'the new file must already be indexed while the full scan is still running');
+  assert.ok(newRelPath, 'the slow trigger stat must have fired');
+  assert.ok(loadRow(db, newRelPath), 'the new file must already be indexed while the full scan is still running');
 
   await scanner.idle();
 });
@@ -183,8 +192,9 @@ test('with a silent watcher (no event ever fires), the periodic rescan backstop 
   assert.equal(loadRow(db, 'Filme/Silent.webm'), undefined, 'a silent watcher must not have reported the new file');
 
   // Stand-in for `startLibrary`'s own `config.rescanIntervalMin` timer
-  // (unit-tested in isolation by `index.test.js`): the periodic full-rescan
-  // backstop is what actually catches a file a broken watcher missed.
+  // (`index.test.js` drives that real timer against a silent `fs.watch`):
+  // the periodic full-rescan backstop is what catches a file a broken
+  // watcher missed.
   scanner.requestFull();
   await scanner.idle();
 
