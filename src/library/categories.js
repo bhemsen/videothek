@@ -16,7 +16,7 @@ const KINDS = Object.freeze({
   series: Object.freeze(/** @type {Kind[]} */ (['video'])),
   music: Object.freeze(/** @type {Kind[]} */ (['audio'])),
   audiobooks: Object.freeze(/** @type {Kind[]} */ (['audio'])),
-  images: Object.freeze(/** @type {Kind[]} */ (['image']))
+  images: Object.freeze(/** @type {Kind[]} */ (['image', 'video']))
 });
 
 /** Top-level folder name (NFC-normalised, lower-cased) -> category id. */
