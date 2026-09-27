@@ -46,11 +46,11 @@ function buildHeading() {
 function buildSortNav() {
   return el(
     'nav',
-    { class: 'sort-links', 'aria-label': 'Sortierung' },
-    el('a', { class: 'sort-link', href: '/series', 'aria-current': sort === 'title' ? 'true' : null }, 'A–Z'),
+    { class: 'sort-control', 'aria-label': 'Sortierung' },
+    el('a', { class: 'sort-control__link', href: '/series', 'aria-current': sort === 'title' ? 'true' : null }, 'A–Z'),
     el(
       'a',
-      { class: 'sort-link', href: '/series?sort=added', 'aria-current': sort === 'added' ? 'true' : null },
+      { class: 'sort-control__link', href: '/series?sort=added', 'aria-current': sort === 'added' ? 'true' : null },
       'Neu hinzugefügt',
     ),
   );
