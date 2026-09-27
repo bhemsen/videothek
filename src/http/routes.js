@@ -1,5 +1,9 @@
+import { registerAudiobookRoutes } from '../api/audiobooks.js';
 import { registerAuthRoutes } from '../api/auth.js';
+import { registerGalleryRoutes } from '../api/gallery.js';
 import { registerHealthRoutes } from '../api/health.js';
+import { registerMusicRoutes } from '../api/music.js';
+import { registerThumbRoutes } from '../api/thumb.js';
 
 /**
  * Registers every API module's routes onto `router` — one
@@ -12,4 +16,8 @@ import { registerHealthRoutes } from '../api/health.js';
 export function registerRoutes(router, deps) {
   registerHealthRoutes(router, deps);
   registerAuthRoutes(router, deps);
+  registerAudiobookRoutes(router, deps);
+  registerMusicRoutes(router, deps);
+  registerThumbRoutes(router, deps);
+  registerGalleryRoutes(router, deps);
 }
