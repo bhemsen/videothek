@@ -989,3 +989,22 @@ Chromium and Firefox, mobile ≤ 767 px and desktop ≥ 1024 px viewport):
   closes the DB and logs `shutdown` in a `finally`, so a failing
   `server.close()` never leaves the DB open; `startTestApp` likewise releases
   the DB and temp dir when its own setup throws partway.
+- 2026-09-27 (#18): `src/api/auth.js` implemented, wired into
+  `src/http/routes.js`. `handleLogin` checks the body shape (`400
+  invalid_json`) before the per-username throttle check, before verifying the
+  password — the throttle key is only available once the username is known,
+  and the shape gate matches the `readJson`/"non-object body" convention
+  `src/http/respond.js` (#15) already established. `handleLogout` and `GET
+  /api/me` read `ctx.user` after `requireUser` (#15) has already guaranteed a
+  session, but the static `RequestContext` type still carries `AuthUser |
+  null` regardless of that runtime guarantee, so `ctx.user?.username` (rather
+  than a non-null assertion or a redundant `if (!ctx.user) return` guard) is
+  what satisfies `tsc --noEmit --strict` for the log call — the same pattern
+  any later `requireAdmin`-wrapped handler (`src/api/users.js`) will need. The
+  "session survives an app restart" test builds its own `createApp`/
+  `openDatabase` pair against one hand-picked `DATA_DIR` (a `Config` object
+  cast via `/** @type {any} */`, matching `test/server.test.js`'s own
+  `buildTestConfig` pattern) instead of extending `test/helpers/app.js`'s
+  `startTestApp` — that helper is outside this issue's Files list (owned by
+  #17) and has no way to pin `dataDir` across two separate app instances, so
+  pinning it locally kept the change additive.

@@ -1,3 +1,4 @@
+import { registerAuthRoutes } from '../api/auth.js';
 import { registerHealthRoutes } from '../api/health.js';
 
 /**
@@ -10,4 +11,5 @@ import { registerHealthRoutes } from '../api/health.js';
  */
 export function registerRoutes(router, deps) {
   registerHealthRoutes(router, deps);
+  registerAuthRoutes(router, deps);
 }
