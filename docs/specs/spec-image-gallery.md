@@ -668,7 +668,11 @@ Human QA (Chromium + Firefox; desktop 1280 px and 390 px mobile emulation;
   unmodified click on a same-origin `/images` link (folder tiles, breadcrumb
   links, the "Zu Bilder" error link), skips a fragment-only change (the
   shell's skip link) via the same `isFragmentOnlyChange` guard, then
-  `pushState`s and re-renders; `popstate` re-renders the same way. A
+  `pushState`s and re-renders; `popstate` re-renders only when the folder
+  key differs from the last rendered one (`renderedKey`, P5's
+  `needsRender`/`renderedUrl` guard), so a fragment-only history step — the
+  skip link's `#main`, #84's `#bild-<id>` lightbox entries — neither
+  refetches nor steals focus. A
   `navToken` counter (the audio app's own guard) drops a stale fetch response
   superseded by a later navigation. Verified in a real browser (not just
   `npm test`, since neither routing module is DOM-free) that a folder-tile

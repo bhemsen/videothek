@@ -5,7 +5,8 @@
  * parallel) — see docs/specs/spec-image-gallery.md "Tiles".
  *
  * Every length/colour here is a token from tokens.css, or a calc() built
- * from one (enforced by test/frontend-rules.test.js).
+ * from one (enforced by test/frontend-rules.test.js); the 768 breakpoint is
+ * the only literal length, allowed for @media.
  */
 
 /* Breadcrumb */
@@ -60,6 +61,21 @@
   margin: var(--space-1) 0 0;
   color: var(--color-muted);
   font-size: var(--text-sm);
+}
+
+/* Desktop mock: meta inline next to the heading (baseline-aligned); the
+ * mobile mock keeps it stacked below. */
+@media (min-width: 768px) {
+  .gallery-header {
+    display: flex;
+    flex-wrap: wrap;
+    align-items: baseline;
+    column-gap: var(--space-4);
+  }
+
+  .gallery-header-meta {
+    margin: 0;
+  }
 }
 
 /* Sections */

@@ -29,6 +29,11 @@ let navToken = 0;
 /** The batched-rendering controller for the currently mounted items grid, if
  * any, disconnected before a new folder is rendered. @type {{ disconnect: () => void } | null} */
 let batchController = null;
+/** Folder key of the view last rendered (or being fetched); lets `popstate`
+ * skip fragment-only history steps (the skip link's `#main`, #84's
+ * `#bild-<id>` lightbox entries), mirroring P5's `needsRender` guard in
+ * `public/js/audio/app.js`. @type {string | null} */
+let renderedKey = null;
 
 /**
  * Reads the folder key from the current location's `?folder=` parameter.
@@ -89,7 +94,9 @@ function renderHeader(view) {
 /**
  * Mounts `items` into `grid` in batches of `GALLERY_BATCH_SIZE`: the first
  * batch immediately, later ones when a trailing sentinel comes within
- * `GALLERY_BATCH_ROOT_MARGIN_PX` of the viewport (`IntersectionObserver`).
+ * `GALLERY_BATCH_ROOT_MARGIN_PX` of the viewport (`IntersectionObserver`,
+ * re-observed after each batch so a sentinel that stays in range keeps
+ * loading).
  * @param {HTMLElement} grid
  * @param {import('./image-tiles.js').GalleryItem[]} items
  * @returns {{ disconnect: () => void }}
@@ -109,7 +116,14 @@ function mountBatchedItems(grid, items) {
   };
   const observer = new IntersectionObserver(
     (entries) => {
-      if (entries.some((entry) => entry.isIntersecting)) renderNextBatch();
+      if (!entries.some((entry) => entry.isIntersecting)) return;
+      renderNextBatch();
+      // Re-observe so a sentinel still within the margin after this batch
+      // (very tall viewports) triggers a fresh callback instead of stalling.
+      if (rendered < items.length) {
+        observer.unobserve(sentinel);
+        observer.observe(sentinel);
+      }
     },
     { rootMargin: `${GALLERY_BATCH_ROOT_MARGIN_PX}px` },
   );
@@ -194,6 +208,7 @@ function renderLoadError(key) {
  */
 async function renderFolder(key, focusHeading) {
   const token = ++navToken;
+  renderedKey = key;
   batchController?.disconnect();
   batchController = null;
   try {
@@ -251,6 +266,9 @@ function onClick(event) {
 }
 
 document.addEventListener('click', onClick);
-window.addEventListener('popstate', () => renderFolder(folderKeyFromLocation(), true));
+window.addEventListener('popstate', () => {
+  const key = folderKeyFromLocation();
+  if (key !== renderedKey) renderFolder(key, true);
+});
 
 renderFolder(folderKeyFromLocation(), false);
