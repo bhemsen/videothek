@@ -984,4 +984,8 @@ Chromium and Firefox, mobile ≤ 767 px and desktop ≥ 1024 px viewport):
   above) so other tests can register routes onto a live app instead —
   `app-error-mapping.test.js` does this; `startTestApp` (below) passes both
   `router` and `server` through for the same reason, beyond its own spec'd
-  `{ baseUrl, db, config, deps, createUser, login, close }`.
+  `{ baseUrl, db, config, deps, createUser, login, close }`. `stop()` is
+  memoised (a concurrent second call shares the in-flight shutdown) and
+  closes the DB and logs `shutdown` in a `finally`, so a failing
+  `server.close()` never leaves the DB open; `startTestApp` likewise releases
+  the DB and temp dir when its own setup throws partway.

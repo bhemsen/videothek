@@ -47,6 +47,46 @@ function resolveDirs(mediaRoot) {
 }
 
 /**
+ * Opens + migrates the DB, assembles the app and listens on an ephemeral
+ * port. If any step throws, the opened DB, a half-started server and the
+ * temp directory are released before rethrowing, so a failed setup leaks
+ * nothing (an open `DatabaseSync` would keep the files locked on Windows).
+ * @param {{
+ *   config: import('../../src/config.js').Config,
+ *   log: import('../../src/log.js').Logger,
+ *   now: () => number,
+ *   extra: Record<string, unknown>,
+ *   tempRoot: string,
+ * }} options
+ * @returns {Promise<{ db: import('node:sqlite').DatabaseSync, app: ReturnType<typeof createApp> }>}
+ */
+async function bootApp({ config, log, now, extra, tempRoot }) {
+  /** @type {import('node:sqlite').DatabaseSync | null} */
+  let db = null;
+  /** @type {ReturnType<typeof createApp> | null} */
+  let app = null;
+  try {
+    db = openDatabase(config.dataDir);
+    migrate(db);
+    app = createApp({ config, db, log, now, ...extra });
+    const { server } = app;
+    await new Promise((resolve, reject) => {
+      server.once('error', reject);
+      server.listen(0, '127.0.0.1', () => {
+        server.removeListener('error', reject);
+        resolve(undefined);
+      });
+    });
+    return { db, app };
+  } catch (err) {
+    if (app?.server.listening) await app.close().catch(() => {});
+    db?.close();
+    rmSync(tempRoot, { recursive: true, force: true });
+    throw err;
+  }
+}
+
+/**
  * Starts the app in-process for tests.
  * @param {{ mediaRoot?: string, now?: () => number, [key: string]: unknown }} [options]
  * @returns {Promise<{
@@ -64,12 +104,9 @@ function resolveDirs(mediaRoot) {
 export async function startTestApp({ mediaRoot, now = Date.now, ...extra } = {}) {
   const { tempRoot, dataDir, mediaRoot: resolvedMediaRoot } = resolveDirs(mediaRoot);
   const config = loadConfig({ MEDIA_ROOT: resolvedMediaRoot, DATA_DIR: dataDir });
-  const db = openDatabase(config.dataDir);
-  migrate(db);
-
   const { log, logLines } = createSilentLogger(now);
-  const { server, deps, router, close: closeApp } = createApp({ config, db, log, now, ...extra });
-  await new Promise((resolve) => server.listen(0, '127.0.0.1', () => resolve(undefined)));
+  const { db, app } = await bootApp({ config, log, now, extra, tempRoot });
+  const { server, deps, router, close: closeApp } = app;
   const address = server.address();
   const port = address && typeof address === 'object' ? address.port : 0;
 
@@ -103,9 +140,12 @@ export async function startTestApp({ mediaRoot, now = Date.now, ...extra } = {})
       return `vt_session=${token}`;
     },
     async close() {
-      await closeApp();
-      db.close();
-      rmSync(tempRoot, { recursive: true, force: true });
+      try {
+        await closeApp();
+      } finally {
+        db.close();
+        rmSync(tempRoot, { recursive: true, force: true });
+      }
     },
   };
 }

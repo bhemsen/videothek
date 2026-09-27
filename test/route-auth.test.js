@@ -65,7 +65,10 @@ test('every registered route except the public exceptions requires a session', a
       if (PUBLIC_EXCEPTIONS.has(key)) continue;
       const res = await request(app.baseUrl, method, concretePath(pattern));
       assert.equal(res.status, 401, `${key} -> expected 401, got ${res.status}`);
-      assert.deepEqual(JSON.parse(res.body), { error: 'unauthorized' }, `${key} body`);
+      // A HEAD response carries no body by definition — status alone is checked.
+      if (method !== 'HEAD') {
+        assert.deepEqual(JSON.parse(res.body), { error: 'unauthorized' }, `${key} body`);
+      }
     }
   } finally {
     await app.close();

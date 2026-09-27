@@ -48,7 +48,7 @@ function listen(server, host, port) {
 }
 
 /**
- * Builds the idempotent `stop()`: clears the purge timer, stops accepting
+ * Builds the idempotent, memoised `stop()`: clears the purge timer, stops accepting
  * new connections and drops idle ones immediately, force-closes any
  * still-open connections after 5 s (long-lived media streams), then closes
  * the database.
@@ -61,20 +61,27 @@ function listen(server, host, port) {
  * @returns {() => Promise<void>}
  */
 function createStop({ app, db, log, purgeTimer }) {
-  let stopped = false;
-  return async function stop() {
-    if (stopped) return;
-    stopped = true;
+  /** @type {Promise<void> | null} */
+  let stopping = null;
+  const run = async () => {
     clearInterval(purgeTimer);
     app.server.closeIdleConnections();
     const forceTimer = setTimeout(() => app.server.closeAllConnections(), 5000);
     try {
       await app.close();
     } finally {
+      // Even when closing the server fails, the DB must not stay open (and
+      // locked on Windows) and the shutdown must be on record.
       clearTimeout(forceTimer);
+      db.close();
+      log.info('shutdown');
     }
-    db.close();
-    log.info('shutdown');
+  };
+  // Memoised: a second call while the first is in flight (or after it
+  // finished) returns the same promise instead of resolving early.
+  return function stop() {
+    stopping ??= run();
+    return stopping;
   };
 }
 

@@ -5,7 +5,6 @@ import { mkdirSync, mkdtempSync, rmSync } from 'node:fs';
 import { tmpdir } from 'node:os';
 import path from 'node:path';
 import { createLogger } from '../src/log.js';
-import { start } from '../src/server.js';
 
 /**
  * A hand-built, already-valid `Config` (bypassing `loadConfig`/env) so each
@@ -40,14 +39,56 @@ function silentLogger() {
   return { log: createLogger({ out: sink, err: sink }), logLines };
 }
 
-test('importing src/server.js starts nothing (no SIGINT handler, nothing listening)', async () => {
-  const before = process.listenerCount('SIGINT');
-  const mod = await import('../src/server.js');
-  assert.equal(typeof mod.start, 'function');
-  assert.equal(process.listenerCount('SIGINT'), before);
+/**
+ * @returns {number} how many TCP servers this process currently has open
+ */
+function listeningServerCount() {
+  return process.getActiveResourcesInfo().filter((name) => name === 'TCPServerWrap').length;
+}
+
+/**
+ * Loads `start` lazily so the first test below is the one that actually
+ * imports (and thus evaluates) `src/server.js` in this test file.
+ * @returns {Promise<typeof import('../src/server.js').start>}
+ */
+async function loadStart() {
+  return (await import('../src/server.js')).start;
+}
+
+test('importing src/server.js starts nothing (no signal handlers, nothing listening)', async () => {
+  // No static import of src/server.js in this file: these baselines are
+  // taken before the module is evaluated for the first time.
+  const sigintBefore = process.listenerCount('SIGINT');
+  const sigtermBefore = process.listenerCount('SIGTERM');
+  const serversBefore = listeningServerCount();
+  // `getActiveResourcesInfo` hides unref'd servers, so additionally spy on
+  // every `listen()` call (http.Server inherits net.Server's) while importing.
+  const originalListen = net.Server.prototype.listen;
+  let listenCalls = 0;
+  net.Server.prototype.listen = /** @type {typeof originalListen} */ (
+    /** @this {net.Server} @param {unknown[]} args */
+    function spiedListen(...args) {
+      listenCalls += 1;
+      return Reflect.apply(originalListen, this, args);
+    }
+  );
+  try {
+    const mod = await import('../src/server.js');
+    assert.equal(typeof mod.start, 'function');
+    // Give a (wrongly) import-time listen() a turn of the event loop to bind.
+    await new Promise((resolve) => setImmediate(resolve));
+  } finally {
+    net.Server.prototype.listen = originalListen;
+  }
+
+  assert.equal(process.listenerCount('SIGINT'), sigintBefore);
+  assert.equal(process.listenerCount('SIGTERM'), sigtermBefore);
+  assert.equal(listeningServerCount(), serversBefore);
+  assert.equal(listenCalls, 0);
 });
 
 test('start() bootstraps the admin, listens, and stop() closes everything', async () => {
+  const start = await loadStart();
   const { config, cleanup } = buildTestConfig();
   const { log, logLines } = silentLogger();
   try {
@@ -66,6 +107,7 @@ test('start() bootstraps the admin, listens, and stop() closes everything', asyn
 });
 
 test('a second start() against the same data dir skips bootstrap (admin_env_ignored)', async () => {
+  const start = await loadStart();
   const { config, cleanup } = buildTestConfig();
   try {
     const first = silentLogger();
@@ -85,6 +127,7 @@ test('a second start() against the same data dir skips bootstrap (admin_env_igno
 });
 
 test('stop() resolves promptly after its 5s force-close timer with a request in flight, and is idempotent', async () => {
+  const start = await loadStart();
   const { config, cleanup } = buildTestConfig();
   const { log } = silentLogger();
   try {
@@ -103,7 +146,11 @@ test('stop() resolves promptly after its 5s force-close timer with a request in 
     socket.write('GET /healthz HTTP/1.1\r\nHost: 127.0.0.1\r\nConnection: keep-alive\r\n\r\n');
 
     const startedAt = Date.now();
-    await result.stop();
+    const stopping = result.stop();
+    // A concurrent second call must share the in-flight shutdown, not
+    // resolve early while connections and the DB are still open.
+    assert.equal(result.stop(), stopping);
+    await stopping;
     const elapsedMs = Date.now() - startedAt;
     // Acceptance for #17 requires stop() to resolve within 6s while a
     // request is still open; the force-close timer itself is a fixed 5s, so
@@ -118,6 +165,7 @@ test('stop() resolves promptly after its 5s force-close timer with a request in 
 });
 
 test('start() on a fresh DB without admin env exits before listening (admin_missing)', async () => {
+  const start = await loadStart();
   const { config, cleanup } = buildTestConfig();
   // A fresh DB with no ADMIN_USER/ADMIN_PASSWORD: ensureAdmin throws
   // BootstrapError, already logged internally as `admin_missing` — real
@@ -128,6 +176,7 @@ test('start() on a fresh DB without admin env exits before listening (admin_miss
     adminPassword: null,
   });
   const { log, logLines } = silentLogger();
+  const serversBefore = listeningServerCount();
   const originalExit = process.exit;
   /** @type {number | undefined} */
   let exitCode;
@@ -139,6 +188,7 @@ test('start() on a fresh DB without admin env exits before listening (admin_miss
     await assert.rejects(() => start({ config: badConfig, log }));
     assert.equal(exitCode, 1);
     assert.ok(logLines.some((line) => line.includes('admin_missing')));
+    assert.equal(listeningServerCount(), serversBefore);
   } finally {
     process.exit = originalExit;
     cleanup();
