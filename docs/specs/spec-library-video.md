@@ -1333,3 +1333,17 @@ and desktop 1440 px, compared with the design exports):
   to sections", and the mockup's highlighted first chip is static illustration,
   not a stated requirement; not built to keep the page free of scroll-position
   JS the spec never asks for.
+- 2026-09-27 (#177): `.episode-row__number`'s `flex: 0 0 auto` sized the
+  column to each row's own content, so `01`/`01–02`/`–` produced different
+  column widths and misaligned titles. Fixed to `flex: 0 0 var(--space-12)`
+  (48 px) with `text-align: right`, matching the exported mockup's
+  fixed-width, right-aligned number column (`serie-detail-desktop.html`'s
+  `.episode-num`) while sizing the column to the widest real value
+  (`01–02`) instead of the mockup's 2-digit-only 24 px — verified in a
+  headless-Chromium probe that `01`, `01–02` and `–` in `font-mono` at
+  `--text-md` all fit inside 48 px without clipping or forcing the flex
+  item wider than its basis (32 px was borderline/clipped in the same
+  probe). Confirmed live via `getBoundingClientRect()` on `/series-detail`
+  for the "Dark" fixture: every row's title starts at the same x
+  regardless of number content, including the real `–` case (Extras/
+  Interview).
