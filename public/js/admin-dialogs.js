@@ -2,20 +2,26 @@
  * The two admin `<dialog>`s (delete confirm, password reset): native
  * `showModal`, Escape closes via the browser's built-in `cancel`/`close`
  * events, and `close` always returns focus to whichever row button opened it
- * (not every browser restores focus on its own).
+ * (not every browser restores focus on its own) — or to `fallbackFocus` when
+ * that button is gone (its row was deleted).
  */
 import { el } from './lib/dom.js';
 
 /**
  * @typedef {{ id: number, username: string, role: 'admin' | 'user', createdAt: string }} AdminUser
  * @typedef {{ ok: true } | { ok: false, code: string, message: string }} ActionResult
+ * @typedef {{ element: HTMLDialogElement, open: (user: AdminUser, trigger: HTMLButtonElement) => void }} AdminDialog
  */
 
 /**
- * @param {(user: AdminUser) => Promise<ActionResult>} onConfirm
- * @returns {{ element: HTMLDialogElement, open: (user: AdminUser, trigger: HTMLButtonElement) => void }}
+ * @param {{
+ *   onConfirm: (user: AdminUser) => Promise<ActionResult>,
+ *   onDeleted: (user: AdminUser) => void,
+ *   fallbackFocus: HTMLElement,
+ * }} params
+ * @returns {AdminDialog}
  */
-export function createDeleteDialog(onConfirm) {
+export function createDeleteDialog({ onConfirm, onDeleted, fallbackFocus }) {
   /** @type {AdminUser | null} */
   let current = null;
   /** @type {HTMLButtonElement | null} */
@@ -25,9 +31,7 @@ export function createDeleteDialog(onConfirm) {
   const confirmButton = /** @type {HTMLButtonElement} */ (
     el('button', { type: 'button', class: 'btn btn-danger' }, 'Löschen')
   );
-  const cancelButton = /** @type {HTMLButtonElement} */ (
-    el('button', { type: 'button', class: 'btn btn-secondary' }, 'Abbrechen')
-  );
+  const cancelButton = buildCancelButton();
   const dialog = /** @type {HTMLDialogElement} */ (el(
     'dialog',
     { class: 'admin-dialog', 'aria-label': 'Benutzer löschen' },
@@ -37,18 +41,21 @@ export function createDeleteDialog(onConfirm) {
   ));
 
   cancelButton.addEventListener('click', () => dialog.close());
-  dialog.addEventListener('close', () => trigger?.focus());
+  dialog.addEventListener('close', () => restoreFocus(trigger, fallbackFocus));
   confirmButton.addEventListener('click', async () => {
     if (!current) return;
+    const user = current;
     confirmButton.disabled = true;
-    const result = await onConfirm(current);
+    const result = await onConfirm(user);
     confirmButton.disabled = false;
     if (result.ok) {
+      // The trigger's row is about to disappear — send focus to the fallback.
+      trigger = null;
       dialog.close();
+      onDeleted(user);
       return;
     }
-    error.textContent = result.message;
-    error.hidden = false;
+    showError(error, result.message);
   });
 
   return {
@@ -56,8 +63,7 @@ export function createDeleteDialog(onConfirm) {
     open(user, triggerButton) {
       current = user;
       trigger = triggerButton;
-      error.hidden = true;
-      error.textContent = '';
+      hideError(error);
       text.textContent = `„${user.username}“ wirklich löschen? Der Wiedergabefortschritt dieses Kontos geht verloren.`;
       dialog.showModal();
     },
@@ -65,14 +71,74 @@ export function createDeleteDialog(onConfirm) {
 }
 
 /**
- * @param {(user: AdminUser, password: string) => Promise<ActionResult>} onSubmit
- * @returns {{ element: HTMLDialogElement, open: (user: AdminUser, trigger: HTMLButtonElement) => void }}
+ * @param {{
+ *   onSubmit: (user: AdminUser, password: string) => Promise<ActionResult>,
+ *   fallbackFocus: HTMLElement,
+ * }} params
+ * @returns {AdminDialog}
  */
-export function createResetDialog(onSubmit) {
+export function createResetDialog({ onSubmit, fallbackFocus }) {
   /** @type {AdminUser | null} */
   let current = null;
   /** @type {HTMLButtonElement | null} */
   let trigger = null;
+  const parts = buildResetParts(handleSubmit);
+  const { dialog, input, saveButton } = parts;
+
+  parts.cancelButton.addEventListener('click', () => dialog.close());
+  dialog.addEventListener('close', () => restoreFocus(trigger, fallbackFocus));
+
+  /**
+   * @param {Event} event
+   * @returns {Promise<void>}
+   */
+  async function handleSubmit(event) {
+    event.preventDefault();
+    if (!current) return;
+    clearResetErrors(parts);
+    saveButton.disabled = true;
+    const result = await onSubmit(current, input.value);
+    saveButton.disabled = false;
+    if (result.ok) {
+      dialog.close();
+    } else if (result.code === 'invalid_password') {
+      input.setAttribute('aria-invalid', 'true');
+      parts.fieldError.textContent = result.message;
+    } else {
+      showError(parts.formError, result.message);
+    }
+  }
+
+  return {
+    element: dialog,
+    open(user, triggerButton) {
+      current = user;
+      trigger = triggerButton;
+      clearResetErrors(parts);
+      input.value = '';
+      parts.title.textContent = `Neues Passwort für „${user.username}“`;
+      parts.note.textContent = `Alle Geräte von ${user.username} werden abgemeldet.`;
+      dialog.showModal();
+      input.focus();
+    },
+  };
+}
+
+/**
+ * @typedef {{
+ *   dialog: HTMLDialogElement, title: HTMLElement, input: HTMLInputElement,
+ *   fieldError: HTMLElement, note: HTMLElement, formError: HTMLElement,
+ *   cancelButton: HTMLButtonElement, saveButton: HTMLButtonElement,
+ * }} ResetParts
+ */
+
+/**
+ * Builds the reset dialog's DOM. The form is `novalidate` so an empty submit
+ * reaches the API and shows the German field error, not the browser bubble.
+ * @param {(event: Event) => Promise<void>} onSubmit
+ * @returns {ResetParts}
+ */
+function buildResetParts(onSubmit) {
   const titleId = 'admin-reset-dialog-title';
   const title = el('h2', { id: titleId });
   const input = /** @type {HTMLInputElement} */ (
@@ -81,15 +147,13 @@ export function createResetDialog(onSubmit) {
   const fieldError = el('span', { class: 'field-error' });
   const note = el('p', { class: 'dialog-note' });
   const formError = el('p', { class: 'dialog-error', role: 'alert', hidden: true });
-  const cancelButton = /** @type {HTMLButtonElement} */ (
-    el('button', { type: 'button', class: 'btn btn-secondary' }, 'Abbrechen')
-  );
+  const cancelButton = buildCancelButton();
   const saveButton = /** @type {HTMLButtonElement} */ (
     el('button', { type: 'submit', class: 'btn btn-primary' }, 'Speichern')
   );
   const form = el(
     'form',
-    { onSubmit: handleSubmit },
+    { novalidate: true, onSubmit },
     el(
       'div',
       { class: 'field' },
@@ -105,53 +169,51 @@ export function createResetDialog(onSubmit) {
   const dialog = /** @type {HTMLDialogElement} */ (
     el('dialog', { class: 'admin-dialog', 'aria-labelledby': titleId }, title, form)
   );
+  return { dialog, title, input, fieldError, note, formError, cancelButton, saveButton };
+}
 
-  cancelButton.addEventListener('click', () => dialog.close());
-  dialog.addEventListener('close', () => trigger?.focus());
+/**
+ * @param {ResetParts} parts
+ * @returns {void}
+ */
+function clearResetErrors(parts) {
+  parts.input.setAttribute('aria-invalid', 'false');
+  parts.fieldError.textContent = '';
+  hideError(parts.formError);
+}
 
-  /**
-   * @param {Event} event
-   * @returns {Promise<void>}
-   */
-  async function handleSubmit(event) {
-    event.preventDefault();
-    if (!current) return;
-    clearErrors();
-    saveButton.disabled = true;
-    const result = await onSubmit(current, input.value);
-    saveButton.disabled = false;
-    if (result.ok) {
-      dialog.close();
-      return;
-    }
-    if (result.code === 'invalid_password') {
-      input.setAttribute('aria-invalid', 'true');
-      fieldError.textContent = result.message;
-    } else {
-      formError.textContent = result.message;
-      formError.hidden = false;
-    }
-  }
+/** @returns {HTMLButtonElement} */
+function buildCancelButton() {
+  return /** @type {HTMLButtonElement} */ (
+    el('button', { type: 'button', class: 'btn btn-secondary' }, 'Abbrechen')
+  );
+}
 
-  /** @returns {void} */
-  function clearErrors() {
-    input.setAttribute('aria-invalid', 'false');
-    fieldError.textContent = '';
-    formError.hidden = true;
-    formError.textContent = '';
-  }
+/**
+ * @param {HTMLButtonElement | null} trigger
+ * @param {HTMLElement} fallbackFocus
+ * @returns {void}
+ */
+function restoreFocus(trigger, fallbackFocus) {
+  if (trigger?.isConnected) trigger.focus();
+  else fallbackFocus.focus();
+}
 
-  return {
-    element: dialog,
-    open(user, triggerButton) {
-      current = user;
-      trigger = triggerButton;
-      clearErrors();
-      input.value = '';
-      title.textContent = `Neues Passwort für „${user.username}“`;
-      note.textContent = `Alle Geräte von ${user.username} werden abgemeldet.`;
-      dialog.showModal();
-      input.focus();
-    },
-  };
+/**
+ * @param {HTMLElement} error
+ * @param {string} message
+ * @returns {void}
+ */
+function showError(error, message) {
+  error.textContent = message;
+  error.hidden = false;
+}
+
+/**
+ * @param {HTMLElement} error
+ * @returns {void}
+ */
+function hideError(error) {
+  error.hidden = true;
+  error.textContent = '';
 }

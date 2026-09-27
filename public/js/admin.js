@@ -7,7 +7,8 @@
 import { el } from './lib/dom.js';
 import { mountShell } from './lib/shell.js';
 import { ApiError, request } from './lib/api.js';
-import { accountCountLabel, createUserList, renderUsers } from './admin-list.js';
+import { createUserList, renderUsers } from './admin-list.js';
+import { accountCountLabel } from './admin-format.js';
 import { createUserForm } from './admin-form.js';
 import { createDeleteDialog, createResetDialog } from './admin-dialogs.js';
 import { errorMessage } from './admin-errors.js';
@@ -21,14 +22,18 @@ let meId = null;
 /** @type {AdminUser[]} */
 let users = [];
 
-const status = el('p', { class: 'admin-status', role: 'status', hidden: true });
+// Present (empty) from the start: a live region inserted or un-hidden together
+// with its first message is not reliably announced.
+const status = el('p', { class: 'admin-status', role: 'status' });
+// Focus target when a dialog's trigger button no longer exists (row deleted).
+const heading = el('h1', { tabindex: '-1' }, 'Benutzerverwaltung');
 const userList = createUserList();
 const createForm = createUserForm({ onCreate: createUser, onCreated: handleCreated });
-const deleteDialog = createDeleteDialog(deleteUser);
-const resetDialog = createResetDialog(resetPassword);
+const deleteDialog = createDeleteDialog({ onConfirm: deleteUser, onDeleted: removeUser, fallbackFocus: heading });
+const resetDialog = createResetDialog({ onSubmit: resetPassword, fallbackFocus: heading });
 
 main.append(
-  el('h1', {}, 'Benutzerverwaltung'),
+  heading,
   userList.subline,
   status,
   el(
@@ -54,11 +59,19 @@ async function init() {
   await loadUsers();
 }
 
-/** @returns {Promise<void>} */
+/**
+ * Fetches the user list and re-renders; a failure is shown in the status line
+ * (never an unhandled rejection) and keeps the previously rendered list.
+ * @returns {Promise<void>}
+ */
 async function loadUsers() {
-  const { data } = await request('GET', '/api/users');
-  users = /** @type {AdminUser[]} */ (data);
-  render();
+  try {
+    const { data } = await request('GET', '/api/users');
+    users = /** @type {AdminUser[]} */ (data);
+    render();
+  } catch (err) {
+    setStatus(apiMessage(err));
+  }
 }
 
 /** @returns {void} */
@@ -102,6 +115,8 @@ function handleCreated(user) {
  * @returns {Promise<void>}
  */
 async function changeRole(user, role, select) {
+  // Locked while in flight so a later change cannot race an earlier failure.
+  select.disabled = true;
   try {
     await request('PATCH', `/api/users/${user.id}`, { json: { role } });
     user.role = /** @type {'admin' | 'user'} */ (role);
@@ -109,6 +124,8 @@ async function changeRole(user, role, select) {
   } catch (err) {
     select.value = user.role;
     setStatus(apiMessage(err));
+  } finally {
+    select.disabled = false;
   }
 }
 
@@ -134,7 +151,6 @@ async function resetPassword(user, password) {
 async function deleteUser(user) {
   try {
     await request('DELETE', `/api/users/${user.id}`);
-    await loadUsers();
     setStatus(`Benutzer „${user.username}“ gelöscht.`);
     return { ok: true };
   } catch (err) {
@@ -143,12 +159,22 @@ async function deleteUser(user) {
 }
 
 /**
+ * Drops a deleted user from the rendered list locally (called after the dialog
+ * closed) — no refetch, so a failing follow-up GET cannot mask the success.
+ * @param {AdminUser} user
+ * @returns {void}
+ */
+function removeUser(user) {
+  users = users.filter((candidate) => candidate.id !== user.id);
+  render();
+}
+
+/**
  * @param {string} message
  * @returns {void}
  */
 function setStatus(message) {
   status.textContent = message;
-  status.hidden = false;
 }
 
 /**

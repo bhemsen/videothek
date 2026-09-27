@@ -6,6 +6,7 @@
  */
 import { el } from './lib/dom.js';
 import { icon } from './lib/icons.js';
+import { formatCreatedDate } from './admin-format.js';
 
 /**
  * @typedef {{ id: number, username: string, role: 'admin' | 'user', createdAt: string }} AdminUser
@@ -48,14 +49,6 @@ export function renderUsers(list, users, meId, handlers) {
 }
 
 /**
- * @param {number} count
- * @returns {string}
- */
-export function accountCountLabel(count) {
-  return count === 1 ? '1 Konto' : `${count} Konten`;
-}
-
-/**
  * @param {AdminUser} user
  * @param {boolean} isOwn
  * @param {RowHandlers} handlers
@@ -81,7 +74,12 @@ function buildRow(user, isOwn, handlers) {
       el('strong', {}, user.username),
       isOwn ? el('span', { class: 'muted' }, ' (du)') : null,
     ),
-    el('div', { class: 'user-row-created muted' }, `Angelegt am ${formatDate(user.createdAt)}`),
+    el(
+      'div',
+      { class: 'user-row-created muted' },
+      el('span', { class: 'user-row-created-label' }, 'Angelegt am '),
+      formatCreatedDate(user.createdAt),
+    ),
     el('div', { class: 'user-row-role' }, roleSelect),
     el('div', { class: 'user-row-actions' }, resetButton, deleteButton),
   );
@@ -105,12 +103,4 @@ function buildRoleSelect(user, isOwn, handlers) {
     select.addEventListener('change', () => handlers.onRoleChange(user, select.value, select));
   }
   return el('div', { class: 'select' }, select, icon('chevron-down'));
-}
-
-/**
- * @param {string} isoDate
- * @returns {string}
- */
-function formatDate(isoDate) {
-  return new Date(isoDate).toLocaleDateString('de-DE');
 }

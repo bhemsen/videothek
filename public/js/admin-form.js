@@ -9,6 +9,7 @@ import { icon } from './lib/icons.js';
  * @typedef {{ id: number, username: string, role: 'admin' | 'user', createdAt: string }} AdminUser
  * @typedef {{ ok: true, user: AdminUser } | { ok: false, code: string, message: string }} CreateResult
  * @typedef {{ field: HTMLElement, input: HTMLInputElement, error: HTMLElement }} TextFieldParts
+ * @typedef {{ username: TextFieldParts, password: TextFieldParts, formError: HTMLElement }} ErrorSurfaces
  */
 
 /**
@@ -23,6 +24,8 @@ export function createUserForm({ onCreate, onCreated }) {
   const password = buildTextField({ id: 'admin-new-password', label: 'Passwort', type: 'password', autocomplete: 'new-password', hint: 'Mindestens 8 Zeichen' });
   const role = buildRoleField();
   const formError = el('p', { class: 'form-error', role: 'alert', hidden: true });
+  /** @type {ErrorSurfaces} */
+  const surfaces = { username, password, formError };
   const submitButton = /** @type {HTMLButtonElement} */ (
     el('button', { type: 'submit', class: 'btn btn-primary' }, 'Benutzer anlegen')
   );
@@ -42,7 +45,7 @@ export function createUserForm({ onCreate, onCreated }) {
    */
   async function handleSubmit(event) {
     event.preventDefault();
-    clearErrors();
+    clearErrors(surfaces);
     submitButton.disabled = true;
     const result = await onCreate(username.input.value, password.input.value, role.select.value);
     submitButton.disabled = false;
@@ -51,36 +54,41 @@ export function createUserForm({ onCreate, onCreated }) {
       onCreated(result.user);
       return;
     }
-    applyError(result.code, result.message);
-  }
-
-  /** @returns {void} */
-  function clearErrors() {
-    formError.hidden = true;
-    formError.textContent = '';
-    for (const field of [username, password]) {
-      field.input.setAttribute('aria-invalid', 'false');
-      field.error.textContent = '';
-    }
-  }
-
-  /**
-   * @param {string} code
-   * @param {string} message
-   * @returns {void}
-   */
-  function applyError(code, message) {
-    if (code === 'invalid_username' || code === 'username_taken') {
-      setFieldError(username, message);
-    } else if (code === 'invalid_password') {
-      setFieldError(password, message);
-    } else {
-      formError.textContent = message;
-      formError.hidden = false;
-    }
+    applyError(surfaces, result.code, result.message);
   }
 
   return form;
+}
+
+/**
+ * @param {ErrorSurfaces} surfaces
+ * @returns {void}
+ */
+function clearErrors({ username, password, formError }) {
+  formError.hidden = true;
+  formError.textContent = '';
+  for (const field of [username, password]) {
+    field.input.setAttribute('aria-invalid', 'false');
+    field.error.textContent = '';
+  }
+}
+
+/**
+ * Field-specific codes go below their field; anything else to the form line.
+ * @param {ErrorSurfaces} surfaces
+ * @param {string} code
+ * @param {string} message
+ * @returns {void}
+ */
+function applyError({ username, password, formError }, code, message) {
+  if (code === 'invalid_username' || code === 'username_taken') {
+    setFieldError(username, message);
+  } else if (code === 'invalid_password') {
+    setFieldError(password, message);
+  } else {
+    formError.textContent = message;
+    formError.hidden = false;
+  }
 }
 
 /**
