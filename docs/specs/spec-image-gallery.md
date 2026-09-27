@@ -557,3 +557,20 @@ Human QA (Chromium + Firefox; desktop 1280 px and 390 px mobile emulation;
   `test/db/library-repo.test.js`, which migrate the shared default directory,
   now assert containment of the versions they need instead of an exact
   list, so adding a sibling migration no longer requires editing them.
+- 2026-09-27: Issue #136 closed two robustness gaps from #122's post-merge
+  review: `insertMetaStubs`' catch block now guards its `ROLLBACK` in its own
+  `try`/`catch` (matching `migrate.js`/`users.js`) so a SQLite auto-abort
+  (SQLITE_FULL/IOERR/INTERRUPT/CORRUPT) rethrows the original error instead
+  of masking it with "cannot rollback - no transaction is active"; a mock-`db`
+  unit test forces that exact sequence without needing real disk-level
+  corruption. `test/db/migrations-all.test.js` derives its expected version
+  list from a `readdirSync` of `src/db/migrations/` (not from the seed
+  helper's fixed `IMAGE_META_MIGRATIONS` list), pinning that `migrate(db)`
+  on a clean DB applies every shipped migration. `getThumbSource` now calls
+  the shared `toItemRow` instead of repeating the `playable` coercion inline;
+  `toItemRow` widened to `@param {any} / @returns {any}` since its two shapes
+  (the full `ITEM_ROW_SELECT` row and `getThumbSource`'s narrower one) share
+  no common named-property type, and each caller's own return type already
+  states the trusted shape — a generic `Omit<T,'playable'> & {playable}`
+  signature was tried first but doesn't type-check against `Record<string,
+  SQLOutputValue>` results from `node:sqlite`.
