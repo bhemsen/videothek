@@ -156,6 +156,21 @@ function borderBoxHeight(entry) {
 }
 
 /**
+ * A new item starts from a clean slate: fresh cover, and the previous item's
+ * position/duration cleared until the new element's `timeupdate`/
+ * `durationchange` report its own (never a stale elapsed label or slider).
+ * @param {PlayerState['item']} item @param {PlayerState['mode']} mode @param {BarParts} parts
+ * @returns {void}
+ */
+function resetForItem(item, mode, parts) {
+  parts.cover.replaceChildren(coverImg({ coverId: item.coverId, kind: mode === 'music' ? 'album' : 'book' }));
+  parts.seek.max = '0';
+  parts.seek.value = '0';
+  parts.elapsed.textContent = formatClock(0);
+  parts.total.textContent = formatDuration(null);
+}
+
+/**
  * @param {PlayerState | null} state @param {BarParts} parts @param {(id: number | null) => boolean} itemChanged
  * @returns {void}
  */
@@ -168,9 +183,7 @@ function applyState(state, parts, itemChanged) {
   parts.forward.hidden = mode !== 'audiobook';
   parts.toggle.replaceChildren(audioIcon(playing ? 'pause' : 'play'));
   parts.toggle.setAttribute('aria-label', playing ? 'Pause' : 'Wiedergabe');
-  if (itemChanged(item.id)) {
-    parts.cover.replaceChildren(coverImg({ coverId: item.coverId, kind: mode === 'music' ? 'album' : 'book' }));
-  }
+  if (itemChanged(item.id)) resetForItem(item, mode, parts);
   parts.title.textContent = item.title;
   parts.subtitle.textContent =
     mode === 'music' ? (item.subtitle ?? '') : [item.groupTitle, item.subtitle].filter((part) => part != null).join(` ${MIDDLE_DOT} `);

@@ -42,16 +42,31 @@ export function bindMediaSession(player, audio) {
  * @returns {void}
  */
 function attachHandlers(player, audio) {
-  const session = navigator.mediaSession;
-  session.setActionHandler('play', () => { if (audio.paused) player.toggle(); });
-  session.setActionHandler('pause', () => { if (!audio.paused) player.toggle(); });
-  session.setActionHandler('previoustrack', () => player.previous());
-  session.setActionHandler('nexttrack', () => player.next());
-  session.setActionHandler('seekbackward', () => player.seekBy(-15));
-  session.setActionHandler('seekforward', () => player.seekBy(30));
-  session.setActionHandler('seekto', (details) => {
+  setHandler('play', () => { if (audio.paused) player.toggle(); });
+  setHandler('pause', () => { if (!audio.paused) player.toggle(); });
+  setHandler('previoustrack', () => player.previous());
+  setHandler('nexttrack', () => player.next());
+  setHandler('seekbackward', () => player.seekBy(-15));
+  setHandler('seekforward', () => player.seekBy(30));
+  setHandler('seekto', (details) => {
     if (details.seekTime != null) player.seekTo(details.seekTime);
   });
+}
+
+/**
+ * Registers one action handler; a browser that does not support `action`
+ * throws a `TypeError`, which is swallowed so one unsupported action never
+ * takes the rest of the Media Session binding (or the audio section) down.
+ * @param {MediaSessionAction} action
+ * @param {MediaSessionActionHandler} handler
+ * @returns {void}
+ */
+function setHandler(action, handler) {
+  try {
+    navigator.mediaSession.setActionHandler(action, handler);
+  } catch {
+    // Unsupported action in this browser: leave it unbound.
+  }
 }
 
 /**

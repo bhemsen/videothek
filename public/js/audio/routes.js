@@ -54,3 +54,28 @@ export function audioUrl({ section, view, id }) {
   if (section === 'audiobooks' && view === 'book' && id !== null) return `/audiobooks?book=${id}`;
   return `/${section}`;
 }
+
+/**
+ * True when following a link from `current` to `next` only changes the
+ * fragment (same path + query, non-empty hash) — e.g. Phase 1's
+ * "Zum Inhalt springen" skip link to `#main`. Such a link must keep the
+ * browser's native in-page jump instead of being turned into a route render.
+ * @param {{ pathname: string, search: string, hash: string }} next
+ * @param {{ pathname: string, search: string }} current
+ * @returns {boolean}
+ */
+export function isFragmentOnlyChange(next, current) {
+  return next.hash !== '' && next.pathname === current.pathname && next.search === current.search;
+}
+
+/**
+ * Whether a `popstate` at `location` needs a re-render: `false` when its
+ * canonical route URL equals the one last rendered, which is the case for a
+ * fragment-only history step (browsers fire `popstate` for those too).
+ * @param {{ pathname: string, search: string }} location
+ * @param {string | null} renderedUrl canonical URL of the last rendered route
+ * @returns {boolean}
+ */
+export function needsRender(location, renderedUrl) {
+  return audioUrl(parseAudioUrl(location.pathname, location.search)) !== renderedUrl;
+}

@@ -6,7 +6,7 @@
  */
 import { mountShell } from '../lib/shell.js';
 import { el } from '../lib/dom.js';
-import { parseAudioUrl, audioUrl } from './routes.js';
+import { parseAudioUrl, audioUrl, isFragmentOnlyChange, needsRender } from './routes.js';
 import { createAudioPlayer } from './player.js';
 import { createPlayerBar } from './player-bar.js';
 import { bindMediaSession } from './media-session.js';
@@ -19,8 +19,9 @@ import { render as audiobookDetail } from './views/audiobook-detail.js';
 /** @typedef {(route: AudioRoute) => void} Navigate */
 /** @typedef {{ container: HTMLElement, id: number | null, player: ReturnType<typeof createAudioPlayer>, navigate: Navigate }} ViewParams */
 /** @typedef {(params: ViewParams) => Promise<{ title: string, dispose?: () => void }>} ViewRenderer */
-/* A ViewRenderer must not reject: renderRoute has no catch, so views own their
- * own error state (e.g. render a message into `container`) and always resolve. */
+/* A ViewRenderer must never reject (spec "View contract"): renderRoute has no
+ * catch, so views own their error state (render it into `container`) and
+ * always resolve. */
 
 /** @type {Record<AudioRoute['section'], Record<string, ViewRenderer>>} */
 const VIEWS = {
@@ -49,6 +50,9 @@ let currentView = null;
  * time its view promise settles was superseded by a later navigation and is
  * dropped instead of overwriting the newer view. */
 let navToken = 0;
+/** Canonical URL of the route last rendered; lets `popstate` skip
+ * fragment-only history steps (e.g. after the skip link). @type {string | null} */
+let renderedUrl = null;
 
 /**
  * Swaps a fresh target into the live `container` synchronously — before the
@@ -65,6 +69,7 @@ let navToken = 0;
  */
 async function renderRoute(route) {
   const token = ++navToken;
+  renderedUrl = audioUrl(route);
   currentView?.dispose?.();
   currentView = null;
   const view = VIEWS[route.section][route.view];
@@ -107,7 +112,9 @@ function syncFromLocation() {
 /**
  * Intercepts a primary, unmodified click on a same-origin `/music` or
  * `/audiobooks` link (Phase 1's nav entries and every in-section link) and
- * turns it into a `pushState` navigation instead of a page load.
+ * turns it into a `pushState` navigation instead of a page load. A link that
+ * only changes the fragment (the shell's "Zum Inhalt springen" `#main`) is
+ * left to the browser's native in-page jump.
  * @param {MouseEvent} event
  * @returns {void}
  */
@@ -121,11 +128,14 @@ function onClick(event) {
   const url = new URL(anchor.href, location.href);
   if (url.origin !== location.origin) return;
   if (url.pathname !== '/music' && url.pathname !== '/audiobooks') return;
+  if (isFragmentOnlyChange(url, location)) return;
   event.preventDefault();
   navigate(parseAudioUrl(url.pathname, url.search));
 }
 
 document.addEventListener('click', onClick);
-window.addEventListener('popstate', () => renderRoute(parseAudioUrl(location.pathname, location.search)));
+window.addEventListener('popstate', () => {
+  if (needsRender(location, renderedUrl)) renderRoute(parseAudioUrl(location.pathname, location.search));
+});
 
 syncFromLocation();
