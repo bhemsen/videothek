@@ -30,7 +30,7 @@ const CHECK = '✓';
  * @returns {Promise<{ title: string, dispose?: () => void }>}
  */
 export async function render({ container, id, player }) {
-  container.append(el('h1', {}, TITLE));
+  container.append(el('h1', { class: 'shell-title' }, TITLE));
   /** @type {{ dispose: (() => void) | null }} */
   const state = { dispose: null };
   const result = await load(container, /** @type {number} */ (id), player, state);
@@ -76,7 +76,7 @@ function buildLoadError(err, retry) {
       'div',
       { class: 'book-error' },
       el('p', {}, 'Hörbuch nicht gefunden.'),
-      el('a', { class: 'book-detail__back', href: '/audiobooks' }, '‹ Hörbücher'),
+      el('a', { class: 'back-link', href: '/audiobooks' }, '‹ Hörbücher'),
     );
   }
   const button = el('button', { type: 'button', class: 'btn btn-secondary' }, 'Erneut versuchen');
@@ -86,7 +86,7 @@ function buildLoadError(err, retry) {
 
 /** @param {AudiobookDetail} book @param {QueueItem[]} items @param {AudioPlayer} player @returns {HTMLElement} */
 function buildHeader(book, items, player) {
-  const back = el('a', { class: 'book-detail__back', href: '/audiobooks' }, '‹ Hörbücher');
+  const back = el('a', { class: 'back-link', href: '/audiobooks' }, '‹ Hörbücher');
   const cover = el('div', { class: 'book-detail__cover' }, coverImg({ coverId: book.coverId, kind: 'book' }));
   const info = buildInfo(book, items, player);
   return el('div', { class: 'book-detail' }, back, el('div', { class: 'book-detail__header' }, cover, info));
@@ -97,7 +97,7 @@ function buildInfo(book, items, player) {
   const fileMeta = `${pluralizeFiles(book.fileCount)} ${MIDDLE_DOT} ${formatTotal(book.duration)}`;
   const children = [
     el('p', { class: 'book-detail__overline' }, 'Hörbuch'),
-    el('h1', {}, book.title),
+    el('h1', { class: 'shell-title' }, book.title),
     el('p', { class: 'book-detail__author' }, book.author ?? UNKNOWN_AUTHOR),
     el('p', { class: 'book-detail__meta' }, fileMeta),
   ];

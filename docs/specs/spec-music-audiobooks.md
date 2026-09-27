@@ -904,3 +904,26 @@ compared with the exports):
   book via `buildBooks(listGroupRows(db, row.groupKey))` (always exactly one
   book, since every row shares that `group_key`) rather than duplicating
   `audio-groups.js`'s grouping logic.
+- 2026-09-27: issue #194 implementation (`audiobook-grid.js`,
+  `audiobook-detail.js`, `audio-books.css`) — milestone QA found the grid and
+  book-detail `<h1>` rendering at the base 48 px `h1` instead of the shell
+  heading scale, so both now carry `shell-title` like every other page's
+  heading and the album detail `<h1>` already did. `.book-grid-view__heading`
+  gets the `--space-4` bottom margin its zeroed child `h1` had removed, and
+  `.book-row h2` ("Weiterhören") is sized `--text-xl` the same way
+  `.music-artist-section__heading h2` is, instead of the default 32 px `h2`.
+  `.book-row__item`'s width changes from a bare `40%`/`22%` percentage to the
+  grid's own `min(var(--grid-min), calc(50% - var(--space-2)))` formula, so
+  the row cards are always exactly as wide as the grid cards below them and
+  the now-redundant 768 px override is dropped. The back link swaps the
+  undocumented `.book-detail__back` (missing `text-decoration: none`, the
+  only remaining underlined nav link) for the shared `.back-link` class
+  `audio-music.css` already defines and both audio pages already load,
+  matching the album view's "‹ Musik" exactly instead of duplicating the
+  rule; the dead `.book-detail__back` rule is removed. **Verification:**
+  `npm run verify` green (1358 tests); manually walked in Chromium against
+  `test/fixtures/media` with a seeded `PUT /api/progress/:id` row to
+  populate the "Weiterhören" row — computed styles confirmed the grid/detail
+  `h1` and the "Weiterhören" `h2` match `/music`'s `24px`/`600` exactly at
+  the tested viewport, the row item and grid card widths are both exactly
+  `160px`, and the back link's `text-decoration-line` is `none`.
