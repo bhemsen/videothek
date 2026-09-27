@@ -1,3 +1,4 @@
+import { registerGalleryRoutes } from '../api/gallery.js';
 import { registerHealthRoutes } from '../api/health.js';
 import { registerThumbRoutes } from '../api/thumb.js';
 
@@ -12,4 +13,5 @@ import { registerThumbRoutes } from '../api/thumb.js';
 export function registerRoutes(router, deps) {
   registerHealthRoutes(router, deps);
   registerThumbRoutes(router, deps);
+  registerGalleryRoutes(router, deps);
 }
