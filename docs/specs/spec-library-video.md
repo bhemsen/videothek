@@ -1333,3 +1333,21 @@ and desktop 1440 px, compared with the design exports):
   to sections", and the mockup's highlighted first chip is static illustration,
   not a stated requirement; not built to keep the page free of scroll-position
   JS the spec never asks for.
+- 2026-09-27 (#176): the page-scoped-`movies.css` split from the #37 decision
+  log above turned out to diverge from the shared header rather than reuse it
+  — `movies.css` redefined `.library-header` without `align-items`/
+  `justify-content` overrides, so `library.css`'s centering rules bled through
+  the cascade and centered the Filme header while shrink-wrapping the sort
+  control (`/series`'s separate `.sort-links`/`.sort-link` two-pill control
+  never matched the segmented `filme-mobile.png`/`serien-mobile.png` mockups
+  either). Fix: both pages' header + full-width segmented sort control now
+  come from one new file, `public/css/library-header.css` (`.library-header`,
+  `.library-header__heading`, `.library-header__count`, `.sort-control`,
+  `.sort-control__link`), linked by both `movies.html` and `series.html`;
+  `library.css`'s old `.sort-links`/`.sort-link` rules and its conflicting
+  `.library-header` are removed, and `series.js`'s sort nav now renders
+  `.sort-control`/`.sort-control__link` to match. Not folded into `library.css`
+  itself — that file already sits at the constitution's 300-line cap.
+  `movies.html`'s `<link>` to `movies.css` was replaced with one to
+  `library-header.css`; `movies.css` itself is kept as an empty, no-longer-
+  linked file (rather than deleted) with a header comment documenting the bug.

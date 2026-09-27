@@ -24,7 +24,7 @@ const count = el('span', { class: 'library-header__count' });
 const header = el(
   'div',
   { class: 'library-header' },
-  el('div', { class: 'library-header__titles' }, heading, count),
+  el('div', { class: 'library-header__heading' }, heading, count),
   buildSortControl(sort),
 );
 const content = el('div', {});
