@@ -10,7 +10,7 @@ import assert from 'node:assert/strict';
 
 const g = /** @type {Record<string, any>} */ (/** @type {unknown} */ (globalThis));
 const PAGE_URL = new URL('../../public/js/player.js', import.meta.url).href;
-const SAVED = ['document', 'location', 'history', 'fetch'].map((k) => [k, g[k]]);
+const SAVED = ['document', 'location', 'history', 'fetch', 'window'].map((k) => [k, g[k]]);
 
 class FakeNode extends EventTarget {
   /** @param {string} tagName */
@@ -151,10 +151,13 @@ function install({ search, item = null, headStatus = 200 }) {
   };
   g.location = { search, origin: 'http://h', pathname: '/player', assign() {}, replace() {}, reload() {} };
   g.history = { length: 1, back() {} };
+  // P4's progress tracker (trackPlayback) attaches a `pagehide` listener unconditionally.
+  g.window = { addEventListener() {}, removeEventListener() {} };
   g.fetch = async (/** @type {string} */ url, /** @type {{ method: string }} */ init) => {
     requests.push({ url, method: init.method });
-    const status = init.method === 'HEAD' ? headStatus : item === null ? 404 : 200;
-    const body = init.method === 'HEAD' || item === null ? '' : JSON.stringify(item);
+    const isProgress = url.startsWith('/api/progress/');
+    const status = init.method === 'HEAD' ? headStatus : item === null && !isProgress ? 404 : 200;
+    const body = init.method === 'HEAD' ? '' : isProgress ? JSON.stringify({ state: 'none' }) : item === null ? '' : JSON.stringify(item);
     return { status, text: async () => body, headers: { get: () => null } };
   };
 }
@@ -206,7 +209,12 @@ test('an invalid id shows "Titel nicht gefunden" without any request', async () 
 test('a non-playable item makes no /media/ request and creates no <video>', async () => {
   install({ search: '?id=7', item: movie({ playable: false }) });
   await loadPage();
-  assert.deepEqual(requests, [{ url: '/api/library/items/7', method: 'GET' }]);
+  // P4 seam: getProgress(id) always starts alongside the item fetch, even
+  // though a non-playable item never awaits it or starts a tracker.
+  assert.deepEqual(requests, [
+    { url: '/api/library/items/7', method: 'GET' },
+    { url: '/api/progress/7', method: 'GET' },
+  ]);
   assert.equal(videos.length, 0);
   assert.ok(findByText('Dieses Video kann nicht abgespielt werden'));
   assert.ok(findByText('Nicht abspielbar'));

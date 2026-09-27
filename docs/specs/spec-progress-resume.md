@@ -880,3 +880,17 @@ phone 390 px and desktop 1440 px, compared with the design exports):
   finished-guard branch (existing row left untouched) both reuse
   `toProgressEntryJson`/`entryFromProgressRow` rather than building the JSON
   shape a second time.
+- 2026-09-27: implementation (#56) — `public/js/player.js`'s `loadItem`
+  fires the item fetch and `getProgress(id)` back-to-back before awaiting
+  either (both in flight before either settles), so a non-playable/error/
+  wrong-category item still issues the `/api/progress/:id` GET even though it
+  never awaits or uses the result (only the playable path awaits it and calls
+  `attachVideo`/`trackPlayback`); `test/public/player-page.test.js`'s
+  non-playable case was updated to expect both requests, and its `install()`
+  now stubs a global `window` (`trackPlayback` unconditionally adds a
+  `pagehide` listener). `resume-toast.js`'s "×"/rotate glyphs reuse the
+  Material Design "close"/"replay" 24×24 paths (`createIcon`, P1's icon
+  style) since the spec names the icons but not their path data. Kept
+  `public/js/player.js` at exactly 300 lines by tightening pre-existing
+  comments it already touched, rather than splitting the seam into a new
+  file outside the issue's Files list.
