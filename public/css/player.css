@@ -1,0 +1,225 @@
+/*
+ * Video player page (`/player?id=`, no shell): back button + title block,
+ * the video stage or an error/loading panel, the below-stage "Nächste
+ * Folge" button and the keyboard hint line. See
+ * docs/specs/spec-video-streaming.md "Design".
+ *
+ * Every length/colour here is a token from tokens.css, or a calc()/
+ * color-mix() built from one — no raw value outside tokens.css
+ * (enforced by test/frontend-rules.test.js).
+ */
+
+.player-page {
+  display: flex;
+  flex-direction: column;
+  gap: var(--space-6);
+  max-width: var(--content-max);
+  margin-inline: auto;
+  padding: var(--space-4);
+}
+
+@media (min-width: 768px) {
+  .player-page {
+    padding: var(--space-6);
+  }
+}
+
+/* Header: back button + title block */
+
+.player-header {
+  display: flex;
+  flex-direction: column;
+  gap: var(--space-3);
+}
+
+@media (min-width: 768px) {
+  .player-header {
+    flex-direction: row;
+    align-items: center;
+    gap: var(--space-4);
+  }
+}
+
+.player-back {
+  align-self: flex-start;
+}
+
+.player-title[hidden] {
+  display: none;
+}
+
+.player-title__overline {
+  margin: 0;
+  color: var(--color-muted);
+  font-size: var(--text-sm);
+  font-weight: var(--weight-semibold);
+}
+
+.player-title__heading {
+  margin: 0;
+  font-size: var(--text-xl);
+  font-weight: var(--weight-bold);
+}
+
+/* Video stage */
+
+.player-stage[hidden] {
+  display: none;
+}
+
+.player-stage video {
+  display: block;
+  width: calc(100% + 2 * var(--space-4));
+  max-height: 80dvh;
+  background: var(--color-background);
+  margin-inline: calc(-1 * var(--space-4));
+}
+
+@media (min-width: 768px) {
+  .player-stage video {
+    width: 100%;
+    margin-inline: 0;
+    border-radius: var(--radius-md);
+  }
+}
+
+/* Loading text / error panel box */
+
+.player-panel-box {
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  padding: var(--space-8) 0;
+}
+
+.player-panel-box[hidden] {
+  display: none;
+}
+
+@media (min-width: 768px) {
+  .player-panel-box {
+    padding: 0;
+    border: var(--border-width) solid var(--color-border);
+    border-radius: var(--radius-lg);
+    aspect-ratio: 16 / 9;
+  }
+}
+
+.player-loading {
+  margin: 0;
+  color: var(--color-muted);
+}
+
+.player-panel {
+  display: flex;
+  flex-direction: column;
+  align-items: center;
+  width: 100%;
+  max-width: calc(var(--space-16) * 7.5);
+  padding: var(--space-8);
+  background: var(--color-secondary);
+  border-radius: var(--radius-lg);
+  box-shadow: var(--shadow-md);
+  text-align: center;
+}
+
+.player-panel > svg:first-child {
+  width: var(--space-12);
+  height: var(--space-12);
+  margin-bottom: var(--space-4);
+  color: var(--color-destructive);
+}
+
+.player-badge {
+  display: inline-flex;
+  align-items: center;
+  gap: var(--space-1);
+  margin-bottom: var(--space-4);
+  padding: 0 var(--space-3);
+  color: var(--color-destructive);
+  border: var(--border-width) solid var(--color-destructive);
+  border-radius: var(--radius-full);
+  font-size: var(--text-xs);
+  font-weight: var(--weight-semibold);
+}
+
+.player-badge svg {
+  width: var(--space-4);
+  height: var(--space-4);
+}
+
+.player-panel__heading {
+  margin: 0 0 var(--space-2);
+  font-size: var(--text-lg);
+  font-weight: var(--weight-semibold);
+}
+
+.player-panel__body {
+  margin: 0 0 var(--space-6);
+  color: var(--color-muted);
+  font-size: var(--text-sm);
+}
+
+.player-panel__actions {
+  display: flex;
+  flex-direction: column;
+  gap: var(--space-3);
+  width: 100%;
+}
+
+.player-panel__actions .btn {
+  width: 100%;
+}
+
+@media (min-width: 768px) {
+  .player-panel__actions {
+    flex-direction: row;
+    justify-content: center;
+    width: auto;
+  }
+
+  .player-panel__actions .btn {
+    width: auto;
+  }
+}
+
+/* Below-stage "Nächste Folge" */
+
+.player-next-slot:empty {
+  display: none;
+}
+
+.player-next {
+  width: 100%;
+}
+
+@media (min-width: 768px) {
+  .player-next-slot {
+    display: flex;
+    justify-content: flex-end;
+  }
+
+  .player-next {
+    width: auto;
+  }
+}
+
+/* Keyboard hint (pointer devices with hover only) */
+
+.player-hint {
+  display: none;
+  margin: 0;
+  color: var(--color-muted);
+  font-size: var(--text-xs);
+}
+
+@media (hover: hover) and (pointer: fine) {
+  .player-hint {
+    display: block;
+  }
+}
+
+/* Shown only while the video is attached (hidden in loading/panel states). */
+.player-hint[hidden] {
+  display: none;
+}
