@@ -124,6 +124,7 @@ async function processItem({ db, mediaRoot, log, readTags, resolvePath }, item, 
   try {
     tags = await readTags(absPath, { ext: item.ext, size: item.size });
   } catch {
+    assertOpen(db); // a read that fails because shutdown is under way must not log either
     log.warn('audio_meta_read_failed', { relPath: item.rel_path });
   }
 
@@ -161,6 +162,29 @@ async function runPass(deps, now) {
 }
 
 /**
+ * Runs passes until no coalesced rerun is pending. A `QuietStop` — or any
+ * error once `db.isOpen` is false — ends the loop without a log line (the
+ * spec's "checks `db.isOpen` ... in its error handler"); any other error ends
+ * it with `audio_meta_pass_failed` (the next completed scan retries).
+ * @param {{ db: import('node:sqlite').DatabaseSync, mediaRoot: string, log: Logger,
+ *   readTags: typeof readAudioTags, resolvePath: typeof resolveMediaPath }} deps
+ * @param {() => number} now
+ * @param {{ rerun: boolean }} state shared with `refreshAudioMeta`, which sets `rerun`
+ * @returns {Promise<void>}
+ */
+async function runUntilSettled(deps, now, state) {
+  try {
+    do {
+      state.rerun = false;
+      await runPass(deps, now);
+    } while (state.rerun);
+  } catch (err) {
+    if (err instanceof QuietStop || !deps.db.isOpen) return;
+    deps.log.error('audio_meta_pass_failed', { error: err instanceof Error ? err.message : String(err) });
+  }
+}
+
+/**
  * Synchronously creates the pass's `db`/`mediaRoot`/`readTags`/`resolvePath`
  * closure and the single-flight coalescing state around one run. See the
  * module doc and the spec's "Pass algorithm" decision row for the exact
@@ -179,7 +203,7 @@ export function createAudioMetaPass({
 }) {
   const deps = { db, mediaRoot, log, readTags, resolvePath };
   let running = false;
-  let rerun = false;
+  const state = { rerun: false };
   /** @type {Promise<void> | null} */
   let currentPass = null;
   /** @type {Array<() => void>} */
@@ -192,24 +216,6 @@ export function createAudioMetaPass({
     for (const resolve of waiters) resolve();
   }
 
-  /** @returns {Promise<void>} */
-  async function runUntilSettled() {
-    try {
-      do {
-        rerun = false;
-        await runPass(deps, now);
-      } while (rerun);
-    } catch (err) {
-      if (!(err instanceof QuietStop)) {
-        log.error('audio_meta_pass_failed', { error: err instanceof Error ? err.message : String(err) });
-      }
-    } finally {
-      running = false;
-      currentPass = null;
-      settleIdle();
-    }
-  }
-
   /**
    * @param {unknown} [_event] the scanner's `ScanCompletePayload`; unused —
    *   every pass re-selects the stale list itself instead of the event's stats.
@@ -217,11 +223,15 @@ export function createAudioMetaPass({
    */
   function refreshAudioMeta(_event) {
     if (running) {
-      rerun = true;
+      state.rerun = true;
       return /** @type {Promise<void>} */ (currentPass);
     }
     running = true;
-    currentPass = runUntilSettled();
+    currentPass = runUntilSettled(deps, now, state).finally(() => {
+      running = false;
+      currentPass = null;
+      settleIdle();
+    });
     return currentPass;
   }
 
