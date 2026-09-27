@@ -16,8 +16,11 @@ import { open as fsOpen } from 'node:fs/promises';
 /** @typedef {{ orientation: number | null, takenAt: string | null, thumbOffset: number | null, thumbLength: number | null }} ExifResult */
 /** @typedef {{ entries: Map<number, { type: number, count: number, entryStart: number }>, next: number }} Ifd */
 
+/** Leading bytes read for the APP0 + APP1 EXIF header (APP1 <= 64 KiB by format). */
 export const EXIF_WINDOW_BYTES = 131072;
+/** Lower-case extensions whose files get an EXIF header read. */
 export const JPEG_EXTENSIONS = Object.freeze(['jpg', 'jpeg', 'jfif']);
+/** MIME type of an EXIF IFD1 thumbnail (Compression 6 = JPEG). */
 export const THUMB_MIME = 'image/jpeg';
 
 const MAX_IFD_ENTRIES = 512;

@@ -559,7 +559,9 @@ Human QA (Chromium + Firefox; desktop 1280 px and 390 px mobile emulation;
   unreadable or invalid such as `0000:00:00 00:00:00`), not only when absent;
   "Compression absent or 6" treats a present but unreadable Compression entry
   (unknown TIFF type, out-of-bounds value) as not 6, so the thumbnail is
-  rejected.
+  rejected. The marker walk skips every length-bearing segment (DQT, SOFn,
+  DHT, ...), not only APPn/COM, so a table segment before APP1 does not stop
+  it.
 - 2026-09-27 (#75, `test/helpers/exif-jpeg.js`): the embedded base JPEG is a
   16x16 baseline grayscale image built from flat 8x8 blocks (top block-row
   dark, bottom light) — a flat block's DCT has no AC energy, so the one-off
