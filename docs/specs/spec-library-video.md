@@ -1088,3 +1088,17 @@ and desktop 1440 px, compared with the design exports):
   unplayable. `library-api.js`'s `getCategory`/`getSeries` return the parsed
   JSON typed via JSDoc (`CategoryItemsResponse | CategorySeriesResponse`,
   `SeriesDetail`) for later phases to consume directly.
+- 2026-09-27 (#35): `src/db/library-queries.js` picks between two fully
+  literal prepared SQL strings per sort order (never interpolates the
+  `ORDER BY` clause), matching the constitution's "no string-concatenated
+  SQL" rule to the letter. `listSeries`'s `sort=title` applies the same
+  "year `NULL` last" rule as items (`ls.year IS NULL, ls.year, ls.id`), for
+  consistency, though the spec states it only for items; `sort=added` breaks
+  ties on `ls.id DESC` (no per-series `mtime_ms` exists). A series with zero
+  items — id still in `library_series` but every episode gone (pre-orphan-
+  sweep) — is treated as not found (`getSeriesWithEpisodes` returns
+  `undefined`, `listSeries` omits it via its `INNER JOIN`), consistent with
+  "a series appears only while it has items". `getSeriesWithEpisodes`'s
+  per-season episode order reuses `episodes.js`'s exact tuple
+  (`episode IS NULL, episode, COALESCE(episode_end, -1), sort_title, id`) so
+  there is still only one ordering rule for a series' episodes in the app.
