@@ -951,3 +951,41 @@ Chromium and Firefox, mobile ≤ 767 px and desktop ≥ 1024 px viewport):
   default port), slightly widening the spec's `hostname[:port]` equality
   rule; flagged in review as practically harmless but not yet a confirmed
   spec change.
+- 2026-09-27 (#17): `src/app.js`, `src/server.js`, `src/http/routes.js`,
+  `src/api/health.js`, `test/helpers/app.js` implemented. `app.js`'s own
+  `close()` is a plain `server.close()`; the "5 s then `closeAllConnections`"
+  timeout lives one layer up in `server.js`'s `stop()` (`closeIdleConnections`
+  immediately, a `setTimeout(() => server.closeAllConnections(), 5000)` raced
+  against `app.close()`), so `app.js` stays the same minimal, directly
+  testable seam `test/helpers/app.js` also builds on, and only the real
+  process entry needs the production shutdown grace period. The
+  `origin_rejected {origin, host}` log fields are computed by a small
+  function local to `app.js` duplicating security.js's private "first
+  `X-Forwarded-Host` else `Host`" lookup, rather than a new export from
+  `src/http/security.js` (outside this issue's file list). For the generic
+  (non-`HttpError`) 500 branch, a `HEAD` request is grouped with `GET` (plain
+  German text, not JSON) since it addresses a page route, not an API/mutating
+  one. `server.js` logs `config_invalid`/`admin_missing` exactly as specified
+  for those two known failures (the latter already logged inside
+  `ensureAdmin`, so `runStart`'s catch adds nothing for it); a broken
+  migration or a listen failure (e.g. `EADDRINUSE`) — outside the spec's fixed
+  event list — both fall into one generic `startup_failed {error}` line
+  before exit 1, so a startup failure is never silently lost even where no
+  named event was reserved for it. `test/helpers/app.js`'s `login(username,
+  password)` verifies the password via `verifyPassword` against the stored
+  hash before minting a session through the store directly (no HTTP), so a
+  test's own setup mistake (wrong password, user never created) fails at the
+  call site instead of silently producing a session for the wrong intent.
+  `test/route-auth.test.js` reads the route list from a throwaway
+  `createRouter()` + `registerRoutes(router, deps)` call rather than reusing
+  the running app's own router, so it automatically covers every route a
+  later phase adds to `src/http/routes.js` with no edit here. `createApp`
+  additionally returns `router` (beyond the `{ server, deps, close() }`
+  above) so other tests can register routes onto a live app instead —
+  `app-error-mapping.test.js` does this; `startTestApp` (below) passes both
+  `router` and `server` through for the same reason, beyond its own spec'd
+  `{ baseUrl, db, config, deps, createUser, login, close }`. `stop()` is
+  memoised (a concurrent second call shares the in-flight shutdown) and
+  closes the DB and logs `shutdown` in a `finally`, so a failing
+  `server.close()` never leaves the DB open; `startTestApp` likewise releases
+  the DB and temp dir when its own setup throws partway.
