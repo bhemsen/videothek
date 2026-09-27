@@ -116,7 +116,7 @@
 }
 
 .episode-row__number {
-  flex: 0 0 auto;
+  flex: 0 0 var(--space-12); text-align: right;
   color: var(--color-muted);
   font-family: var(--font-mono);
 }

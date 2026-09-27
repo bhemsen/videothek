@@ -11,6 +11,7 @@ import { createApp } from './app.js';
 import { BootstrapError, ensureAdmin } from './auth/bootstrap.js';
 import { ConfigError, loadConfig } from './config.js';
 import { migrate, openDatabase } from './db/index.js';
+import { createAudioMetaPass } from './library/audio-meta.js';
 import { createImageMetaSync } from './library/image-meta.js';
 import { startLibrary } from './library/index.js';
 import { createLogger } from './log.js';
@@ -144,6 +145,7 @@ async function runStart(providedConfig, log) {
     await ensureAdmin({ db, adminUser: config.adminUser, adminPassword: config.adminPassword, log });
 
     library = startLibrary({ db, config, log });
+    library.onScanComplete(createAudioMetaPass({ db, mediaRoot: config.mediaRoot, log }).refreshAudioMeta);
     library.onScanComplete(createImageMetaSync({ db, mediaRoot: config.mediaRoot, log }).syncImageMeta);
     const app = createApp({ config, db, log, library });
     await listen(app.server, config.host, config.port);
