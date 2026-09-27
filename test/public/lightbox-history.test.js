@@ -9,7 +9,8 @@ const saved = { window: undefined, history: undefined };
 /**
  * Minimal in-memory session history: a stack of `{ state, url }` entries and
  * a cursor. `back()` moves the cursor and dispatches `popstate` synchronously
- * (real browsers dispatch it asynchronously; ordering is irrelevant here).
+ * by default; with `async = true` the traversal is deferred until `flush()`,
+ * as in real browsers (used by the re-open-during-pending-back tests).
  */
 class FakeHistory {
   /** @param {(state: unknown) => void} dispatch */
@@ -19,6 +20,9 @@ class FakeHistory {
     this.entries = [{ state: null, url: '/images?folder=a' }];
     this.index = 0;
     this.backCalls = 0;
+    this.async = false;
+    /** @type {number[]} */
+    this.pending = [];
   }
   get state() {
     return this.entries[this.index].state;
@@ -34,7 +38,11 @@ class FakeHistory {
   }
   back() {
     this.backCalls += 1;
-    this.go(-1);
+    if (this.async) this.pending.push(-1);
+    else this.go(-1);
+  }
+  flush() {
+    for (const delta of this.pending.splice(0)) this.go(delta);
   }
   forward() {
     this.go(1);
@@ -90,14 +98,14 @@ test('replace keeps a single lightbox entry while navigating', () => {
   assert.deepEqual(fake.entries[1], { state: { lightbox: 9 }, url: '#bild-9' });
 });
 
-test('release steps back once to the folder entry and fires onPop there', () => {
+test('release steps back once to the folder entry without re-entering onPop', () => {
   let pops = 0;
   const lh = createLightboxHistory({ onPop: () => (pops += 1) });
   lh.push(7);
   lh.release();
   assert.equal(fake.index, 0);
   assert.equal(fake.backCalls, 1);
-  assert.equal(pops, 1);
+  assert.equal(pops, 0, 'its own back step is not a user navigation');
 });
 
 test('release does not step back when a back navigation already left the lightbox entry', () => {
@@ -169,4 +177,51 @@ test('shared link with #bild-<id> (no prior state): Back closes the lightbox ont
   fake.back();
   assert.equal(pops, 1);
   assert.deepEqual(fake.entries[0], { state: null, url: '/images?folder=a' });
+});
+
+test('re-open before the async close back step lands: new lightbox stays open with its own entry', () => {
+  let pops = 0;
+  const lh = createLightboxHistory({ onPop: () => (pops += 1) });
+  fake.async = true;
+  lh.push(7);
+  lh.release();
+  lh.push(9);
+  lh.replace(10);
+  assert.deepEqual(fake.entries[1].state, { lightbox: 7 }, 'nothing written while the back step is pending');
+  fake.flush();
+  assert.equal(pops, 0, 'the close back step must not close the re-opened lightbox');
+  assert.equal(fake.index, 1);
+  assert.equal(fake.entries.length, 2);
+  assert.deepEqual(fake.entries[1], { state: { lightbox: 10 }, url: '#bild-10' });
+  lh.release();
+  fake.flush();
+  assert.equal(fake.index, 0);
+  assert.equal(fake.state, null);
+});
+
+test('close during a pending back step drops the queued re-open', () => {
+  const lh = createLightboxHistory({ onPop: () => {} });
+  fake.async = true;
+  lh.push(7);
+  lh.release();
+  lh.push(9);
+  lh.release();
+  assert.equal(fake.backCalls, 1, 'no second back step while one is pending');
+  fake.flush();
+  assert.equal(fake.index, 0);
+  assert.equal(fake.state, null);
+});
+
+test('after a pending back step lands, a later Back past the folder calls onPop again', () => {
+  let pops = 0;
+  const lh = createLightboxHistory({ onPop: () => (pops += 1) });
+  fake.async = true;
+  lh.push(7);
+  lh.release();
+  fake.flush();
+  assert.equal(pops, 0, 'the lightbox own back step is swallowed');
+  lh.push(8);
+  fake.back();
+  fake.flush();
+  assert.equal(pops, 1);
 });

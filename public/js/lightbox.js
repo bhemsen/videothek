@@ -140,7 +140,7 @@ function bindSwipe(stage, onNavigate) {
  * @param {number} index
  * @returns {void}
  */
-function renderChrome(dom, sequence, index) {
+export function renderChrome(dom, sequence, index) {
   const item = sequence[index];
   dom.counter.textContent = `${index + 1} / ${sequence.length}`;
   dom.captionName.textContent = item.name;
@@ -150,6 +150,10 @@ function renderChrome(dom, sequence, index) {
   const active = document.activeElement;
   const focused = active === dom.prevButton ? 'prev' : active === dom.nextButton ? 'next' : 'other';
   const target = navFocusTarget({ focused, atStart, atEnd });
+  // Enable both first: the focus target may still be disabled from the
+  // previous slide, and focus() on a disabled button is a silent no-op.
+  dom.prevButton.disabled = false;
+  dom.nextButton.disabled = false;
   if (target) ({ prev: dom.prevButton, next: dom.nextButton, close: dom.closeButton })[target].focus();
   dom.prevButton.disabled = atStart;
   dom.nextButton.disabled = atEnd;
