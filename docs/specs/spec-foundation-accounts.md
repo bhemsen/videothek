@@ -1077,3 +1077,29 @@ Chromium and Firefox, mobile ≤ 767 px and desktop ≥ 1024 px viewport):
   running instance, each destroyed immediately after its first response
   chunk (the exact race from the bug report), produced zero `request_error`
   lines while an unaborted request still served the full 2388-byte asset.
+- 2026-09-27 (#165): Fixed the account menu wrapping its "Angemeldet als …"
+  meta line for short usernames (milestone-1 QA round 2). `.account-menu-list`
+  is `position: absolute; right: 0` with no explicit `width`, so its
+  shrink-to-fit box width was floored by `min-width` alone
+  (`calc(var(--space-16) * 3)`, 192 px) while `.account-menu-meta` wrapped
+  independently inside it. Rather than guess a fixed token width large enough
+  for every username, `.account-menu-meta` gained `white-space: nowrap` (plus
+  `overflow: hidden; text-overflow: ellipsis` as a fallback for a pathological
+  name), which makes the meta line's own preferred width part of the menu's
+  shrink-to-fit calculation — the box now auto-grows to fit the "Angemeldet
+  als {name} ({role})" text on one line for any realistic username, verified
+  live (`qateamleiter`, 12 chars, renders on one line, box measured 264 px).
+  `min-width` was bumped from `--space-16 * 3` to `--space-16 * 4` (256 px,
+  closer to the `shell-desktop` export's 240 px) as a floor for short names,
+  and a `max-width: calc(100vw - var(--space-8))` ceiling was added so the
+  auto-grown box can never exceed the viewport (menu stays right-anchored
+  16 px from the header edge, matching the header's own `--space-4` padding,
+  so the ceiling leaves a symmetric 16 px gutter at 390 px width) — no raw
+  length outside `tokens.css`, `vw` is exempt from the frontend-rules literal-
+  length scan. The browser tooling available in this session could not force
+  an actual 390 px or 1280 px viewport (`resize_window` floored at an
+  innerWidth of 500 px regardless of the requested size), so the fix is
+  additionally verified analytically: the meta text's rendered width is
+  viewport-independent (262 px, measured live), which is under the max-width
+  ceiling at both 390 px (358 px) and 1280 px (1248 px), so neither breakpoint
+  triggers the ellipsis fallback or a horizontal overflow.
