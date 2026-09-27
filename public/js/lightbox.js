@@ -8,7 +8,7 @@
 import { el } from './lib/dom.js';
 import { chevronLeftIcon, chevronRightIcon, closeIcon } from './image-icons.js';
 import { formatTakenAt } from './image-format.js';
-import { classifySwipe, keyAction } from './lightbox-gestures.js';
+import { classifySwipe, keyAction, navFocusTarget } from './lightbox-gestures.js';
 import { createLightboxHistory } from './lightbox-history.js';
 import { preloadNeighbours, renderSlide } from './lightbox-slide.js';
 
@@ -148,8 +148,9 @@ function renderChrome(dom, sequence, index) {
   const atStart = index <= 0;
   const atEnd = index >= sequence.length - 1;
   const active = document.activeElement;
-  if (atStart && active === dom.prevButton) (atEnd ? dom.closeButton : dom.nextButton).focus();
-  if (atEnd && active === dom.nextButton) (atStart ? dom.closeButton : dom.prevButton).focus();
+  const focused = active === dom.prevButton ? 'prev' : active === dom.nextButton ? 'next' : 'other';
+  const target = navFocusTarget({ focused, atStart, atEnd });
+  if (target) ({ prev: dom.prevButton, next: dom.nextButton, close: dom.closeButton })[target].focus();
   dom.prevButton.disabled = atStart;
   dom.nextButton.disabled = atEnd;
 }

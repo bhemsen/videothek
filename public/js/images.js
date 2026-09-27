@@ -156,10 +156,10 @@ function handleLightboxClose(lastItemId) {
 
 /**
  * Handles a `#bild-<id>` hash present on the very first page load (a reload
- * or a shared link), once: any such hash is dropped from the current
- * (non-lightbox) history entry first, so a later Back step out of the
- * lightbox lands on the plain folder URL either way; a hash naming a
- * playable item in this folder then also opens the lightbox for it.
+ * or a shared link), once: the hash is dropped from the current entry's URL.
+ * A hash naming a playable item here reopens the lightbox; a reloaded
+ * `{ lightbox }` state is kept so `push()` reuses the entry and Back lands on
+ * the folder entry below it. Otherwise the state is cleared to `null`.
  * @param {GalleryView} view
  * @returns {void}
  */

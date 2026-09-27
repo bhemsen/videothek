@@ -141,3 +141,32 @@ test('dispose removes the popstate listener', () => {
   assert.equal(pops, 0);
   assert.equal(listeners.size, 0);
 });
+
+test('reload with #bild-<id> that reopens: browser Back closes the lightbox and stays in the folder', () => {
+  // Browsers keep history.state across a reload: the reloaded entry still
+  // carries { lightbox: 5 } above the folder entry it was pushed from.
+  fake.entries.push({ state: { lightbox: 5 }, url: '#bild-5' });
+  fake.index = 1;
+  let pops = 0;
+  const lh = createLightboxHistory({ onPop: () => (pops += 1) });
+  // images.js openFromInitialHash: keep the state when reopening, then open().
+  fake.replaceState(fake.state, '', '/images?folder=a');
+  lh.push(5);
+  assert.equal(fake.entries.length, 2, 'reopen reuses the reloaded entry');
+  fake.back();
+  assert.equal(pops, 1, 'Back must reach a state without lightbox and close the dialog');
+  assert.equal(fake.index, 0);
+  assert.equal(fake.entries[0].url, '/images?folder=a');
+});
+
+test('shared link with #bild-<id> (no prior state): Back closes the lightbox onto the plain folder URL', () => {
+  fake.entries[0] = { state: null, url: '/images?folder=a#bild-5' };
+  let pops = 0;
+  const lh = createLightboxHistory({ onPop: () => (pops += 1) });
+  fake.replaceState(fake.state, '', '/images?folder=a');
+  lh.push(5);
+  assert.equal(fake.entries.length, 2);
+  fake.back();
+  assert.equal(pops, 1);
+  assert.deepEqual(fake.entries[0], { state: null, url: '/images?folder=a' });
+});

@@ -179,10 +179,11 @@ html.lightbox-scroll-lock body {
   color: var(--color-muted);
 }
 
+/* < 768 px: centred between prev/next (mocks: lightbox-mobile.png). */
 .lightbox-hint {
   grid-area: hint;
-  align-self: end;
-  justify-self: end;
+  align-self: center;
+  justify-self: center;
   margin: 0;
   color: var(--color-muted);
   font-size: var(--text-sm);
@@ -207,7 +208,8 @@ html.lightbox-scroll-lock body {
   display: none;
 }
 
-/* >= 768 px: name · date on one line (mocks: lightbox-desktop.png). */
+/* >= 768 px: name · date on one line, hint bottom-right
+   (mocks: lightbox-desktop.png). */
 @media (min-width: 768px) {
   .lightbox-caption {
     display: flex;
@@ -218,5 +220,10 @@ html.lightbox-scroll-lock body {
 
   .lightbox-caption__sep {
     display: inline;
+  }
+
+  .lightbox-hint {
+    align-self: end;
+    justify-self: end;
   }
 }
