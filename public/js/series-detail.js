@@ -109,12 +109,18 @@ function buildSeasonSection(group) {
     el('h2', {}, seasonLabel(group.season)),
     el('span', { class: 'season-section__count' }, pluralize(group.episodes.length, 'Folge', 'Folgen')),
   );
-  return el(
-    'section',
-    { class: 'season-section', id: seasonAnchorId(group.season) },
-    heading,
-    ...group.episodes.map(createEpisodeRow),
-  );
+  const list = el('div', { class: 'episode-list' }, ...group.episodes.map(createEpisodeRow));
+  return el('section', { class: 'season-section', id: seasonAnchorId(group.season) }, heading, list);
+}
+
+/**
+ * Wraps the page's content in the centered, width-limited column (design.md
+ * "series detail") and swaps it into `main` in one operation.
+ * @param {...HTMLElement} children
+ * @returns {void}
+ */
+function renderMain(...children) {
+  main.replaceChildren(el('div', { class: 'series-detail' }, ...children));
 }
 
 /** @returns {HTMLElement} */
@@ -141,21 +147,21 @@ function buildErrorState(onRetry) {
  */
 async function load() {
   if (id === null) {
-    main.replaceChildren(buildBackLink(), buildMissingState());
+    renderMain(buildBackLink(), buildMissingState());
     return;
   }
-  main.replaceChildren(buildBackLink());
+  renderMain(buildBackLink());
   /** @type {SeriesDetail} */
   let series;
   try {
     series = await getSeries(id);
   } catch (err) {
     const isMissing = err instanceof ApiError && err.status === 404;
-    main.replaceChildren(buildBackLink(), isMissing ? buildMissingState() : buildErrorState(load));
+    renderMain(buildBackLink(), isMissing ? buildMissingState() : buildErrorState(load));
     return;
   }
   document.title = `${series.title} ${MIDDLE_DOT} Videothek`;
-  main.replaceChildren(
+  renderMain(
     buildBackLink(),
     buildHeader(series),
     buildChips(series.seasons),

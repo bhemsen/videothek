@@ -1365,3 +1365,31 @@ and desktop 1440 px, compared with the design exports):
   for the "Dark" fixture: every row's title starts at the same x
   regardless of number content, including the real `–` case (Extras/
   Interview).
+- 2026-09-27 (#189): the `.series-detail` centered column is
+  `max-width: calc(var(--content-max) * 0.75)` (960 px at the current
+  1280 px token value) instead of a new token — `tokens.css` is P1-owned
+  and `serie-detail-desktop.html`'s own `main { max-width: 960px }` is
+  exactly 3/4 of `--content-max`, so the ratio derives the export's value
+  from an existing token without adding one, matching the `content-max / 2`
+  precedent already used for the dialog width in `base.css`. `.episode-list`
+  gets the border + radius `md` the export's wrapper has, but deliberately
+  **without** `overflow: hidden`: the rows already fill the container's
+  full width with no gap, so a focused row's outline (offset outward) would
+  be clipped on every row, not just the first/last, if the container
+  clipped overflow. Instead only `.episode-list .episode-row:first-child`
+  and `:last-child` get matching corner radii (and the last row drops its
+  divider `border-bottom`), which clips the visible corners without an
+  overflow context — confirmed on `/series-detail` (Dark fixture) that no
+  ancestor between a row and the viewport sets `overflow` to anything but
+  `visible`. Verified live: `getComputedStyle` on `.series-detail`
+  (`max-width: 960px`), `.episode-list` (1 px `--color-border`, radius
+  `md`), the first/last row's corner radii and the last row's zero
+  `border-bottom-width`, `data-item-id` + `position: relative` intact, and
+  `document.documentElement.scrollWidth <= innerWidth` (no horizontal
+  scroll) — all against the "Dark" fixture's real API response, logged in
+  and headless-Chromium-rendered via the MCP browser tool. The sandboxed
+  browser's viewport stayed fixed at 657 px regardless of the requested
+  window size (a tooling limit of this run, not the page), so the ≥ 1024 px
+  centered-column *rendering* itself could not be screenshotted this round;
+  the 960 px `max-width` value was instead confirmed directly via
+  `getComputedStyle`, which is width-independent.
