@@ -1,0 +1,221 @@
+/*
+ * Admin page (`/admin`): user list (stacked cards on mobile, a table on
+ * desktop) and the "Neuer Benutzer" create form; native <dialog> chrome
+ * (border/background/backdrop) is shared from base.css.
+ *
+ * Every length/colour here is a token from tokens.css, or a calc()/fr value
+ * built from one — no raw px/rem/em outside tokens.css (enforced by
+ * test/frontend-rules.test.js); 768/1024 are the only literal @media lengths.
+ */
+
+.admin-subline {
+  margin: 0 0 var(--space-6);
+  color: var(--color-muted);
+}
+
+.admin-status {
+  margin: 0 0 var(--space-4);
+  color: var(--color-muted);
+  font-size: var(--text-sm);
+}
+
+.admin-status[hidden] {
+  display: none;
+}
+
+.muted {
+  color: var(--color-muted);
+}
+
+/* Layout: list above the create form until 1024 px, then side by side */
+
+.admin-layout {
+  display: flex;
+  flex-direction: column;
+  gap: var(--space-6);
+}
+
+/* User list — mobile: one card per user, no header row */
+
+.user-table-head {
+  display: none;
+}
+
+.user-list {
+  display: flex;
+  flex-direction: column;
+  gap: var(--space-4);
+  margin: 0;
+  padding: 0;
+  list-style: none;
+}
+
+.user-row {
+  display: flex;
+  flex-direction: column;
+  gap: var(--space-3);
+  padding: var(--space-4);
+  background: var(--color-secondary);
+  border: var(--border-width) solid var(--color-border);
+  border-radius: var(--radius-lg);
+}
+
+.user-row-created {
+  font-size: var(--text-sm);
+}
+
+.user-row-actions {
+  display: flex;
+  gap: var(--space-3);
+}
+
+.user-row-actions .btn {
+  flex: 1;
+}
+
+/* Create form card (both breakpoints) */
+
+.admin-create {
+  padding: var(--space-6);
+  background: var(--color-secondary);
+  border: var(--border-width) solid var(--color-border);
+  border-radius: var(--radius-lg);
+}
+
+.admin-create h2 {
+  margin-bottom: var(--space-4);
+}
+
+.admin-create-form {
+  display: flex;
+  flex-direction: column;
+  gap: var(--space-4);
+}
+
+.admin-create-form button[type='submit'] {
+  width: 100%;
+}
+
+.field label {
+  display: block;
+  margin-bottom: var(--space-2);
+  font-weight: var(--weight-semibold);
+}
+
+.field-hint {
+  margin: var(--space-1) 0 0;
+  color: var(--color-muted);
+  font-size: var(--text-sm);
+}
+
+.form-error {
+  margin: 0;
+  color: var(--color-destructive);
+  font-size: var(--text-sm);
+}
+
+.form-error[hidden] {
+  display: none;
+}
+
+/* Dialogs (delete confirm, password reset) */
+
+.admin-dialog {
+  width: 100%;
+}
+
+.dialog-note {
+  margin: 0;
+  color: var(--color-muted);
+  font-size: var(--text-sm);
+}
+
+.dialog-error {
+  margin: 0;
+  color: var(--color-destructive);
+  font-size: var(--text-sm);
+}
+
+.dialog-error[hidden] {
+  display: none;
+}
+
+.dialog-actions {
+  display: flex;
+  justify-content: flex-end;
+  gap: var(--space-3);
+}
+
+/* >= 768 px: the user list becomes a table; the form stays full-width below it */
+
+@media (min-width: 768px) {
+  .user-table-head {
+    display: grid;
+    grid-template-columns: 2fr 1fr 1fr 3fr;
+    gap: var(--space-4);
+    padding: 0 var(--space-4) var(--space-3);
+    color: var(--color-muted);
+    font-size: var(--text-sm);
+    border-bottom: var(--border-width) solid var(--color-border);
+  }
+
+  .user-list-wrap {
+    padding: var(--space-4);
+    background: var(--color-secondary);
+    border: var(--border-width) solid var(--color-border);
+    border-radius: var(--radius-lg);
+  }
+
+  .user-list {
+    gap: 0;
+  }
+
+  .user-row {
+    display: grid;
+    grid-template-columns: 2fr 1fr 1fr 3fr;
+    align-items: center;
+    gap: var(--space-4);
+    padding: var(--space-4) 0;
+    background: none;
+    border: 0;
+    border-radius: 0;
+    border-bottom: var(--border-width) solid var(--color-border);
+  }
+
+  .user-list li.user-row:last-child {
+    border-bottom: 0;
+  }
+
+  .user-row-role {
+    grid-column: 2;
+  }
+
+  .user-row-created {
+    grid-column: 3;
+  }
+
+  .user-row-actions {
+    grid-column: 4;
+  }
+
+  .user-row-actions .btn {
+    flex: none;
+  }
+}
+
+/* >= 1024 px: table and create form side by side */
+
+@media (min-width: 1024px) {
+  .admin-layout {
+    flex-direction: row;
+    align-items: start;
+  }
+
+  .user-list-wrap {
+    flex: 2;
+  }
+
+  .admin-create {
+    flex: 1;
+  }
+}
