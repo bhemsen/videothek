@@ -21,7 +21,7 @@ const MIDDLE_DOT = '·';
  * @returns {Promise<{ title: string }>}
  */
 export async function render({ container }) {
-  const heading = el('div', { class: 'book-grid-view__heading' }, el('h1', {}, TITLE));
+  const heading = el('div', { class: 'book-grid-view__heading' }, el('h1', { class: 'shell-title' }, TITLE));
   container.append(heading);
   await load(container, heading);
   return { title: TITLE };
@@ -53,7 +53,7 @@ async function load(container, heading) {
  * @returns {void}
  */
 function reload(container) {
-  const heading = el('div', { class: 'book-grid-view__heading' }, el('h1', {}, TITLE));
+  const heading = el('div', { class: 'book-grid-view__heading' }, el('h1', { class: 'shell-title' }, TITLE));
   container.replaceChildren(heading);
   load(container, heading);
 }
