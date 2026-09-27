@@ -11,6 +11,7 @@ import { createApp } from './app.js';
 import { BootstrapError, ensureAdmin } from './auth/bootstrap.js';
 import { ConfigError, loadConfig } from './config.js';
 import { migrate, openDatabase } from './db/index.js';
+import { startLibrary } from './library/index.js';
 import { createLogger } from './log.js';
 
 const PURGE_INTERVAL_MS = 60 * 60 * 1000;
@@ -57,10 +58,11 @@ function listen(server, host, port) {
  *   db: import('node:sqlite').DatabaseSync,
  *   log: import('./log.js').Logger,
  *   purgeTimer: NodeJS.Timeout,
+ *   library: import('./library/index.js').LibraryService,
  * }} options
  * @returns {() => Promise<void>}
  */
-function createStop({ app, db, log, purgeTimer }) {
+function createStop({ app, db, log, purgeTimer, library }) {
   /** @type {Promise<void> | null} */
   let stopping = null;
   const run = async () => {
@@ -73,8 +75,12 @@ function createStop({ app, db, log, purgeTimer }) {
       // Even when closing the server fails, the DB must not stay open (and
       // locked on Windows) and the shutdown must be on record.
       clearTimeout(forceTimer);
-      db.close();
-      log.info('shutdown');
+      try {
+        await library.stop();
+      } finally {
+        db.close();
+        log.info('shutdown');
+      }
     }
   };
   // Memoised: a second call while the first is in flight (or after it
@@ -134,7 +140,8 @@ async function runStart(providedConfig, log) {
     migrate(db, { log });
     await ensureAdmin({ db, adminUser: config.adminUser, adminPassword: config.adminPassword, log });
 
-    const app = createApp({ config, db, log });
+    const library = startLibrary({ db, config, log });
+    const app = createApp({ config, db, log, library });
     await listen(app.server, config.host, config.port);
     log.info('listening', { host: config.host, port: config.port });
 
@@ -142,7 +149,7 @@ async function runStart(providedConfig, log) {
     const purgeTimer = setInterval(() => app.deps.sessions.purgeExpired(), PURGE_INTERVAL_MS);
     purgeTimer.unref();
 
-    return { app, db, config, stop: createStop({ app, db, log, purgeTimer }) };
+    return { app, db, config, stop: createStop({ app, db, log, purgeTimer, library }) };
   } catch (err) {
     // Nothing past `openDatabase` succeeded (or `listen` itself failed): the
     // process is about to exit, but the DB connection must not leak — on

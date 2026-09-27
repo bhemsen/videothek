@@ -41,6 +41,49 @@ caused it. On an empty database, a missing or invalid `ADMIN_USER`/
 created: the process logs `admin_missing` with guidance to set both and
 exits with code `1`.
 
+## Medienordner
+
+Lege deine Dateien innerhalb von `MEDIA_ROOT` in einem dieser Ordner ab
+(Groß-/Kleinschreibung ist egal; mehrere Namen je Kategorie können gleichzeitig
+verwendet werden):
+
+| Kategorie | Ordnernamen |
+| --- | --- |
+| Filme | `Filme`, `Movies` |
+| Serien | `Serien`, `Series`, `TV` |
+| Musik | `Musik`, `Music` |
+| Hörbücher | `Hörbücher`, `Hoerbuecher`, `Audiobooks` |
+| Bilder | `Bilder`, `Pictures`, `Photos` |
+
+Dateien direkt unter `MEDIA_ROOT` oder in anderen Ordnern werden ignoriert.
+Versteckte Dateien/Ordner (Name beginnt mit `.`), bekannte NAS-/System-Ordner
+(`@eaDir`, `#recycle`, `System Volume Information`, …) und Symlinks werden nie
+eingelesen oder überwacht.
+
+Empfohlene Benennung für eine zuverlässige Titel-/Jahr- bzw.
+Serie-/Staffel-/Folge-Erkennung:
+
+- **Filme:** `Titel (Jahr).ext`, z. B. `Inception (2010).mp4`, oder ein
+  Unterordner `Titel (Jahr)/` mit der Videodatei darin.
+- **Serien:** ein Ordner pro Serie, darin optional `Staffel N` (oder
+  `Season N`), Dateien mit `SxxEyy` im Namen, z. B.
+  `Serien/Dark/Staffel 1/Dark S01E01 - Geheimnisse.mp4`. Ein Ordner
+  `Specials` wird als Staffel 0 geführt; Folgen ohne erkennbare
+  Staffel/Nummer erscheinen unter „Weitere Folgen“.
+
+Dateiformate, die der Browser nicht direkt abspielen kann (z. B. MKV, AVI,
+HEVC-in-MP4), werden trotzdem angezeigt, aber als „Nicht abspielbar“
+markiert.
+
+Um eine Kategorie absichtlich zu leeren, genügt es nicht, ihren Ordner nur
+leerzuräumen oder zu entfernen: ein Kategorie-Ordner, der plötzlich fehlt,
+unlesbar oder leer ist, obwohl noch Einträge dafür indiziert sind, wird als
+möglicher Einhängefehler behandelt — sein bisheriger Index bleibt absichtlich
+erhalten, statt gelöscht zu werden. Um eine Kategorie wirklich zu leeren:
+entweder eine einzelne Mediendatei darin stehen lassen, oder den Dienst
+stoppen und die Datenbankdatei unter `DATA_DIR` löschen (siehe „Backup“) —
+beim nächsten Start wird die gesamte Bibliothek neu eingelesen.
+
 ## First start
 
 1. `npm ci`

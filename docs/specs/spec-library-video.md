@@ -1261,3 +1261,15 @@ and desktop 1440 px, compared with the design exports):
   per-season episode order reuses `episodes.js`'s exact tuple
   (`episode IS NULL, episode, COALESCE(episode_end, -1), sort_title, id`) so
   there is still only one ordering rule for a series' episodes in the app.
+- 2026-09-27 (#34): `startLibrary()`'s deferred boot (`setImmediate(() => {
+  watcher.start(); scanner.requestFull('initial'); })`) is guarded by a local
+  `stopped` flag set in `stop()`. Without it, a caller that stops the service
+  again right after `startLibrary()` — before the event loop reaches that
+  `setImmediate`, e.g. `src/server.js`'s own `runStart()`/`stop()` as exercised
+  by `test/server.test.js` — still ran the deferred callback afterwards: the
+  watcher started (a real, persistent OS-level watch on Windows/macOS) after
+  `stop()`'s promise had already resolved, leaking a handle that kept the
+  process alive forever even though every assertion had passed. Confirmed by
+  reverting `src/server.js`/`src/app.js` to their pre-#34 state, which made
+  the hang disappear, then reproducing and fixing it with the flag; regression
+  test added to `test/library/index.test.js`.
