@@ -1051,3 +1051,28 @@ Chromium and Firefox, mobile ≤ 767 px and desktop ≥ 1024 px viewport):
   re-read mid-handler) would hold, deterministically exercising the same
   `BEGIN IMMEDIATE` interleaving `test/db/users.test.js`'s DB-level
   "concurrent demotion" test covers, without depending on real scheduling.
+- 2026-09-27 (#155): Fixed spurious `error`-level `request_error` logging in
+  `src/http/static.js`'s `sendFile` for a client that closes the connection
+  during or right after a fully-delivered static response (page, asset or the
+  streamed 404 page) — `pipeline()` then intermittently rejects with
+  `ERR_STREAM_PREMATURE_CLOSE`, reproduced on Windows at ~3-5% of requests
+  even though the client received the complete body. `sendFile` now checks
+  `err.code`: `ERR_STREAM_PREMATURE_CLOSE` still destroys the socket but is
+  not logged, the same non-failure treatment `src/http/stream.js`'s
+  `streamBody` already gives it (`aborted: true, error: null`); every other
+  stream error still logs `request_error {method, path, stack}` and destroys
+  the socket, unchanged. `sendFile` (and, threaded through it, `servePage`/
+  `serveAsset`/`createStaticHandler`) gained an optional `openReadStream` test
+  seam (default `fs.createReadStream`), mirroring `sendMedia`'s `openFile`
+  seam in `stream.js`, so a test can deterministically force a premature
+  close (a destination stream that self-destroys instead of ever finishing)
+  and observe the source stream's `'close'` event as proof the fd is
+  released — existing production call sites are unaffected (parameter
+  defaults to the real `createReadStream`). `sendNotFoundPage`'s exported
+  signature is untouched. The new regression tests live in a separate file,
+  `test/http/static-stream-errors.test.js`, rather than growing
+  `test/http/static.test.js` past the constitution's 300-line file cap.
+  Verified live in addition to the unit tests: 300 raw-socket requests to a
+  running instance, each destroyed immediately after its first response
+  chunk (the exact race from the bug report), produced zero `request_error`
+  lines while an unaborted request still served the full 2388-byte asset.
