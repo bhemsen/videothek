@@ -89,25 +89,27 @@
   display: flex;
   align-items: center;
   justify-content: center;
-  padding: var(--space-8) 0;
 }
 
 .player-panel-box[hidden] {
   display: none;
 }
 
+.player-loading {
+  margin: var(--space-8) 0;
+  color: var(--color-muted);
+}
+
 @media (min-width: 768px) {
   .player-panel-box {
-    padding: 0;
     border: var(--border-width) solid var(--color-border);
     border-radius: var(--radius-lg);
     aspect-ratio: 16 / 9;
   }
-}
 
-.player-loading {
-  margin: 0;
-  color: var(--color-muted);
+  .player-loading {
+    margin: 0;
+  }
 }
 
 .player-panel {
