@@ -542,6 +542,21 @@ Human QA (Chromium + Firefox; desktop 1280 px and 390 px mobile emulation;
   fills ignored; lightbox split pre-named (`lightbox-slide.js`,
   `lightbox-history.js`) to stay within 300 lines per file; folder URLs beyond
   P1's 2,048-char `safeNext` cap fall back to `/` after login — accepted.
+- 2026-09-26: Issue #77 (`005-image-meta.sql` + `src/db/image-meta.js`)
+  implemented exactly per D12/the repository row: `insertMetaStubs` wraps its
+  batch in one `BEGIN IMMEDIATE`/`COMMIT`, no-op when given an empty array;
+  `BEGIN` sits outside the `try`, so a call inside a caller's open
+  transaction throws without rolling that transaction back (must not be
+  called inside one); `folderExists`/`findFolderCover`/
+  `listSubtreeFolderCounts` use the `[key/, key0)` range trick throughout
+  (root short-circuits `folderExists` to `true` without a query). The image
+  repository tests migrate a temp-dir copy of exactly 001+002+005
+  (`test/helpers/image-meta-seed.js`), so they prove the Risks row (005 on a
+  DB at 002 without 003/004, and alongside synthetic 003/004) independently
+  of sibling migrations in `src/db/migrations/`. `test/db/index.test.js` and
+  `test/db/library-repo.test.js`, which migrate the shared default directory,
+  now assert containment of the versions they need instead of an exact
+  list, so adding a sibling migration no longer requires editing them.
 - 2026-09-27 (#75, `src/library/tags/exif.js`): the IFD cycle guard is a
   shared `Set` of absolute IFD start offsets visited across the three fixed
   reads (IFD0, its Exif sub-IFD, IFD1) rather than a generic "follow next"
