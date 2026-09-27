@@ -30,8 +30,10 @@ const ITEM_ROW_SELECT = `
 `;
 
 /**
- * @param {any} row - one raw row from a query built on {@link ITEM_ROW_SELECT}
- * @returns {ItemRow}
+ * Coerces a raw row's SQLite integer `playable` column (`0`/`1`) to a JS
+ * boolean; the caller's own return type states the trusted row shape.
+ * @param {any} row - one raw row with a `playable` column
+ * @returns {any}
  */
 function toItemRow(row) {
   return { ...row, playable: row.playable === 1 };
@@ -79,7 +81,8 @@ export function listItemsWithoutMeta(db, afterId, limit) {
  * racing this call never overwrites an already-read header). A no-op when
  * `rows` is empty (no transaction is opened). Must NOT be called inside an
  * open transaction: `BEGIN` then throws and the caller's transaction is left
- * untouched (never rolled back here). A failed insert rolls back the batch.
+ * untouched (never rolled back here). A failed insert rolls back the batch,
+ * guarding the `ROLLBACK` itself against an implicit SQLite auto-abort.
  * @param {import('node:sqlite').DatabaseSync} db
  * @param {{ itemId: number, folder: string }[]} rows
  * @returns {void}
@@ -97,7 +100,7 @@ export function insertMetaStubs(db, rows) {
     }
     db.exec('COMMIT');
   } catch (err) {
-    db.exec('ROLLBACK');
+    try { db.exec('ROLLBACK'); } catch { /* no transaction to roll back, e.g. an auto-abort */ }
     throw err;
   }
 }
@@ -291,5 +294,5 @@ export function getThumbSource(db, itemId) {
     )
     .get(itemId);
   if (!row) return null;
-  return { .../** @type {any} */ (row), playable: /** @type {any} */ (row).playable === 1 };
+  return toItemRow(row);
 }
