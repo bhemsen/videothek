@@ -243,14 +243,17 @@ textarea[aria-invalid="true"],
   height: var(--space-16);
 }
 
-.empty-state h2,
+/* Class selectors only (never combined with the generic h2/p element
+   selectors below): both title and text render as <p> (dom.js
+   createEmptyState), so an element selector would outrank the class one and
+   the title would inherit the text's size */
 .empty-state-title {
   margin: 0;
   color: var(--color-foreground);
   font-size: var(--text-xl);
+  font-weight: var(--weight-semibold);
 }
 
-.empty-state p,
 .empty-state-text {
   margin: 0;
   font-size: var(--text-md);

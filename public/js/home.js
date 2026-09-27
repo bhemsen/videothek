@@ -10,7 +10,7 @@ import { mountContinueRow } from './lib/continue-row.js';
 
 const { main } = mountShell({ active: null });
 
-const heading = el('h1', { tabindex: '-1' }, 'Start');
+const heading = el('h1', { class: 'shell-title', tabindex: '-1' }, 'Start');
 const rows = el('section', { class: 'home-rows', 'aria-label': 'Übersicht' });
 const emptyState = createEmptyState({
   title: 'Willkommen',
