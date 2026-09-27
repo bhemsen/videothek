@@ -697,3 +697,21 @@ compared with the exports):
   28.999999999999996`) — the visible contract (floored whole percent) is
   unchanged, only the float rounding underneath it; `defaultHeadMedia` gained
   direct test coverage via a stubbed `globalThis.fetch`.
+- 2026-09-27: issue #69 implementation (`src/api/audiobook-resume.js`,
+  `src/api/audiobooks.js`) — the "Audiobook resume" row excludes non-playable
+  files from state/*L*/resume/`fraction` by name but does not name
+  `lastPlayedAt` in that exclusion list, so `lastPlayedAt` is computed as the
+  max `updatedAt` of every file's counted row, playable or not — a book's
+  "last played" timestamp for sorting the Hörbücher "Weiterhören" row should
+  not go stale just because a file was later reclassified as non-playable.
+  `fraction` is computed unconditionally from the stated formula, including
+  for a never-started book with known member durations (Σd > 0): it is then
+  `0`, not `null` — `null` is reserved for the case the row states, Σd = 0
+  (no playable file has a known duration). Per-file `duration` in
+  `GET /api/audiobooks/:id`'s `files[]` follows the "Duration without
+  decoding" row's fallback verbatim: the item's own meta duration, else the
+  user's own progress-row `duration_seconds` for that file, else `null`.
+  `GET /api/audiobooks/:id` resolves any member id's group by re-deriving the
+  book via `buildBooks(listGroupRows(db, row.groupKey))` (always exactly one
+  book, since every row shares that `group_key`) rather than duplicating
+  `audio-groups.js`'s grouping logic.
