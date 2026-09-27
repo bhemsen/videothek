@@ -638,6 +638,17 @@ Firefox, desktop and a 390 px phone viewport):
   mapped to `{ index, lang, label }` (dropping `path`) before being returned,
   so the filesystem path decided in "Subtitle sidecars" never reaches the
   JSON response.
+- 2026-09-27: fix (#182, `public/css/player.css`) — the mobile
+  `.player-panel-box` rule carried `padding: var(--space-8) 0`, stacking on
+  top of `.player-page`'s `gap: var(--space-6)` and pushing the panel 56 px
+  below the title block instead of the spec's 24 px. Moved that spacing onto
+  `.player-loading` as `margin: var(--space-8) 0` (base rule placed before
+  the `≥768px` query, which resets it to `0`, so desktop keeps its previous
+  zero spacing; the now-redundant `padding: 0` there was dropped) so only
+  the loading text keeps breathing room and the error panel now follows the
+  title block/back button at exactly `--space-6`, unchanged on desktop.
+  Verified with a CDP-driven headless-Edge measurement
+  (`getBoundingClientRect`) at 390 px: gap = 24 px.
 - 2026-09-27: implementation (#50, `public/player.html`,
   `public/js/player.js`/`player-panel.js`/`player-icons.js`,
   `public/css/player.css`) — the primary error-panel action ("Zurück zur

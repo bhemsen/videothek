@@ -1,23 +1,24 @@
 /**
  * Gallery page (`/images`): shell, breadcrumb, header meta, "Ordner"/"Bilder"
- * sections, batched item rendering and all empty/error states. Folder
- * navigation is client-side (`pushState`, no reload) between `/images` and
- * `/images?folder=<key>`, mirroring `public/js/audio/app.js`'s routing.
- * Lightbox wiring is added by #84. See docs/specs/spec-image-gallery.md.
+ * sections, batched item rendering, all empty/error states and the lightbox
+ * (click-to-open, `#bild-<id>` on load, focus return to the last shown
+ * tile). Folder navigation is client-side (`pushState`, no reload) between
+ * `/images` and `/images?folder=<key>`, mirroring
+ * `public/js/audio/app.js`'s routing. See docs/specs/spec-image-gallery.md.
  */
 import { createEmptyState, el } from './lib/dom.js';
 import { mountShell } from './lib/shell.js';
 import { ApiError, request } from './lib/api.js';
-import { createFolderTile, createItemTile, folderUrl } from './image-tiles.js';
-import { headerMeta } from './image-format.js';
+import { createFolderTile, folderUrl } from './image-tiles.js';
+import { headerMeta, parseBildHash } from './image-format.js';
+import { createLightbox } from './lightbox.js';
+import { mountBatchedItems } from './image-batch.js';
 
 /** @typedef {import('./image-tiles.js').GalleryView} GalleryView */
 
 const EMPTY_ROOT_TITLE = 'Noch keine Bilder';
 const EMPTY_ROOT_TEXT =
   'Lege Bilder im Ordner „Bilder“ ab – neue Dateien erscheinen nach wenigen Sekunden automatisch.';
-const GALLERY_BATCH_SIZE = 120;
-const GALLERY_BATCH_ROOT_MARGIN_PX = 800;
 
 history.scrollRestoration = 'manual';
 
@@ -27,13 +28,22 @@ const { main } = mountShell({ active: 'images' });
  * overwrites a later navigation's result. */
 let navToken = 0;
 /** The batched-rendering controller for the currently mounted items grid, if
- * any, disconnected before a new folder is rendered. @type {{ disconnect: () => void } | null} */
+ * any, disconnected before a new folder is rendered.
+ * @type {{ disconnect: () => void, ensureRendered: (itemId: number) => void } | null} */
 let batchController = null;
 /** Folder key of the view last rendered (or being fetched); lets `popstate`
- * skip fragment-only history steps (the skip link's `#main`, #84's
- * `#bild-<id>` lightbox entries), mirroring P5's `needsRender` guard in
+ * skip fragment-only history steps (the skip link's `#main`, the lightbox's
+ * `#bild-<id>` entries), mirroring P5's `needsRender` guard in
  * `public/js/audio/app.js`. @type {string | null} */
 let renderedKey = null;
+/** The current folder view's items, refilled in place on every render so the
+ * one page-lifetime lightbox instance below always opens against the
+ * currently displayed folder. @type {import('./image-tiles.js').GalleryItem[]} */
+const lightboxItems = [];
+/** True once the initial `#bild-<id>` hash (if any) has been handled, so a
+ * later folder render never re-opens it. */
+let initialHashHandled = false;
+const lightbox = createLightbox({ items: lightboxItems, onClose: handleLightboxClose });
 
 /**
  * Reads the folder key from the current location's `?folder=` parameter.
@@ -92,48 +102,6 @@ function renderHeader(view) {
 }
 
 /**
- * Mounts `items` into `grid` in batches of `GALLERY_BATCH_SIZE`: the first
- * batch immediately, later ones when a trailing sentinel comes within
- * `GALLERY_BATCH_ROOT_MARGIN_PX` of the viewport (`IntersectionObserver`,
- * re-observed after each batch so a sentinel that stays in range keeps
- * loading).
- * @param {HTMLElement} grid
- * @param {import('./image-tiles.js').GalleryItem[]} items
- * @returns {{ disconnect: () => void }}
- */
-function mountBatchedItems(grid, items) {
-  const sentinel = el('div', { class: 'gallery-sentinel', 'aria-hidden': 'true' });
-  let rendered = 0;
-  const renderNextBatch = () => {
-    for (const item of items.slice(rendered, rendered + GALLERY_BATCH_SIZE)) {
-      grid.insertBefore(createItemTile(item), sentinel);
-    }
-    rendered = Math.min(rendered + GALLERY_BATCH_SIZE, items.length);
-    if (rendered >= items.length) {
-      observer.disconnect();
-      sentinel.remove();
-    }
-  };
-  const observer = new IntersectionObserver(
-    (entries) => {
-      if (!entries.some((entry) => entry.isIntersecting)) return;
-      renderNextBatch();
-      // Re-observe so a sentinel still within the margin after this batch
-      // (very tall viewports) triggers a fresh callback instead of stalling.
-      if (rendered < items.length) {
-        observer.unobserve(sentinel);
-        observer.observe(sentinel);
-      }
-    },
-    { rootMargin: `${GALLERY_BATCH_ROOT_MARGIN_PX}px` },
-  );
-  grid.append(sentinel);
-  renderNextBatch();
-  if (rendered < items.length) observer.observe(sentinel);
-  return { disconnect: () => observer.disconnect() };
-}
-
-/**
  * Renders one successfully loaded folder view: title, breadcrumb, header,
  * "Ordner"/"Bilder" sections (each hidden when empty) and the root empty
  * state when the whole library has nothing yet.
@@ -144,6 +112,8 @@ function mountBatchedItems(grid, items) {
 function renderView(view, focusHeading) {
   batchController?.disconnect();
   batchController = null;
+  lightboxItems.length = 0;
+  lightboxItems.push(...view.items);
   document.title = view.key === '' ? 'Bilder – Videothek' : `${view.name} – Bilder – Videothek`;
   const heading = renderHeader(view);
   /** @type {HTMLElement[]} */
@@ -163,6 +133,43 @@ function renderView(view, focusHeading) {
   main.replaceChildren(...sections);
   window.scrollTo(0, 0);
   if (focusHeading) /** @type {HTMLElement} */ (heading.querySelector('h1'))?.focus();
+  openFromInitialHash(view);
+}
+
+/**
+ * Restores focus to the last shown item's tile after the lightbox closes,
+ * rendering whatever batch holds it first so the tile exists to focus.
+ * @param {number | null} lastItemId
+ * @returns {void}
+ */
+function handleLightboxClose(lastItemId) {
+  if (lastItemId === null) return;
+  batchController?.ensureRendered(lastItemId);
+  const tile = main.querySelector(`[data-item-id="${lastItemId}"]`);
+  if (tile instanceof HTMLElement) {
+    tile.focus();
+    tile.scrollIntoView({ block: 'nearest' });
+  }
+}
+
+/**
+ * Handles a `#bild-<id>` hash present on the very first page load (a reload
+ * or a shared link), once: any such hash is dropped from the current
+ * (non-lightbox) history entry first, so a later Back step out of the
+ * lightbox lands on the plain folder URL either way; a hash naming a
+ * playable item in this folder then also opens the lightbox for it.
+ * @param {GalleryView} view
+ * @returns {void}
+ */
+function openFromInitialHash(view) {
+  if (initialHashHandled) return;
+  initialHashHandled = true;
+  const itemId = parseBildHash(location.hash);
+  if (itemId === null) return;
+  history.replaceState(history.state, '', location.pathname + location.search);
+  if (!view.items.some((item) => item.id === itemId && item.playable)) return;
+  batchController?.ensureRendered(itemId);
+  lightbox.open(itemId);
 }
 
 /**
@@ -265,7 +272,20 @@ function onClick(event) {
   navigate(url.searchParams.get('folder') ?? '');
 }
 
+/**
+ * Opens the lightbox when a playable item tile (image or video button, never
+ * the non-playable `<div>`) is clicked.
+ * @param {MouseEvent} event
+ * @returns {void}
+ */
+function onItemTileClick(event) {
+  const target = event.target instanceof Element ? event.target.closest('button[data-item-id]') : null;
+  if (!(target instanceof HTMLButtonElement)) return;
+  lightbox.open(Number(target.dataset.itemId));
+}
+
 document.addEventListener('click', onClick);
+main.addEventListener('click', onItemTileClick);
 window.addEventListener('popstate', () => {
   const key = folderKeyFromLocation();
   if (key !== renderedKey) renderFolder(key, true);
