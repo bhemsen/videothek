@@ -1293,3 +1293,17 @@ and desktop 1440 px, compared with the design exports):
   it and `README.md` warn that deleting the DB file also deletes every
   account, session and all playback progress (the admin is re-created from
   `ADMIN_USER`/`ADMIN_PASSWORD`).
+- 2026-09-27 (#37): the Filme page's header (title + count) and A–Z /
+  "Neu hinzugefügt" sort control get their own `public/css/movies.css`
+  instead of new rules in the shared `library.css` — issue #38 (Serien /
+  series detail, same header pattern) is implemented in parallel and would
+  otherwise edit the same shared file; a small amount of CSS duplication
+  across the per-page stylesheets is preferred over that merge risk, mirroring
+  the project's existing per-page stylesheet convention (`home.css`,
+  `admin.css`, `audio*.css`).
+- 2026-09-27 (#37): kept the already-shipped placeholder page title
+  ("Filme · Videothek", middle dot) instead of the "Filme – Videothek" en-dash
+  form this spec's UI section names — every other page (P1's shell, login,
+  admin, 404, the other four category placeholders) already uses the middle
+  dot, and this issue does not touch that established, already-merged
+  convention.
