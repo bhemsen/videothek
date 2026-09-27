@@ -113,7 +113,9 @@ function renderView(view, focusHeading) {
   batchController?.disconnect();
   batchController = null;
   lightboxItems.length = 0;
-  lightboxItems.push(...view.items);
+  // Plain loop, not `push(...view.items)`: spreading a very large folder
+  // would exceed the engine's argument limit.
+  for (const item of view.items) lightboxItems.push(item);
   document.title = view.key === '' ? 'Bilder – Videothek' : `${view.name} – Bilder – Videothek`;
   const heading = renderHeader(view);
   /** @type {HTMLElement[]} */
@@ -166,8 +168,10 @@ function openFromInitialHash(view) {
   initialHashHandled = true;
   const itemId = parseBildHash(location.hash);
   if (itemId === null) return;
-  history.replaceState(history.state, '', location.pathname + location.search);
-  if (!view.items.some((item) => item.id === itemId && item.playable)) return;
+  const reopen = view.items.some((item) => item.id === itemId && item.playable);
+  // A reloaded lightbox entry keeps its state only when it reopens (push reuses it).
+  history.replaceState(reopen ? history.state : null, '', location.pathname + location.search);
+  if (!reopen) return;
   batchController?.ensureRendered(itemId);
   lightbox.open(itemId);
 }

@@ -13,6 +13,17 @@ import { createLightboxHistory } from './lightbox-history.js';
 import { preloadNeighbours, renderSlide } from './lightbox-slide.js';
 
 /** @typedef {import('./image-tiles.js').GalleryItem} GalleryItem */
+/**
+ * @typedef {object} LightboxDom
+ * @property {HTMLDialogElement} dialog
+ * @property {HTMLElement} counter
+ * @property {HTMLButtonElement} closeButton
+ * @property {HTMLButtonElement} prevButton
+ * @property {HTMLButtonElement} nextButton
+ * @property {HTMLElement} stage
+ * @property {HTMLElement} captionName
+ * @property {HTMLElement} captionDate
+ */
 
 const SCROLL_LOCK_CLASS = 'lightbox-scroll-lock';
 
@@ -29,22 +40,10 @@ function buildButton(icon, label, gridAreaClass) {
 }
 
 /**
- * @param {{ items: GalleryItem[], onClose: (lastItemId: number | null) => void }} params -
- *   `items` is read fresh on every `open()` call, so the caller may refill
- *   the same array in place between opens instead of constructing a new
- *   lightbox per folder. `onClose` receives the id of the item shown when
- *   the dialog closed, so the caller can restore focus to its tile.
- * @returns {{ open: (itemId: number) => void, close: () => void }}
+ * Builds the lightbox's `<dialog>` and chrome and appends it to `<body>`.
+ * @returns {LightboxDom}
  */
-export function createLightbox({ items, onClose }) {
-  /** @type {GalleryItem[]} */
-  let sequence = [];
-  let currentIndex = -1;
-  /** @type {{ release: () => void } | null} */
-  let currentSlide = null;
-  /** @type {{ x: number, y: number } | null} */
-  let pointerStart = null;
-
+function buildLightboxDom() {
   const counter = el('p', { class: 'lightbox-counter' });
   const closeButton = buildButton(closeIcon(), 'Schließen', 'lightbox-close');
   const prevButton = buildButton(chevronLeftIcon(), 'Vorheriges Bild', 'lightbox-nav--prev');
@@ -79,32 +78,125 @@ export function createLightbox({ items, onClose }) {
     )
   );
   document.body.append(dialog);
+  return { dialog, counter, closeButton, prevButton, nextButton, stage, captionName, captionDate };
+}
 
-  const lightboxHistory = createLightboxHistory({
-    onPop: () => {
-      if (dialog.open) dialog.close();
-    },
+/**
+ * Wires ArrowLeft/ArrowRight on the dialog to `onNavigate` (a focused
+ * `<video>` keeps its own arrow keys for native seeking; see `keyAction`).
+ * @param {HTMLDialogElement} dialog
+ * @param {(direction: -1 | 1) => void} onNavigate
+ * @returns {void}
+ */
+function bindKeys(dialog, onNavigate) {
+  dialog.addEventListener('keydown', (event) => {
+    const targetTag = event.target instanceof Element ? event.target.tagName : '';
+    const { key, altKey, ctrlKey, metaKey } = event;
+    const action = keyAction({ key, targetTag, altKey, ctrlKey, metaKey });
+    if (action) onNavigate(action === 'prev' ? -1 : 1);
   });
+}
 
-  /**
-   * Renders `sequence[currentIndex]` into the stage and updates the chrome.
-   * @returns {void}
-   */
+/**
+ * Wires horizontal pointer swipes on `stage` to `onNavigate`. A drag that
+ * starts on a `<video>` is ignored so scrubbing its controls never changes
+ * slides.
+ * @param {HTMLElement} stage
+ * @param {(direction: -1 | 1) => void} onNavigate
+ * @returns {void}
+ */
+function bindSwipe(stage, onNavigate) {
+  /** @type {{ x: number, y: number } | null} */
+  let pointerStart = null;
+  /** @param {PointerEvent} event */
+  const onPointerUp = (event) => {
+    stage.removeEventListener('pointercancel', onPointerCancel);
+    const start = pointerStart;
+    pointerStart = null;
+    if (!event.isPrimary || !start) return;
+    const action = classifySwipe(event.clientX - start.x, event.clientY - start.y);
+    if (action) onNavigate(action === 'prev' ? -1 : 1);
+  };
+  const onPointerCancel = () => {
+    stage.removeEventListener('pointerup', onPointerUp);
+    pointerStart = null;
+  };
+  stage.addEventListener('pointerdown', (event) => {
+    if (!event.isPrimary || event.target instanceof HTMLVideoElement) return;
+    pointerStart = { x: event.clientX, y: event.clientY };
+    stage.addEventListener('pointerup', onPointerUp, { once: true });
+    stage.addEventListener('pointercancel', onPointerCancel, { once: true });
+  });
+}
+
+/**
+ * Updates counter, caption and the prev/next `disabled` state for
+ * `sequence[index]`. When the button about to be disabled holds focus, focus
+ * first moves to the other nav button (or Schließen when both ends apply),
+ * so it never drops out of the dialog to `<body>` and the dialog's arrow-key
+ * listener keeps working.
+ * @param {LightboxDom} dom
+ * @param {GalleryItem[]} sequence
+ * @param {number} index
+ * @returns {void}
+ */
+function renderChrome(dom, sequence, index) {
+  const item = sequence[index];
+  dom.counter.textContent = `${index + 1} / ${sequence.length}`;
+  dom.captionName.textContent = item.name;
+  dom.captionDate.textContent = formatTakenAt(item.takenAt);
+  const atStart = index <= 0;
+  const atEnd = index >= sequence.length - 1;
+  const active = document.activeElement;
+  if (atStart && active === dom.prevButton) (atEnd ? dom.closeButton : dom.nextButton).focus();
+  if (atEnd && active === dom.nextButton) (atStart ? dom.closeButton : dom.prevButton).focus();
+  dom.prevButton.disabled = atStart;
+  dom.nextButton.disabled = atEnd;
+}
+
+/**
+ * Wires keys, swipes and the three buttons.
+ * @param {LightboxDom} dom
+ * @param {(direction: -1 | 1) => void} navigate
+ * @returns {void}
+ */
+function bindControls(dom, navigate) {
+  bindKeys(dom.dialog, navigate);
+  bindSwipe(dom.stage, navigate);
+  dom.closeButton.addEventListener('click', () => dom.dialog.close());
+  dom.prevButton.addEventListener('click', () => navigate(-1));
+  dom.nextButton.addEventListener('click', () => navigate(1));
+}
+
+/**
+ * @param {{ items: GalleryItem[], onClose: (lastItemId: number | null) => void }} params -
+ *   `items` is read fresh on every `open()` call, so the caller may refill
+ *   the same array in place between opens instead of constructing a new
+ *   lightbox per folder. `onClose` receives the id of the item shown when
+ *   the dialog closed, so the caller can restore focus to its tile.
+ * @returns {{ open: (itemId: number) => void, close: () => void }}
+ */
+export function createLightbox({ items, onClose }) {
+  /** @type {GalleryItem[]} */
+  let sequence = [];
+  let currentIndex = -1;
+  /** @type {{ release: () => void } | null} */
+  let currentSlide = null;
+  const dom = buildLightboxDom();
+  const { dialog } = dom;
+  // popstate past the lightbox's own entry (browser back) closes the dialog.
+  const lightboxHistory = createLightboxHistory({ onPop: () => dialog.open && dialog.close() });
+
+  /** @returns {void} Renders `sequence[currentIndex]` and updates the chrome. */
   function renderCurrent() {
-    const item = sequence[currentIndex];
     currentSlide?.release();
-    currentSlide = renderSlide(stage, item);
+    currentSlide = renderSlide(dom.stage, sequence[currentIndex]);
     preloadNeighbours(sequence, currentIndex);
-    counter.textContent = `${currentIndex + 1} / ${sequence.length}`;
-    captionName.textContent = item.name;
-    captionDate.textContent = formatTakenAt(item.takenAt);
-    prevButton.disabled = currentIndex <= 0;
-    nextButton.disabled = currentIndex >= sequence.length - 1;
+    renderChrome(dom, sequence, currentIndex);
   }
 
   /**
-   * Steps to the previous/next item. No wrap-around: a step past either end
-   * is a no-op (the matching button is also `disabled` there).
+   * No wrap-around: a step past either end is a no-op.
    * @param {-1 | 1} direction
    * @returns {void}
    */
@@ -116,53 +208,7 @@ export function createLightbox({ items, onClose }) {
     renderCurrent();
   }
 
-  /**
-   * @param {KeyboardEvent} event
-   * @returns {void}
-   */
-  function onKeyDown(event) {
-    const targetTag = event.target instanceof Element ? event.target.tagName : '';
-    const action = keyAction({
-      key: event.key,
-      targetTag,
-      altKey: event.altKey,
-      ctrlKey: event.ctrlKey,
-      metaKey: event.metaKey,
-    });
-    if (action) navigate(action === 'prev' ? -1 : 1);
-  }
-
-  /**
-   * @param {PointerEvent} event
-   * @returns {void}
-   */
-  function onPointerDown(event) {
-    if (!event.isPrimary || event.target instanceof HTMLVideoElement) return;
-    pointerStart = { x: event.clientX, y: event.clientY };
-    stage.addEventListener('pointerup', onPointerUp, { once: true });
-    stage.addEventListener('pointercancel', onPointerCancel, { once: true });
-  }
-
-  /**
-   * @param {PointerEvent} event
-   * @returns {void}
-   */
-  function onPointerUp(event) {
-    stage.removeEventListener('pointercancel', onPointerCancel);
-    const start = pointerStart;
-    pointerStart = null;
-    if (!event.isPrimary || !start) return;
-    const action = classifySwipe(event.clientX - start.x, event.clientY - start.y);
-    if (action) navigate(action === 'prev' ? -1 : 1);
-  }
-
-  /** @returns {void} */
-  function onPointerCancel() {
-    stage.removeEventListener('pointerup', onPointerUp);
-    pointerStart = null;
-  }
-
-  dialog.addEventListener('keydown', onKeyDown);
+  bindControls(dom, navigate);
   dialog.addEventListener('close', () => {
     currentSlide?.release();
     currentSlide = null;
@@ -171,10 +217,6 @@ export function createLightbox({ items, onClose }) {
     lightboxHistory.release();
     onClose(lastItemId);
   });
-  closeButton.addEventListener('click', () => dialog.close());
-  prevButton.addEventListener('click', () => navigate(-1));
-  nextButton.addEventListener('click', () => navigate(1));
-  stage.addEventListener('pointerdown', onPointerDown);
 
   return {
     open(itemId) {
@@ -185,7 +227,7 @@ export function createLightbox({ items, onClose }) {
       renderCurrent();
       document.documentElement.classList.add(SCROLL_LOCK_CLASS);
       dialog.showModal();
-      closeButton.focus();
+      dom.closeButton.focus();
       lightboxHistory.push(itemId);
     },
     close() {

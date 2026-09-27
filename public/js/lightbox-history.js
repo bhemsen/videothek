@@ -26,12 +26,16 @@ export function createLightboxHistory({ onPop }) {
   return {
     /**
      * Called when the lightbox opens: pushes a new history entry above the
-     * folder's own.
+     * folder's own. When history already sits on a stale lightbox entry
+     * (browser Forward after a close lands back on it with no dialog open)
+     * that entry is reused via `replaceState` instead, so the next close's
+     * single `history.back()` still returns to the folder entry.
      * @param {number} id
      * @returns {void}
      */
     push(id) {
-      history.pushState({ lightbox: id }, '', `#bild-${id}`);
+      if (history.state?.lightbox != null) history.replaceState({ lightbox: id }, '', `#bild-${id}`);
+      else history.pushState({ lightbox: id }, '', `#bild-${id}`);
     },
     /**
      * Called while navigating between slides: keeps one lightbox entry
