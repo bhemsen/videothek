@@ -636,8 +636,9 @@ Firefox, desktop and a 390 px phone viewport):
   `.player-panel-box` rule carried `padding: var(--space-8) 0`, stacking on
   top of `.player-page`'s `gap: var(--space-6)` and pushing the panel 56 px
   below the title block instead of the spec's 24 px. Moved that spacing onto
-  `.player-loading` as `margin: var(--space-8) 0` (reset to `0` again in the
-  existing `≥768px` query, matching the box's own `padding: 0` there) so only
+  `.player-loading` as `margin: var(--space-8) 0` (base rule placed before
+  the `≥768px` query, which resets it to `0`, so desktop keeps its previous
+  zero spacing; the now-redundant `padding: 0` there was dropped) so only
   the loading text keeps breathing room and the error panel now follows the
   title block/back button at exactly `--space-6`, unchanged on desktop.
   Verified with a CDP-driven headless-Edge measurement
