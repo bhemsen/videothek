@@ -146,6 +146,50 @@ export function deleteItemsUnderDir(db, dir) {
 }
 
 /**
+ * Lists every distinct `dir` value with at least one row at or under
+ * `prefix` (inclusive of `prefix` itself). Used by the scanner's end-of-walk
+ * sweep (`scanner.js`, #33) to find directories that still have rows but
+ * were not visited by the walk that just completed — the scanner has no
+ * other way to discover a whole subdirectory that vanished, since it only
+ * ever asks about directories it already knows to look at.
+ * @param {import('node:sqlite').DatabaseSync} db
+ * @param {string} prefix
+ * @returns {string[]}
+ */
+export function listDirsUnderDir(db, prefix) {
+  const [lower, upper] = subtreeBounds(prefix);
+  const rows = /** @type {{ dir: string }[]} */ (
+    /** @type {unknown} */ (
+      db
+        .prepare('SELECT DISTINCT dir FROM library_items WHERE dir = ? OR (dir >= ? AND dir < ?)')
+        .all(prefix, lower, upper)
+    )
+  );
+  return rows.map((row) => row.dir);
+}
+
+/**
+ * Lists the exact on-disk name of every category-root segment (the first
+ * `/`-separated component of `rel_path`) that has at least one indexed item
+ * under it. Root safety (D7) evaluates `discovered ∪ listIndexedRootNames(db)`
+ * as its candidate set, so a root that once had files keeps being checked
+ * (and re-protected) across a process restart — including the "disk
+ * unmounted before the process started" case, where `discoverRoots()` alone
+ * would never see it — while a category that was never used is never
+ * evaluated and so never warns.
+ * @param {import('node:sqlite').DatabaseSync} db
+ * @returns {string[]}
+ */
+export function listIndexedRootNames(db) {
+  const rows = /** @type {{ root: string }[]} */ (
+    /** @type {unknown} */ (
+      db.prepare("SELECT DISTINCT substr(rel_path, 1, instr(rel_path, '/') - 1) AS root FROM library_items").all()
+    )
+  );
+  return rows.map((row) => row.root);
+}
+
+/**
  * Checks whether any indexed item lies anywhere under `dir`, without loading
  * rows. Used for root safety (D7): a category root that still has rows but
  * is missing, unreadable or empty must not be swept.
@@ -173,6 +217,18 @@ export function hasItemsUnderDir(db, dir) {
 export function getItemsByDir(db, dir) {
   return /** @type {LibraryItemRow[]} */ (
     /** @type {unknown} */ (db.prepare('SELECT * FROM library_items WHERE dir = ?').all(dir))
+  );
+}
+
+/**
+ * Loads the single item at `relPath` (a path reconcile's one-file diff).
+ * @param {import('node:sqlite').DatabaseSync} db
+ * @param {string} relPath
+ * @returns {LibraryItemRow | undefined}
+ */
+export function getItemByRelPath(db, relPath) {
+  return /** @type {LibraryItemRow | undefined} */ (
+    /** @type {unknown} */ (db.prepare('SELECT * FROM library_items WHERE rel_path = ?').get(relPath))
   );
 }
 

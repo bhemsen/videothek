@@ -88,6 +88,32 @@ test('insertMetaStubs rolls back its whole batch on a failed insert and never to
   }
 });
 
+test('insertMetaStubs rethrows the original error when SQLite already auto-aborted the transaction', () => {
+  // Simulates a mid-chunk failure (e.g. SQLITE_FULL/SQLITE_IOERR/SQLITE_INTERRUPT/
+  // SQLITE_CORRUPT) that implicitly rolls back the transaction itself: the
+  // insert throws `originalError`, and the explicit `ROLLBACK` that follows
+  // then fails with "no transaction is active" because there is none left.
+  // The guard must surface `originalError`, not that second failure.
+  const originalError = new Error('SQLITE_FULL: database or disk is full');
+  const execCalls = /** @type {string[]} */ ([]);
+  const fakeDb = /** @type {any} */ ({
+    /** @param {string} sql */
+    exec(sql) {
+      execCalls.push(sql);
+      if (sql === 'ROLLBACK') throw new Error('cannot rollback - no transaction is active');
+    },
+    prepare() {
+      return { run: () => { throw originalError; } };
+    },
+  });
+
+  assert.throws(
+    () => insertMetaStubs(fakeDb, [{ itemId: 1, folder: 'A' }]),
+    (err) => err === originalError
+  );
+  assert.deepEqual(execCalls, ['BEGIN IMMEDIATE', 'ROLLBACK'], 'ROLLBACK was attempted despite the implicit auto-abort');
+});
+
 test('insertMetaStubs inserts one stub per row; ON CONFLICT DO NOTHING never overwrites an existing one', () => {
   const db = makeDb();
   try {

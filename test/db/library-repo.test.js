@@ -6,8 +6,11 @@ import {
   upsertItem,
   deleteItem,
   deleteItemsUnderDir,
+  listDirsUnderDir,
+  listIndexedRootNames,
   hasItemsUnderDir,
   getItemsByDir,
+  getItemByRelPath,
   upsertSeries,
   deleteOrphanedSeries,
 } from '../../src/db/library-repo.js';
@@ -110,6 +113,42 @@ test('deleteItemsUnderDir deletes exactly the subtree, even with _ and % in name
   }
 });
 
+test('listDirsUnderDir lists distinct dirs at or under a prefix, not a same-prefix sibling', () => {
+  const db = makeDb();
+  try {
+    upsertItem(db, makeItem({ rel_path: 'Filme/movie.mp4', dir: 'Filme' }), 1);
+    upsertItem(db, makeItem({ rel_path: 'Filme/Dark (2017)/Staffel 1/e01.mp4', dir: 'Filme/Dark (2017)/Staffel 1' }), 1);
+    upsertItem(db, makeItem({ rel_path: 'Filme/Dark (2017)/Staffel 1/e02.mp4', dir: 'Filme/Dark (2017)/Staffel 1' }), 1);
+    // A sibling directory whose name extends the prefix as text ("Filme2")
+    // must never be reported as lying under "Filme".
+    upsertItem(db, makeItem({ rel_path: 'Filme2/movie.mp4', dir: 'Filme2' }), 1);
+
+    const dirs = listDirsUnderDir(db, 'Filme');
+
+    assert.deepEqual(dirs.sort(), ['Filme', 'Filme/Dark (2017)/Staffel 1']);
+  } finally {
+    db.close();
+  }
+});
+
+test('listIndexedRootNames lists the distinct top-level rel_path segment of every indexed item', () => {
+  const db = makeDb();
+  try {
+    assert.deepEqual(listIndexedRootNames(db), []);
+    upsertItem(db, makeItem({ rel_path: 'Filme/a.mp4', dir: 'Filme' }), 1);
+    upsertItem(db, makeItem({ rel_path: 'Filme/Dark (2017)/e01.mp4', dir: 'Filme/Dark (2017)' }), 1);
+    upsertItem(
+      db,
+      makeItem({ rel_path: 'Serien/Show/S01E01.mp4', dir: 'Serien/Show', category: 'series' }),
+      1
+    );
+
+    assert.deepEqual(listIndexedRootNames(db).sort(), ['Filme', 'Serien']);
+  } finally {
+    db.close();
+  }
+});
+
 test('hasItemsUnderDir reflects rows anywhere under a prefix', () => {
   const db = makeDb();
   try {
@@ -122,7 +161,7 @@ test('hasItemsUnderDir reflects rows anywhere under a prefix', () => {
   }
 });
 
-test('getItemsByDir loads only the exact directory, not its subdirectories', () => {
+test('getItemsByDir loads only the exact directory, not its subdirectories; getItemByRelPath loads one row', () => {
   const db = makeDb();
   try {
     upsertItem(db, makeItem({ rel_path: 'Filme/a.mp4', dir: 'Filme' }), 1);
@@ -135,6 +174,8 @@ test('getItemsByDir loads only the exact directory, not its subdirectories', () 
       rows.map((r) => r.rel_path).sort(),
       ['Filme/a.mp4', 'Filme/b.mp4']
     );
+    assert.equal(getItemByRelPath(db, 'Filme/Sub/c.mp4')?.dir, 'Filme/Sub');
+    assert.equal(getItemByRelPath(db, 'Filme/missing.mp4'), undefined);
   } finally {
     db.close();
   }
