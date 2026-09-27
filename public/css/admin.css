@@ -82,6 +82,14 @@
   flex: 1;
 }
 
+/* Reset button label ("Passwort zurücksetzen") is long: give it the wider
+   share (mockup ~= 2:1) and keep it on one line; the flex-item default
+   min-width: auto stops it shrinking below that even if 2:1 is not enough. */
+.user-row-actions .btn-secondary {
+  flex: 2;
+  white-space: nowrap;
+}
+
 /* Create form card (both breakpoints) */
 
 .admin-create {
