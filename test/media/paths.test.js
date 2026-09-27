@@ -82,6 +82,49 @@ test('resolveMediaPath: rejects a path to a missing file', async (t) => {
   assert.equal(await resolveMediaPath(root, 'missing.mp4'), null);
 });
 
+test('resolveMediaPath: rejects NTFS alternate-data-stream selectors on win32', async (t) => {
+  const root = await makeTempDir('vt-paths-');
+  t.after(() => cleanup(root));
+  await writeFile(root, 'movie.mp4');
+
+  const adsSelectors = ['sub/C:evil', 'movie.mp4:Zone.Identifier', 'a/b:c/d'];
+
+  for (const relPath of adsSelectors) {
+    assert.equal(
+      await resolveMediaPath(root, relPath, { platform: 'win32' }),
+      null,
+      `expected null for ${JSON.stringify(relPath)} on win32`,
+    );
+  }
+});
+
+test(
+  'resolveMediaPath: a colon inside a segment stays legal on non-win32 platforms',
+  { skip: process.platform === 'win32' },
+  async (t) => {
+    const root = await makeTempDir('vt-paths-');
+    t.after(() => cleanup(root));
+    await fs.mkdir(path.join(root, 'sub'));
+    await writeFile(path.join(root, 'sub'), 'C:evil');
+    await writeFile(root, 'movie.mp4:Zone.Identifier');
+    await fs.mkdir(path.join(root, 'a', 'b:c'), { recursive: true });
+    await writeFile(path.join(root, 'a', 'b:c'), 'd');
+
+    assert.equal(
+      await resolveMediaPath(root, 'sub/C:evil', { platform: 'linux' }),
+      await fs.realpath(path.join(root, 'sub', 'C:evil')),
+    );
+    assert.equal(
+      await resolveMediaPath(root, 'movie.mp4:Zone.Identifier', { platform: 'linux' }),
+      await fs.realpath(path.join(root, 'movie.mp4:Zone.Identifier')),
+    );
+    assert.equal(
+      await resolveMediaPath(root, 'a/b:c/d', { platform: 'linux' }),
+      await fs.realpath(path.join(root, 'a', 'b:c', 'd')),
+    );
+  },
+);
+
 test('resolveMediaPath: rejects a junction that escapes the root', async (t) => {
   const root = await makeTempDir('vt-paths-');
   const outside = await makeTempDir('vt-paths-outside-');
