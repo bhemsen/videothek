@@ -194,10 +194,8 @@ test('createScanner: stop() aborts a running full scan between directories and n
 
   assert.equal(hookFired, true, 'the hook must have fired mid-walk');
   assert.deepEqual(fired, [], 'a run cut short by stop() must never fire onScanComplete');
-  assert.ok(
-    calls.error.some((c) => c.event === 'library_scan_run_failed'),
-    'the queue logs the aborted run instead of reporting a completion'
-  );
+  assert.ok(!calls.error.some((c) => c.event === 'library_scan_run_failed'), 'a normal shutdown is not logged as a failure');
+  assert.ok(calls.info.some((c) => c.event === 'library_scan_stopped'));
 });
 
 test('createScanner: onScanComplete fires once per run with the right kind, unsubscribe works', async (t) => {

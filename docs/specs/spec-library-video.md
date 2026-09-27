@@ -387,7 +387,11 @@ metadata in their own tables and never rewrite `library_items`.
   `lastError = 'root_protected'`. The same applies to `MEDIA_ROOT` itself
   (readable but empty while rows exist → every root is protected). To empty a
   whole category on purpose, leave one file in it or delete the DB file
-  (documented in `README.md` and `docs/architecture.md`).
+  (documented in `README.md` and `docs/architecture.md`). A root that
+  exists but is empty (protected or row-less) is still `dirObserver.seen`
+  and counted as visited, then its health is re-checked (a file that landed
+  in between gets it walked normally) — so a first file copied into an empty
+  `Filme/` still arrives through change detection, not the periodic rescan.
 - Subtree scan (a directory path): the same walk scoped to that directory;
   the sweep only covers that prefix.
 - Path reconcile (from change detection), per path, `lstat`:
@@ -401,7 +405,10 @@ metadata in their own tables and never rewrite `library_items`.
   - directory → subtree scan.
   - regular file, indexable → upsert (or leave when unchanged); not
     indexable → delete its row if one exists.
-  - symlink or skipped name → delete rows for it (and under it).
+  - symlink or skipped name → delete rows for it (and under it). The same
+    applies when any ancestor (category root included) is a symlink: the
+    walk never enters one, but a native recursive watcher can report paths
+    through it, and `lstat` alone only checks the last segment.
 - `onScanComplete(listener)` → `unsubscribe()` (D6). Fires once after every
   completed run — `'initial'`, `'full'`, `'paths'` (incl. interleaved
   reconciles and runs that ended with protected roots) — with the payload
@@ -421,7 +428,8 @@ metadata in their own tables and never rewrite `library_items`.
   lastError: string | null }`; `lastError` is reset to `null` by the next run
   that completes without a protected root or failed directory.
 - Stats: `{ added, updated, removed, unchanged, failedDirs, skippedSymlinks,
-  skippedUndecodable, protectedRoots, durationMs }`.
+  skippedUndecodable, protectedRoots, durationMs }`; `removed` counts rows in
+  every run kind (a reconciled directory delete counts each row under it).
 - Memory: never holds the whole library in memory — only the current
   directory's rows and the set of visited directory paths.
 - Logging: one `library_scan_complete { kind, ...stats }` info line per
@@ -756,7 +764,7 @@ substitute was not accepted, so this line is run on the Pi).
 | One serialised scan queue with coalescing; watcher and timer only enqueue | Constitution/brief: no overlapping scans; serialises all index writes. | 2026-09-26 |
 | Debounce, max wait, backoff, batch size are code constants; only `RESCAN_INTERVAL_MIN` is configurable (already validated by P1) | Constitution fixes the env-var list; P1 owns `src/config.js`. | 2026-09-26 |
 | `startLibrary` returns synchronously; watcher start and the initial scan are deferred; `library` is built in `server.js` `start()`, passed to `createApp` as an extra key, stopped in `stop()` before the DB closes; `src/app.js` only gains the optional `library` in its `AppDeps` typedef | D4 and P1's server contract: wiring never delays `listen`; `createApp` passes extra keys through to route modules. | 2026-09-26 |
-| Logging through the injected `log` as JSON events (`library_scan_complete`, `library_scan_failed`, `library_dir_failed`, `library_root_protected`, `library_names_undecodable`, `library_watch_error`, `library_watch_limit`, `library_listener_failed`, `library_scan_run_failed`, `library_scan_queue_oncomplete_failed`) | D4: no `console.*` in modules; one log format for the whole app; the last two are `scan-queue.js`-internal (unexpected `runFull`/`runPaths` failure, `onComplete` failure), distinct from the scanner's own `library_scan_failed`/`library_listener_failed`. | 2026-09-26 |
+| Logging through the injected `log` as JSON events (`library_scan_complete`, `library_scan_failed`, `library_dir_failed`, `library_root_protected`, `library_names_undecodable`, `library_watch_error`, `library_watch_limit`, `library_listener_failed`, `library_scan_stopped`, `library_scan_run_failed`, `library_scan_queue_oncomplete_failed`) | D4: no `console.*` in modules; one log format for the whole app; the last two are `scan-queue.js`-internal (unexpected `runFull`/`runPaths` failure, `onComplete` failure), distinct from the scanner's own `library_scan_failed`/`library_listener_failed`. | 2026-09-26 |
 | API timestamps are ISO-8601 strings (`addedAt`, `scan.lastCompletedAt`); DB keeps epoch ms | D4 cross-phase JSON convention. | 2026-09-26 |
 | `next` and `subtitles` appear only in `GET /api/library/items/:id` and are added by Phase 3; P2's `toItemJson` and list responses never carry them | Cross-phase consolidation D10 + human gate decision H4 (subtitles = `.vtt` sidecars discovered at request time, never indexed). | 2026-09-26 |
 | Page URLs `/movies`, `/series`, `/series-detail?id=<seriesId>`; player links `/player?id=<itemId>`; P2 replaces P1's `movies.html`/`series.html` placeholders and never edits nav or `placeholder.js` | Cross-phase consolidation D1. | 2026-09-26 |
@@ -1219,3 +1227,23 @@ and desktop 1440 px, compared with the design exports):
   segments like the walk does; and the single-file reconcile loads its row
   via `library-repo.js`'s additive `getItemByRelPath(db, relPath)` instead
   of the whole directory.
+- 2026-09-27 (#33, PR review round 4): one blocking fix. An existing but
+  empty category root was never walked, so it was never `dirObserver.seen`
+  and `sweep(visited)` closed any watch it had: on Linux a movie copied into
+  a pre-created empty `Filme/` (or one whose last file was deleted) waited
+  for the periodic rescan, breaking the 10 s freshness bound. The full scan
+  now calls `seen(root)`, adds it to `visited` and re-checks its health
+  (closing the list-then-watch race); root safety still deletes nothing.
+  Non-blocking fixes rode along: a reconciled path under a symlinked
+  ancestor is treated like a symlink (never indexed from outside
+  `MEDIA_ROOT`); `removed` counts rows for a reconciled subtree delete,
+  matching the sweep; a `stop()` abort (`ScanAbortedError`) resolves as
+  `{ aborted: true }` with info `library_scan_stopped` instead of surfacing
+  as `library_scan_run_failed` (still no `onScanComplete`, for `'paths'`
+  runs too); `runFullScan`'s unused `kind` parameter is dropped. Noted,
+  not changed: on native recursive watchers (Windows/macOS) a write inside
+  `Filme/` usually also reports a change for `Filme` itself, which is a
+  top-level folder and so escalates to a full scan — spec-literal and
+  correct, just costlier than on Linux; `createScanner`'s factory body
+  follows the merged `createScanQueue` closure-factory precedent (every
+  nested function stays under 60 lines).

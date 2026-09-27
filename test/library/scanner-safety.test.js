@@ -2,10 +2,10 @@
 import { test } from 'node:test';
 import assert from 'node:assert/strict';
 import { rmSync, writeFileSync } from 'node:fs';
-import { stat } from 'node:fs/promises';
+import { stat, unlink } from 'node:fs/promises';
 import { join } from 'node:path';
 import { createScanner } from '../../src/library/scanner.js';
-import { writeMediaFile } from '../helpers/media-tree.js';
+import { writeMediaFile, makeMediaDir } from '../helpers/media-tree.js';
 import { setup, countItemsByDir, loadRow } from '../helpers/scanner-fixtures.js';
 
 // Data-safety races of the full walk (spec: walk rule + D7, "unreadable
@@ -13,7 +13,8 @@ import { setup, countItemsByDir, loadRow } from '../helpers/scanner-fixtures.js'
 // between its parent's listing (or its root's health check) and its own
 // `readdir`, and a reconcile interleaved into a full scan that indexes a file
 // in a directory that scan never listed. Split from `scanner.test.js` /
-// `scanner-runs.test.js` to keep each under the 300-line limit.
+// `scanner-runs.test.js` to keep each under the 300-line limit. Also: an
+// empty category root keeps its watch, and stop() during a subtree walk.
 
 /**
  * A `DirWatchSet` whose `seen(relDir)` runs `hook` synchronously — `walkDir`
@@ -122,4 +123,70 @@ test('createScanner: a file reconciled mid-scan in a directory the walk never li
 
   assert.equal(injected, true, 'the hook must have fired mid-walk');
   assert.ok(loadRow(db, 'Filme/New/a.webm'), "the reconciled file's directory counts as visited by the running full scan");
+});
+
+test('createScanner: an empty category root is still watched and kept in the sweep\'s visited set', async (t) => {
+  /** @type {string[]} */
+  const seen = [];
+  /** @type {Set<string>[]} */
+  const sweeps = [];
+  /** @type {import('../../src/library/dir-watch.js').DirWatchSet} */
+  const dirObserver = { seen: (d) => void seen.push(d), gone() {}, sweep: (v) => void sweeps.push(new Set(v)), count: () => 0, closeAll() {} };
+  const { root, db, calls, scanner } = await setup(t, { dirObserver });
+  await makeMediaDir(root, 'Filme'); // fresh install: pre-created, still empty
+  await writeMediaFile(root, 'Serien/X/X S01E01.webm');
+
+  scanner.requestFull('initial'); await scanner.idle();
+
+  assert.ok(seen.includes('Filme'), 'the empty root gets a watch, so a first movie copied in is seen within seconds');
+  assert.equal(sweeps.length, 1);
+  assert.ok(sweeps[0].has('Filme'), 'the sweep keeps the empty root\'s watch open');
+  assert.ok(sweeps[0].has('Serien/X'));
+  assert.equal(scanner.status().lastError, null, 'an empty root without rows is not an error');
+  assert.ok(!calls.warn.some((c) => c.event === 'library_root_protected'));
+
+  await writeMediaFile(root, 'Filme/A.webm');
+  scanner.requestFull(); await scanner.idle();
+  await unlink(join(root, 'Filme', 'A.webm')); // last file gone: a protected empty root
+  scanner.requestFull(); await scanner.idle();
+
+  assert.ok(loadRow(db, 'Filme/A.webm'), 'root safety still protects its rows');
+  assert.ok(sweeps[2].has('Filme'), 'a protected empty root keeps its watch too');
+});
+
+test('createScanner: a file landing in an empty root between its health check and its watch is indexed by the same scan', async (t) => {
+  let mediaRoot = '';
+  const dirObserver = hookedObserver((relDir) => {
+    if (relDir === 'Filme') writeFileSync(join(mediaRoot, 'Filme', 'Arrival (2016).webm'), 'x');
+  });
+  const { root, db, scanner } = await setup(t, { dirObserver });
+  mediaRoot = root;
+  await makeMediaDir(root, 'Filme');
+
+  scanner.requestFull('initial'); await scanner.idle();
+
+  assert.ok(loadRow(db, 'Filme/Arrival (2016).webm'), 'the health re-check after seen() walks the root');
+});
+
+test('createScanner: stop() during a paths run\'s subtree walk reports no completion and logs no failure', async (t) => {
+  /** @type {{ scanner?: ReturnType<typeof createScanner> }} */
+  const holder = {};
+  const dirObserver = hookedObserver((relDir) => {
+    if (relDir === 'Filme/New') holder.scanner?.stop(); // its child 'Deep' then aborts
+  });
+  const { root, calls, scanner } = await setup(t, { dirObserver });
+  holder.scanner = scanner;
+  await writeMediaFile(root, 'Filme/keep.webm');
+  scanner.requestFull(); await scanner.idle();
+  await writeMediaFile(root, 'Filme/New/Deep/a.webm');
+  /** @type {unknown[]} */
+  const fired = [];
+  scanner.onScanComplete((p) => void fired.push(p));
+
+  scanner.requestPaths(['Filme/New']); await scanner.idle();
+  await new Promise((resolve) => setImmediate(resolve));
+
+  assert.deepEqual(fired, []);
+  assert.ok(!calls.error.some((c) => c.event === 'library_scan_run_failed'));
+  assert.ok(calls.info.some((c) => c.event === 'library_scan_stopped'));
 });

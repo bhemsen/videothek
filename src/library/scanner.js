@@ -24,10 +24,10 @@ import { emptyStats, addDirStats, sweepPrefix } from './scan-stats.js';
 const NOOP_DIR_OBSERVER = { seen() {}, gone() {}, sweep() {}, count: () => 0, closeAll() {} };
 
 /**
- * Thrown by `walkDir` when `stop()` cut a walk short; propagates out of
- * `runFullScan`/`scanSubtree` uncaught, so `scan-queue.js` logs the run as
- * failed instead of reporting a completion (spec: not fired for a run "cut
- * short by `stop()`").
+ * Thrown by `walkDir` when `stop()` cut a walk short. `runFullScan` and
+ * `runPathsReconcile` turn it into an `{ aborted: true }` result (info
+ * `library_scan_stopped`), which `dispatchComplete` never reports (spec: not
+ * fired for a run "cut short by `stop()`") — a normal shutdown is not a failure.
  */
 class ScanAbortedError extends Error {
   constructor() {
@@ -39,8 +39,7 @@ class ScanAbortedError extends Error {
 /**
  * @param {{ db: import('node:sqlite').DatabaseSync, mediaRoot: string, now: () => number, log: Logger, dirObserver?: DirWatchSet, statFn?: import('./walk.js').StatFn }} deps
  *   `statFn` is a test-only override threaded through to every directory
- *   listing, letting a test deterministically hook a specific file's `stat`
- *   call (e.g. to inject an interleaved reconcile mid-walk).
+ *   listing (lets a test hook one file's `stat`, e.g. to interleave a reconcile).
  * @returns {{
  *   requestFull(kind?: 'initial' | 'full'): void,
  *   requestPaths(relPaths: string[]): void,
@@ -80,16 +79,9 @@ export function createScanner({ db, mediaRoot, log, now, dirObserver = NOOP_DIR_
     }
     addDirStats(stats, result.stats);
     visited.add(relDir);
-    // Only the full scan's own root walk may drain inline: `visited` here is
-    // the exact same Set assigned to `activeFullVisited` only for that call
-    // chain (`runFullScan` -> `visitRoot` -> this `walkDir`). A `scanSubtree`
-    // call always builds its own local `visited` — whether it's a standalone
-    // 'paths' run or one nested inside an interleaved reconcile that is
-    // itself running during a full scan — so it must never drain here too:
-    // a nested drain's finds would land only in `activeFullVisited`, not in
-    // that subtree's own `visited`, and its own sweepPrefix() would then
-    // delete what the nested drain just indexed. Deferred paths instead run
-    // as their own later top-level queue job, after every enclosing sweep.
+    // Only the full scan's own walk drains inline. A `scanSubtree` (own local
+    // `visited`) must not: a nested drain's finds would miss that subtree's
+    // `visited` and its own sweepPrefix() would delete them again.
     if (visited === activeFullVisited) await queue.drainPathsBetweenDirs();
     for (const child of result.dirs) {
       await walkDir(`${relDir}/${child}`, stats, visited, protectedPrefixes);
@@ -115,12 +107,9 @@ export function createScanner({ db, mediaRoot, log, now, dirObserver = NOOP_DIR_
   }
 
   /**
-   * A directory whose listing failed protects its whole subtree from this
-   * run's sweep — ENOENT included: a lazily unmounted disk surfaces as
-   * ENOENT under a parent listed moments earlier, and must never read as
-   * "every remaining directory was deleted" (spec: walk rule, D7). A
-   * category root failing this way (it vanished or broke between its health
-   * check and its walk) is recorded as a protected root instead.
+   * A directory whose listing failed protects its subtree from this run's
+   * sweep — ENOENT included (a lazily unmounted disk; spec: walk rule, D7).
+   * A category root failing this way is recorded as a protected root.
    * @param {string} relDir
    * @param {string} code
    * @param {ScanStats} stats
@@ -154,7 +143,8 @@ export function createScanner({ db, mediaRoot, log, now, dirObserver = NOOP_DIR_
 
   /**
    * Visits one root candidate: walks it when healthy, else protects it (when
-   * it still has rows) and records the reason.
+   * it still has rows) and records the reason. An empty root is not walked
+   * but still watched and counted as visited.
    * @param {string} name
    * @param {boolean} isPresent whether `name` was found by this scan's own `discoverRoots()`
    * @param {ScanStats} stats
@@ -163,7 +153,14 @@ export function createScanner({ db, mediaRoot, log, now, dirObserver = NOOP_DIR_
    * @returns {Promise<void>}
    */
   async function visitRoot(name, isPresent, stats, visited, protectedPrefixes) {
-    const reason = isPresent ? await rootHealth(mediaRoot, name) : 'missing';
+    let reason = isPresent ? await rootHealth(mediaRoot, name) : 'missing';
+    if (reason === 'empty') {
+      // Watched (and kept by the sweep) so a first file copied in shows up in
+      // seconds; re-checked after `seen` to close the list-then-watch race.
+      dirObserver.seen(name);
+      visited.add(name);
+      reason = await rootHealth(mediaRoot, name);
+    }
     if (reason) {
       protectRoot(name, reason, stats, protectedPrefixes);
       return;
@@ -172,11 +169,8 @@ export function createScanner({ db, mediaRoot, log, now, dirObserver = NOOP_DIR_
     sweepPrefix(db, name, visited, protectedPrefixes, stats);
   }
 
-  /**
-   * @param {'initial' | 'full'} kind
-   * @returns {Promise<ScanStats | { aborted: true }>}
-   */
-  async function runFullScan(kind) {
+  /** @returns {Promise<ScanStats | { aborted: true }>} */
+  async function runFullScan() {
     const start = Date.now();
     let discovered;
     try {
@@ -196,30 +190,37 @@ export function createScanner({ db, mediaRoot, log, now, dirObserver = NOOP_DIR_
       for (const name of rootCandidates) {
         await visitRoot(name, discovered.has(name), stats, visited, protectedPrefixes);
       }
+    } catch (err) {
+      return asAborted(err);
     } finally {
       activeFullVisited = null;
     }
     deleteOrphanedSeries(db);
     dirObserver.sweep(visited);
-
     stats.durationMs = Date.now() - start;
-    void kind;
     return stats;
   }
 
+  /** @param {unknown} err @returns {{ aborted: true }} rethrows anything but a ScanAbortedError */
+  function asAborted(err) {
+    if (!(err instanceof ScanAbortedError)) throw err;
+    log.info('library_scan_stopped');
+    return { aborted: true };
+  }
+
   /**
-   * Runs the reconcile, then stamps `durationMs` on its stats so a `'paths'`
-   * run's stats carry the same full `ScanStats` shape as `'initial'`/`'full'`
-   * (`reconcile.js`'s `ReconcileStats` deliberately omits `durationMs`, since
-   * only this wrapper — timing the whole batch, incl. any subtree walks —
-   * knows it).
+   * Runs the reconcile, then stamps `durationMs` (timing the whole batch,
+   * incl. subtree walks) so a `'paths'` run carries the full `ScanStats` shape.
    * @param {string[]} relPaths
-   * @returns {Promise<{ stats: ScanStats, escalate: boolean }>}
+   * @returns {Promise<{ stats: ScanStats, escalate: boolean } | { aborted: true }>}
    */
   async function runPathsReconcile(relPaths) {
     const start = Date.now();
     const markTouched = (/** @type {string} */ dir) => void activeFullVisited?.add(dir);
-    const { stats, escalate } = await reconcilePaths({ db, mediaRoot, now, dirObserver, scanSubtree, markTouched }, relPaths);
+    const ctx = { db, mediaRoot, now, dirObserver, scanSubtree, markTouched };
+    const result = await reconcilePaths(ctx, relPaths).catch(asAborted);
+    if ('aborted' in result) return result;
+    const { stats, escalate } = result;
     // A 'paths' run can delete the last episode of a series (ENOENT, a
     // changed file whose series changed, or a symlink/skipped name); without
     // this, the now-empty series row would linger until the next full scan.
@@ -232,7 +233,7 @@ export function createScanner({ db, mediaRoot, log, now, dirObserver = NOOP_DIR_
    * @returns {void}
    */
   function dispatchComplete({ kind, stats: rawResult }) {
-    if (kind !== 'paths' && /** @type {{ aborted?: boolean }} */ (rawResult).aborted) return;
+    if (/** @type {{ aborted?: boolean }} */ (rawResult).aborted) return;
     const innerStats = /** @type {ScanStats} */ (
       kind === 'paths' ? /** @type {{ stats: unknown }} */ (rawResult).stats : rawResult
     );

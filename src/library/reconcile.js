@@ -99,17 +99,37 @@ async function canIgnoreTopLevel(mediaRoot, relPath) {
 }
 
 /**
- * Deletes any row for `relPath` and any rows nested under it, bumping
- * `stats.removed` at most once.
+ * Deletes any row for `relPath` and any rows nested under it; `stats.removed`
+ * counts rows, the same unit as the full scan's sweep.
  * @param {import('node:sqlite').DatabaseSync} db
  * @param {string} relPath
  * @param {ReconcileStats} stats mutated in place
  * @returns {void}
  */
 function deletePathAndSubtree(db, relPath, stats) {
-  const removedItem = deleteItem(db, relPath);
-  const removedSubtree = deleteItemsUnderDir(db, relPath) > 0;
-  if (removedItem || removedSubtree) stats.removed += 1;
+  stats.removed += (deleteItem(db, relPath) ? 1 : 0) + deleteItemsUnderDir(db, relPath);
+}
+
+/**
+ * Whether an ancestor of `relPath` (its category root included) is a
+ * symlink. The walk never descends into one, but a native recursive watcher
+ * can report paths through it, and `lstat` only checks the last segment —
+ * indexing such a path would read from outside `MEDIA_ROOT`. An `lstat`
+ * error reads as "no": the path's own `lstat` then decides.
+ * @param {string} mediaRoot
+ * @param {string} relPath
+ * @returns {Promise<boolean>}
+ */
+async function hasSymlinkAncestor(mediaRoot, relPath) {
+  const segments = relPath.split('/');
+  for (let i = 1; i < segments.length; i += 1) {
+    try {
+      if ((await lstat(join(mediaRoot, ...segments.slice(0, i)))).isSymbolicLink()) return true;
+    } catch {
+      return false;
+    }
+  }
+  return false;
 }
 
 /**
@@ -199,7 +219,7 @@ async function reconcileFile(ctx, relPath, category, stat, stats) {
  * @returns {Promise<boolean>} whether to escalate to a full scan
  */
 async function reconcileOne(ctx, relPath, rootName, category, stats) {
-  if (hasUnsafeOrSkippedSegment(relPath)) {
+  if (hasUnsafeOrSkippedSegment(relPath) || (await hasSymlinkAncestor(ctx.mediaRoot, relPath))) {
     deletePathAndSubtree(ctx.db, relPath, stats);
     ctx.dirObserver.gone(relPath);
     return false;
