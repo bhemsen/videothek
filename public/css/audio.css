@@ -51,7 +51,7 @@
   right: 0;
   /* Phase 1's fixed bottom nav is not `--bar-height-mobile` tall (its real
      height comes from `.nav-link`'s min-height plus border plus its own
-     safe-area padding, issue 193) — `trackNavOffset` in player-bar.js
+     safe-area padding, issue 193) — `trackNavOffset` (nav-offset.js)
      measures the nav live and keeps this property equal to it, so the bar's
      bottom edge always sits flush with the nav's top edge. */
   bottom: var(--audio-bar-nav-offset, 0);

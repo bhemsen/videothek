@@ -10,6 +10,7 @@ import { formatClock } from '../lib/progress.js';
 import { audioIcon } from './icons.js';
 import { coverImg } from './cover-img.js';
 import { formatDuration } from './format.js';
+import { trackNavOffset } from './nav-offset.js';
 
 /** @typedef {ReturnType<typeof import('./player.js').createAudioPlayer>} AudioPlayer */
 /** @typedef {NonNullable<ReturnType<AudioPlayer['state']>>} PlayerState */
@@ -159,25 +160,6 @@ function observeHeight(bar, spacer) {
 function borderBoxHeight(entry) {
   const box = entry.borderBoxSize && entry.borderBoxSize[0];
   return box ? box.blockSize : entry.contentRect.height;
-}
-
-/**
- * Keeps `--audio-bar-nav-offset` on `bar` equal to the live rendered height
- * of Phase 1's fixed mobile bottom nav (`.app-nav`, incl. border and its own
- * safe-area padding) instead of assuming it equals `--bar-height-mobile` —
- * that assumption left a gap between the bar and the nav (issue 193).
- * `audio.css` reads the property for `.audio-bar`'s `bottom`; the >= 768 px
- * breakpoint overrides `bottom` to 0 and ignores it. No-op without a
- * `.app-nav` in the DOM or without `ResizeObserver`.
- * @param {HTMLElement} bar
- * @returns {void}
- */
-function trackNavOffset(bar) {
-  const nav = document.querySelector('.app-nav');
-  if (nav === null || typeof ResizeObserver === 'undefined') return;
-  const update = () => bar.style.setProperty('--audio-bar-nav-offset', `${nav.getBoundingClientRect().height}px`);
-  update();
-  new ResizeObserver(update).observe(nav);
 }
 
 /**
