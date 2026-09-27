@@ -100,6 +100,26 @@
   height: var(--space-4);
 }
 
+/* Episode list (series detail): one bordered, rounded block per season.
+   No overflow: hidden here - the first/last row round their own outer
+   corners instead, so a focused row's outline is never clipped. */
+
+.episode-list {
+  border: var(--border-width) solid var(--color-border);
+  border-radius: var(--radius-md);
+}
+
+.episode-list .episode-row:first-child {
+  border-top-left-radius: var(--radius-md);
+  border-top-right-radius: var(--radius-md);
+}
+
+.episode-list .episode-row:last-child {
+  border-bottom: none;
+  border-bottom-left-radius: var(--radius-md);
+  border-bottom-right-radius: var(--radius-md);
+}
+
 /* Episode row (series detail) */
 
 .episode-row {
@@ -151,6 +171,16 @@
 .episode-row__action svg {
   width: var(--space-4);
   height: var(--space-4);
+}
+
+/* Series detail page: content column capped at 3/4 of --content-max (960 px
+   at the 1280 px token value) and centered - narrower than the Filme/Serien
+   grids, which stay full-width. No-op below that width (margin: auto only
+   centers once max-width is reached). */
+
+.series-detail {
+  max-width: calc(var(--content-max) * 0.75);
+  margin: 0 auto;
 }
 
 /* Back link (series detail) */
