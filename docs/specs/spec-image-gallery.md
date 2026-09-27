@@ -632,3 +632,33 @@ Human QA (Chromium + Firefox; desktop 1280 px and 390 px mobile emulation;
   (not a static frame). Output is ~1 KiB, well under the 50 KiB cap; fixed
   mtime applied via `exif-jpeg.js --write`'s existing "leave present files'
   mtime alone" behaviour for this file.
+- 2026-09-27 (#80, `src/library/image-meta.js`): the single `rerun` flag
+  serves both roles the `createImageMetaSync` row describes without a second
+  flag: while a pass is in flight, a new `syncImageMeta()` call sets it and
+  returns the in-flight promise (classic single-flight coalescing, consumed —
+  reset to `false` — only at the top of the outer pass loop); the *same*
+  flag, read but not cleared, is also checked between header batches to
+  decide whether to re-run the stub step mid-pass, so a file that arrives
+  during a long pass gets its stub (and, if a later batch of that same pass
+  reaches it, its header) before the pass ends, while the outer loop still
+  runs exactly one more full pass afterward — never more, however many calls
+  arrived in between. `db.isOpen` is checked immediately before every
+  synchronous DB call (never after an `await`) via a shared `assertOpen`
+  helper that throws a module-private `QuietStop`; every loop layer lets it
+  propagate uncaught up to the pass's top-level `catch`, which returns
+  without logging anything for it — the "ends quietly" rule — while any other
+  thrown error there still logs `image_meta_failed`. One 128 KiB read buffer
+  is allocated once for the sync's whole lifetime (not per pass) and passed
+  through to every header read, per the row's "one reused buffer". A stat
+  read of 0 bytes for a `size > 0` row (`bytesRead === 0`) is treated as a
+  per-file failure (row left stale, retried next pass) alongside ENOENT/
+  EACCES/EISDIR/a guard `null`, on the reading that a declared-non-empty file
+  yielding nothing at offset 0 signals a torn read racing a concurrent write,
+  not a file the reader can draw a real (if EXIF-less) conclusion about.
+  `test/library/image-meta.test.js` reuses `test/helpers/image-meta-seed.js`'s
+  `makeDb`/`insertItem` (direct inserts, no scanner) per the spec's "Test
+  seeding" row, and proves single-flight/mid-pass-visibility by exploiting
+  that calling an async function runs its body synchronously up to its first
+  genuinely-pending `await` — so a test can call `syncImageMeta()` several
+  times, or insert a new item, while the first call is provably still
+  in-flight, without any timer or manual event-loop tick.
