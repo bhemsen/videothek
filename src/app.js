@@ -22,6 +22,7 @@ import { createStaticHandler, sendNotFoundPage } from './http/static.js';
 /** @typedef {import('./http/router.js').AuthUser} AuthUser */
 /** @typedef {import('./config.js').Config} Config */
 /** @typedef {import('./log.js').Logger} Logger */
+/** @typedef {import('./library/index.js').LibraryService} LibraryService */
 
 /**
  * @typedef {{
@@ -30,6 +31,7 @@ import { createStaticHandler, sendNotFoundPage } from './http/static.js';
  *   log: Logger,
  *   now: () => number,
  *   sessions: ReturnType<typeof createSessionStore>,
+ *   library?: LibraryService,
  * } & Record<string, unknown>} AppDeps
  */
 

@@ -1261,3 +1261,35 @@ and desktop 1440 px, compared with the design exports):
   per-season episode order reuses `episodes.js`'s exact tuple
   (`episode IS NULL, episode, COALESCE(episode_end, -1), sort_title, id`) so
   there is still only one ordering rule for a series' episodes in the app.
+- 2026-09-27 (#34): `startLibrary()`'s deferred boot (`setImmediate(() => {
+  watcher.start(); scanner.requestFull('initial'); })`) is guarded by a local
+  `stopped` flag set in `stop()`. Without it, a caller that stops the service
+  again right after `startLibrary()` — before the event loop reaches that
+  `setImmediate`, e.g. `src/server.js`'s own `runStart()`/`stop()` as exercised
+  by `test/server.test.js` — still ran the deferred callback afterwards: the
+  watcher started (a real, persistent OS-level watch on Windows/macOS) after
+  `stop()`'s promise had already resolved, leaking a handle that kept the
+  process alive forever even though every assertion had passed. Confirmed by
+  reverting `src/server.js`/`src/app.js` to their pre-#34 state, which made
+  the hang disappear, then reproducing and fixing it with the flag; regression
+  test added to `test/library/index.test.js`.
+- 2026-09-27 (#34), review follow-up: the ENOSPC/EMFILE-on-`seen('')` edge
+  case the #31 entry above left open is **deferred, not closed** here.
+  `startLibrary()` only calls `watcher.start()`; fixing it means changing how
+  `dir-watch.js` reports a limit error for `''` (today it sets `limitReached`
+  without calling `onWatchError`, so `watcher.js`'s root backoff never
+  retries and `sweep()` never re-sees `''`), which belongs to the
+  change-detection modules, not this wiring issue. Impact is bounded: a host
+  whose very first watch already hits the inotify limit has no watch budget
+  at all, `library_watch_limit` is logged once, category and sub-directory
+  watches are re-attempted from the next full scan on (`sweep()` clears the
+  flag), and only a new top-level folder directly under `MEDIA_ROOT` then
+  waits for the periodic rescan — inside the vision's "at the latest after
+  the periodic rescan interval" bound. Follow-up candidate: route a `''`
+  limit error through `onWatchError('')` so the existing root backoff
+  retries it.
+- 2026-09-27 (#34), review follow-up: the D7 "how to empty a category"
+  guidance now also lives in `docs/architecture.md` (key flow 1), and both
+  it and `README.md` warn that deleting the DB file also deletes every
+  account, session and all playback progress (the admin is re-created from
+  `ADMIN_USER`/`ADMIN_PASSWORD`).

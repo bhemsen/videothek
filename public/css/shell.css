@@ -213,6 +213,7 @@
 
   .app-nav {
     position: static;
+    gap: var(--space-8);
     padding-bottom: 0;
     margin-left: var(--space-8);
     background: none;
