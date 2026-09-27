@@ -880,3 +880,28 @@ phone 390 px and desktop 1440 px, compared with the design exports):
   finished-guard branch (existing row left untouched) both reuse
   `toProgressEntryJson`/`entryFromProgressRow` rather than building the JSON
   shape a second time.
+- 2026-09-27: implementation (#56) — `public/js/player.js`'s `loadItem`
+  fires the item fetch and `getProgress(id)` back-to-back before awaiting
+  either (both in flight before either settles), so a non-playable/error/
+  wrong-category item still issues the `/api/progress/:id` GET even though it
+  never awaits or uses the result (only the playable path awaits it and calls
+  `attachVideo`/`trackPlayback`); `test/public/player-page.test.js`'s
+  non-playable case was updated to expect both requests, and its `install()`
+  now stubs a global `window` (`trackPlayback` unconditionally adds a
+  `pagehide` listener). `resume-toast.js`'s "×"/rotate glyphs reuse the
+  Material Design "close"/"replay" 24×24 paths (`createIcon`, P1's icon
+  style) since the spec names the icons but not their path data. Kept
+  `public/js/player.js` at exactly 300 lines by tightening pre-existing
+  comments it already touched, rather than splitting the seam into a new
+  file outside the issue's Files list.
+- 2026-09-27: review follow-up (#56) — the toast is inserted (and
+  `--resume-toast-top` first measured) only once `/css/resume-toast.css` has
+  loaded or failed: the host's `position: relative` lives in that sheet, so
+  measuring earlier counted the page header/padding and the `ResizeObserver`
+  never corrected it (no size change). This also removes the unstyled flash.
+  The auto-hide timer now restarts only when neither the pointer is over the
+  toast nor focus is inside it; "×" returns focus to the video like Escape
+  and "Von vorn". The rotate glyph is Material "refresh" (clockwise, as in
+  the mockup) instead of "replay". The player page's fake DOM moved to
+  `test/helpers/player-page-fakes.js`, shared by `player-page.test.js`,
+  `player-page-resume.test.js` (seam) and `resume-toast.test.js`.
