@@ -324,7 +324,7 @@ QA-only, optional:
 | **ID3v2 robustness:** header `ID3` + major version 3 or 4; synchsafe tag size; skip the extended header; v2.3 whole-tag unsynchronisation → de-unsync the read buffer (pictures in unsynchronised tags/frames are ignored); v2.4 frame sizes synchsafe with fallback to plain big-endian when the synchsafe reading yields an invalid next frame id (iTunes bug); compressed/encrypted frames skipped; the walk stops at padding (`\0` id), an invalid id, or a size past the tag end. Readers never throw on malformed input — they return what they parsed, or `null`. | Real-world tag corpora contain these defects; one bad file must never abort the pass. | 2026-09-26 |
 | **Duration without decoding:** FLAC = `total_samples / sample_rate` (null when total samples is 0). MP3 = first valid MPEG frame header (MPEG-1/2/2.5 Layer III) within 64 KiB after the ID3v2 tag; `Xing`/`Info` header with frames flag → `frames × samples_per_frame / sample_rate`; else `VBRI` → same formula; else CBR `(file_size − audio_start) × 8 / bitrate`. Other formats and failures → NULL; the API then uses the user's Phase 4 row `duration_seconds`, else the UI shows `–:–`. | Exact for FLAC and Xing-tagged MP3, cheap estimate otherwise; no decoding, no child process. | 2026-09-26 |
 | **Read budget:** readers work on `readAt(position, length) → Promise<Buffer>` (short buffer at EOF). Per file at most **256 KiB** in total; ID3v2 frames are walked in chunks of ≤ 64 KiB, bodies larger than the chunk are skipped by offset — for `APIC` only the first 512 body bytes are read to locate the image data; FLAC blocks other than STREAMINFO/VORBIS_COMMENT/PICTURE are skipped by offset, a VORBIS_COMMENT > 64 KiB is skipped, a PICTURE block is read only up to 4 KiB. Budget exhaustion ends parsing with the partial result. | Covers are often 0.5–5 MB inside the tag; the budget bounds I/O without losing frames after the picture. | 2026-09-26 |
-| **Reader interfaces:** `readId3v2(readAt) → Promise<{ version, fields: Record<string,string>, picture: PictureRef \| null, tagEnd: number } \| null>` (fields keyed by frame id; `tagEnd` = 0 when no tag); `readMpegDurationMs(readAt, audioStart, fileSize) → Promise<number \| null>`; `readFlac(readAt, fileSize) → Promise<{ fields: Record<string,string>, picture: PictureRef \| null, durationMs: number \| null } \| null>` (fields keyed by upper-cased Vorbis key; skips a leading ID3v2 tag by its header without importing `id3v2.js`); `PictureRef = { offset, length, mime }` in absolute file bytes. `src/library/tags/index.js`: `readAudioTags(absPath, { ext, size }) → Promise<AudioTags>` (`AudioTags = { title, artist, albumArtist, album, trackNo, discNo, year, durationMs, format: 'id3v2' \| 'flac' \| null }`, all nullable; budgeted file-backed `readAt`, handle closed in `finally`; rejects only on open/read I/O errors) and `readPictureRef(absPath, { ext }) → Promise<PictureRef \| null>` (never rejects: I/O errors → null). | Lets the ID3v2, FLAC and mapping issues be built and tested in parallel against buffer-backed fakes. | 2026-09-26 |
+| **Reader interfaces:** `readId3v2(readAt) → Promise<{ version, fields: Record<string,string>, picture: PictureRef \| null, tagEnd: number } \| null>` (fields keyed by frame id; no `ID3` header → `null`, never an object with `tagEnd: 0`); `readMpegDurationMs(readAt, audioStart, fileSize) → Promise<number \| null>`; `readFlac(readAt, fileSize) → Promise<{ fields: Record<string,string>, picture: PictureRef \| null, durationMs: number \| null } \| null>` (fields keyed by upper-cased Vorbis key; skips a leading ID3v2 tag by its header without importing `id3v2.js`); `PictureRef = { offset, length, mime }` in absolute file bytes. `src/library/tags/index.js`: `readAudioTags(absPath, { ext, size }) → Promise<AudioTags>` (`AudioTags = { title, artist, albumArtist, album, trackNo, discNo, year, durationMs, format: 'id3v2' \| 'flac' \| null }`, all nullable; budgeted file-backed `readAt`, handle closed in `finally`; rejects only on open/read I/O errors) and `readPictureRef(absPath, { ext }) → Promise<PictureRef \| null>` (never rejects: I/O errors → null). | Lets the ID3v2, FLAC and mapping issues be built and tested in parallel against buffer-backed fakes. | 2026-09-26 |
 | **Parser interfaces:** `parseMusicPath(relPath) → { groupKey, groupTitle, groupArtist, fileTitle, fileTrackNo, folderDiscNo }` and `parseAudiobookPath(relPath) → { groupKey, groupTitle, groupArtist, fileTitle, fileTrackNo, folderDiscNo }` (nullable where the rules above say so; `groupTitle` of a book is never null). Pure, no I/O. | Contract between the parser, pass and group issues. | 2026-09-26 |
 | **Scan hook = Phase 2's `onScanComplete` (D6), not an enricher module.** `src/library/audio-meta.js` exports `AUDIO_META_VERSION` (integer, starts at 1) and `createAudioMetaPass({ db, mediaRoot, log, readTags = readAudioTags, resolvePath = resolveMediaPath }) → { refreshAudioMeta(event?): Promise<void>, idle(): Promise<void> }`. `src/server.js` gets exactly one line: `library.onScanComplete(createAudioMetaPass({ db, mediaRoot: config.mediaRoot, log }).refreshAudioMeta)` (`library` = the value returned by `startLibrary()`). `scanner.js`/`watcher.js` are not edited. | D6 cross-phase consolidation — it supersedes the review's BLOCKING-1 (per-batch enrichers): a listener gives backfill of pre-existing rows, retry after failure and never blocks the scan queue (freshness ≤ 10 s). | 2026-09-26 |
 | **Pass algorithm:** single-flight — a call while a run is active marks one coalesced rerun and returns the active promise. A run selects (`listStaleAudioItems`) every `library_items` row with category in (`music`, `audiobooks`) whose `audio_meta` row is missing or differs in `meta_version`, `source_size` (vs `size`) or `source_mtime_ms` (vs `mtime_ms`), ordered by id; per item, sequentially: parser by category → `resolvePath(mediaRoot, rel_path)` (null → skip, no row; the next scan removes the item) → `readTags` (rejection → log `audio_meta_read_failed { relPath }`, no tag content, and continue with empty tags) → resolve fields per the precedence rows → `upsertAudioMeta` with the item's `size`/`mtime_ms` as read in the select. An FK violation (item deleted mid-pass) skips that item. Shutdown: the run checks `db.isOpen` before each item and in its error handler; when it is `false` the run (and any coalesced rerun) ends quietly — no log line, no rerun. Any other DB error ends the run with `audio_meta_pass_failed { error }` (the next completed scan retries). A run that processed ≥ 1 item logs `audio_meta_pass { processed, failed, durationMs }`. No orphan-delete code: `ON DELETE CASCADE` cleans rows (D6), and a category change is impossible for an unchanged `rel_path`. Phase 2's rows are never modified. | D6 listener contract; staleness by (version, size, mtime) makes unchanged files free on every later run; a file whose tags fail still appears; bumping `AUDIO_META_VERSION` re-derives every row once after a parser change. | 2026-09-26 |
@@ -653,6 +653,97 @@ compared with the exports):
   numbered stem whose captured title is pure whitespace (e.g. `"12  .mp3"`,
   covered by a test) — genuine empty captures cannot occur because
   `(.+)` requires at least one character.
+- 2026-09-26: issue #59 implementation — `readId3v2`'s `fields` stay the raw,
+  encoding-decoded string per frame id (only the `\0`-multi-value first-token
+  rule is applied here); `"n/total"` splitting, non-numeric → null and
+  "year = first four digits" are left to the tag→field mapping issue
+  (`src/library/tags/index.js`), matching the Reader interfaces row's
+  `Record<string, string>` return type. Whole-tag v2.3 unsynchronisation uses
+  the simplified, standard codec (insert `$00` after every `$FF`, strip every
+  `$FF $00` pair) and is handled as a separate one-shot-read, in-memory walk
+  (budgeted, no further chunked I/O) rather than folded into the windowed
+  path — pictures inside such a tag are ignored entirely there, per the
+  robustness rule, rather than budget-limited. The v2.3/v2.4 extended-header
+  size fields follow the informal ID3v2 spec exactly (v2.3: plain
+  big-endian, excludes itself; v2.4: synchsafe, includes itself) since only
+  the skip length matters, never the content. v2.4's per-frame
+  unsynchronisation and data-length-indicator flags are not specially
+  handled (superseded by the PR #108 round-2 entry below: such frames are
+  now skipped). Unknown frame bodies are always skipped by offset without
+  reading them; only their 10-byte header (plus, for a v2.4 frame whose
+  size bytes are all < `0x80`, a 4-byte lookahead for the iTunes-bug check)
+  is read, so the budget is otherwise spent only on the 8 known text ids and
+  APIC. `test/helpers/mp3-fixture.js`'s API
+  (`buildId3v2Tag`, `buildFrame`, `textFrameBody`, `apicFrameBody`,
+  `buildMpegFrame`, `withXingHeader`, `withVbriHeader`, `makeReadAt`,
+  `instrumentReadAt`) is not fixed by this spec; it is designed for reuse by
+  the FLAC, tag-mapping and audio-meta-pass test issues.
+- 2026-09-26: issue #59 review resolutions (blocking) — `mpeg.js`'s frame
+  scan no longer accepts a candidate on its own 4-byte header: it now also
+  requires a second, matching header (same MPEG version and sample rate) at
+  the offset the first header's own frame length implies, still inside the
+  64 KiB scan window, before returning it. This closes the false-positive
+  gap where random/non-MPEG bytes were read as a fabricated CBR duration;
+  `test/library/tags/mpeg.test.js` gained a `randomBytes`-fuzz case (many
+  seeds) asserting `null`, never a throw.
+- 2026-09-26: issue #59 review resolutions (non-blocking) — `readId3v2`
+  returns `null`, never an object with `tagEnd: 0`, when no `ID3` header is
+  present (the declared `Id3v2Tag | null` return type is authoritative); #64
+  (`src/library/tags/index.js`) must read the result as `tag?.tagEnd ?? 0`,
+  not assume an object. A Xing/Info header whose `frames` count is 0 is now
+  treated as absent (`tryXingFrames` returns `null`), falling through to the
+  VBRI/CBR estimate instead of a fabricated 0 ms duration. The v2.4 footer
+  flag (`0x10`) now adds 10 bytes to the returned `tagEnd`/audio-start value
+  while the frame walk itself still stops at the frame-area end
+  (`10 + tagSize`, footer excluded) — `tagEnd` and the walk boundary are
+  tracked as two separate values internally to keep the v2.4 "plausible next
+  frame" check (D-issue-#59's iTunes-bug guard) comparing against the frame
+  area, not the footer. Left as documented deviations rather than fixed in
+  this pass: the v2.4 tag-level-unsynchronisation path reuses the v2.3
+  whole-tag `readUnsyncedTag`/`synchDecode` codec verbatim, which is exact
+  for v2.3 but can misplace frame boundaries for a v2.4 tag whose frame
+  sizes themselves count already-unsynchronised bytes (rare in practice,
+  never throws, only the affected tag's later fields are lost); `walkFrames`
+  issues one `readAt` per frame header (plus a 4-byte v2.4 lookahead and one
+  body read) rather than the informal "64 KiB chunks" phrasing, since the
+  256 KiB total budget is unaffected and #64's `readAt` is expected to be
+  cheap in-process buffering, not one syscall per call.
+- 2026-09-26: PR #108 review resolutions (blocking) — `processFrame` now skips
+  an APIC frame outright, for either of v2.4's format flags `0x02`
+  (frame-level unsynchronisation) or `0x01` (data-length indicator), instead
+  of only checking the compressed/encrypted flags; `picture` stays `null` for
+  such a frame. This corrects the "issue #59 implementation" entry above:
+  per-frame unsync/DLI on `APIC` is not "outside the robustness row's
+  explicit list" — the row names pictures explicitly ("pictures in
+  unsynchronised tags/frames are ignored"), so both flags had to be honoured
+  for that frame type. (The same flags on a text frame are now skipped too —
+  see the round-2 entry below.) Also, for consistency with the
+  Xing/Info "0 frames = absent" rule from the prior round,
+  `mpeg.js`'s `tryVbriFrames` now treats a `frames = 0` VBRI header as absent
+  (`null`) rather than fabricating a 0 ms duration.
+- 2026-09-27: PR #108 review resolutions, round 2 — blocking: the 256 KiB
+  per-file cap of the Read budget row holds for the MP3 pair as a whole.
+  `readId3v2` caps its own reads at 256 KiB − `MPEG_READ_MAX` (exported by
+  `mpeg.js`: the 64 KiB sync window + 1 KiB probe = 65 KiB), i.e. 191 KiB,
+  so `readId3v2` followed by `readMpegDurationMs` never exceeds 256 KiB even
+  when the tag alone would exhaust the budget (e.g. a v2.3 whole-tag-
+  unsynchronised tag with a 5 MiB APIC; covered by a combined instrumented
+  test in `mpeg.test.js`). For #64 (`src/library/tags/index.js`): its
+  file-backed `readAt` still enforces the 256 KiB per-file total as the
+  backstop — once exhausted it returns short/empty buffers, and the MPEG
+  reader then gets only what remains (duration `null` on exhaustion, per
+  "Budget exhaustion ends parsing with the partial result"); it never grants
+  the MPEG reader reads beyond the cap. Non-blocking, applied: a v2.4 frame
+  whose size bytes have any top bit set is taken as plain big-endian at once
+  (a synchsafe value never has one), so zero bytes inside picture data at
+  the synchsafe offset can no longer end the walk early; frames flagged with
+  grouping (v2.3 `0x20`, v2.4 `0x40`) or, in v2.4, frame-level
+  unsynchronisation (`0x02`) / data-length indicator (`0x01`) are skipped
+  for every frame type (text frames included, not only APIC), next to
+  compression/encryption, instead of yielding a garbled value — in the
+  in-memory whole-tag-unsync walk the per-frame unsync flag is ignored since
+  that buffer is already de-unsynchronised. The random-bytes fuzz case in
+  `mpeg.test.js` now uses a seeded PRNG so it is reproducible.
 - 2026-09-26: `src/library/audio-groups.js` (#62) — the "Group assembly" row
   names no total-duration field, so `buildAlbums`/`buildBooks` add
   `durationMs` to each group object (sum of known member `durationMs`, `null`
