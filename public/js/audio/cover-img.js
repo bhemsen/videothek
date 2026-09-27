@@ -14,11 +14,13 @@ import { icon } from '../lib/icons.js';
  * immediately; otherwise an `<img>` is inserted and, on its `error` event
  * (a 404 or any load failure), removed and replaced by the same
  * placeholder — the wrapper never keeps a src-less `<img>` around.
- * @param {{ coverId: number | null, kind: CoverKind, alt?: string, lazy?: boolean }} params
+ * `tag: 'span'` makes the wrapper phrasing content, for a cover inside a
+ * `<button>` (the Musik "Weiterhören" card).
+ * @param {{ coverId: number | null, kind: CoverKind, alt?: string, lazy?: boolean, tag?: 'div' | 'span' }} params
  * @returns {HTMLElement}
  */
-export function coverImg({ coverId, kind, alt = '', lazy = false }) {
-  const wrapper = el('div', { class: 'cover-img' });
+export function coverImg({ coverId, kind, alt = '', lazy = false, tag = 'div' }) {
+  const wrapper = el(tag, { class: 'cover-img' });
   if (coverId === null) {
     wrapper.append(buildPlaceholder(kind));
     return wrapper;

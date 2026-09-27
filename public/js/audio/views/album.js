@@ -5,22 +5,21 @@
  */
 import { el, createEmptyState } from '../../lib/dom.js';
 import { createUnplayableBadge } from '../../lib/media-card.js';
-import { pluralize } from '../../lib/library-format.js';
+import { pluralize, UNPLAYABLE_TITLE } from '../../lib/library-format.js';
 import { ApiError } from '../../lib/api.js';
 import { getAlbum } from '../audio-api.js';
 import { coverImg } from '../cover-img.js';
 import { audioIcon } from '../icons.js';
 import { formatDuration, formatTotal } from '../format.js';
+import { buildAlbumQueue, activeTrackId, trackListEntries, MIDDLE_DOT, UNKNOWN_ARTIST, UNTITLED_ALBUM } from '../music-queue.js';
+import { buildLoadErrorState } from './load-error.js';
 
 /** @typedef {import('../app.js').ViewParams} ViewParams */
 /** @typedef {import('../audio-api.js').AlbumDetail} AlbumDetail */
 /** @typedef {import('../audio-api.js').AlbumTrack} AlbumTrack */
 /** @typedef {NonNullable<ReturnType<ViewParams['player']['state']>>} PlayerState */
 
-const MIDDLE_DOT = '·';
 const EN_DASH = '–';
-const UNKNOWN_ARTIST = 'Unbekannter Interpret';
-const UNTITLED_ALBUM = 'Einzeltitel';
 const SVG_NS = 'http://www.w3.org/2000/svg';
 
 /**
@@ -47,7 +46,7 @@ export async function render({ container, id, player }) {
     } catch (err) {
       if (disposed) return;
       const missing = err instanceof ApiError && err.status === 404;
-      body.replaceChildren(missing ? buildMissingState() : buildErrorState(load));
+      body.replaceChildren(missing ? buildMissingState() : buildLoadErrorState(load));
       return;
     }
     if (disposed) return;
@@ -74,16 +73,6 @@ export async function render({ container, id, player }) {
 function buildMissingState() {
   const state = createEmptyState({ title: 'Album nicht gefunden.', text: '' });
   state.append(el('a', { href: '/music' }, 'Zu Musik'));
-  return state;
-}
-
-/**
- * @param {() => Promise<void>} onRetry
- * @returns {HTMLElement}
- */
-function buildErrorState(onRetry) {
-  const state = createEmptyState({ title: 'Die Bibliothek konnte nicht geladen werden.', text: '' });
-  state.append(el('button', { type: 'button', class: 'btn btn-secondary', onClick: onRetry }, 'Erneut versuchen'));
   return state;
 }
 
@@ -123,17 +112,7 @@ function buildHeader(album) {
  * @returns {void}
  */
 function playFrom(album, player, startIndex) {
-  const items = album.tracks.map((track) => ({
-    id: track.id,
-    title: track.title,
-    subtitle: track.artist ?? UNKNOWN_ARTIST,
-    groupTitle: null,
-    coverId: album.coverId,
-    duration: track.duration,
-    playable: track.playable,
-    start: 0,
-  }));
-  player.playQueue(items, { startIndex, mode: 'music', groupId: album.id });
+  player.playQueue(buildAlbumQueue(album), { startIndex, mode: 'music', groupId: album.id });
 }
 
 /**
@@ -147,18 +126,17 @@ function buildTrackList(album, player) {
   const rows = [];
   /** @type {Map<number, { numberSpan: HTMLElement, row: HTMLElement, trackNo: string }>} */
   const byId = new Map();
-  let lastDisc = /** @type {number | null} */ (null);
-  album.tracks.forEach((track, index) => {
-    if (album.discCount > 1 && track.discNo !== lastDisc) {
-      rows.push(el('p', { class: 'track-list__disc-heading' }, `CD ${track.discNo}`));
-      lastDisc = track.discNo;
+  for (const entry of trackListEntries(album)) {
+    if (entry.kind === 'disc') {
+      rows.push(el('p', { class: 'track-list__disc-heading' }, `CD ${entry.discNo}`));
+      continue;
     }
-    const built = buildTrackRow(track, index, album, player);
+    const built = buildTrackRow(entry.track, entry.index, album, player);
     rows.push(built.row);
-    byId.set(track.id, built);
-  });
+    byId.set(entry.track.id, built);
+  }
   const applyHighlight = (/** @type {PlayerState | null} */ state) => {
-    const activeId = state !== null && state.mode === 'music' && state.groupId === album.id ? state.item.id : null;
+    const activeId = activeTrackId(state, album.id);
     for (const [trackId, entry] of byId) setRowActive(entry, trackId === activeId);
   };
   return { list: el('div', { class: 'track-list' }, ...rows), applyHighlight };
@@ -188,7 +166,7 @@ function buildTrackRow(track, index, album, player) {
   if (!track.playable) {
     const row = el(
       'div',
-      { class: 'track-row track-row--unplayable', title: 'Dieses Dateiformat kann der Browser nicht direkt abspielen.' },
+      { class: 'track-row track-row--unplayable', title: UNPLAYABLE_TITLE },
       numberSpan,
       titleSpan,
       createUnplayableBadge(),
