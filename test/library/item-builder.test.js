@@ -32,10 +32,10 @@ test('buildItem: returns null for a kind not admitted by the category (.jpg unde
   assert.equal(row, null);
 });
 
-test('buildItem: returns null for a kind not admitted by the category (.mp4 under Bilder/, pre-P6)', async () => {
+test('buildItem: returns null for a kind not admitted by the category (.mp3 under Bilder/)', async () => {
   const row = await buildItem({
     mediaRoot: '/media',
-    relPath: 'Bilder/clip.mp4',
+    relPath: 'Bilder/clip.mp3',
     category: 'images',
     stat: fakeStat(),
     now: NOW_2026,
