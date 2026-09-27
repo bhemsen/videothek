@@ -989,3 +989,30 @@ Chromium and Firefox, mobile ≤ 767 px and desktop ≥ 1024 px viewport):
   closes the DB and logs `shutdown` in a `finally`, so a failing
   `server.close()` never leaves the DB open; `startTestApp` likewise releases
   the DB and temp dir when its own setup throws partway.
+- 2026-09-27 (#19): `src/api/users.js` implemented. Per-route check order
+  follows the HTTP surface table's own left-to-right code order: body
+  validation before an `:id` lookup (`PUT .../password`, `PATCH`), and for
+  `PATCH`/`DELETE` the id-derived 404 before the "who is asking" 409s
+  (`cannot_change_own_role`/`cannot_delete_self`), which in turn run before
+  `setRoleGuarded`/`deleteUserGuarded`'s transactional `last_admin` check —
+  the self-guards need `ctx.user`'s own id, which the DB-layer guard does not
+  see. `:id` is accepted only as `^[1-9][0-9]*$` (matching `AUTOINCREMENT`);
+  anything else is treated as the same `404 not_found` as an unknown id,
+  never a separate code. `PATCH`'s same-role no-op short-circuits before the
+  own-role check, so an admin re-submitting their current role gets `200`,
+  not `409`. `role_changed` is logged only on an actual change (never for the
+  no-op). Log `by` reads `ctx.user?.username` — always populated in practice
+  (the route sits behind `requireAdmin`) but the `RequestContext` type keeps
+  `user` nullable, so the optional chain is the honest typing rather than a
+  non-null assertion. `test/api/users.test.js`'s two "concurrent last_admin"
+  cases do not rely on two real HTTP round trips actually interleaving
+  in-process (observed flaky: the first request's own I/O reliably finishes
+  before the second one reaches the server) — they instead call the
+  registered handler (via `router.match`, incl. `requireAdmin`) directly
+  twice with a hand-built `ctx`, the second carrying a still-`'admin'`
+  snapshot for a caller the first call already demoted/deleted. That
+  reproduces exactly what a genuinely concurrent second request's
+  already-resolved `ctx.user` (captured once per request in `app.js`, never
+  re-read mid-handler) would hold, deterministically exercising the same
+  `BEGIN IMMEDIATE` interleaving `test/db/users.test.js`'s DB-level
+  "concurrent demotion" test covers, without depending on real scheduling.
