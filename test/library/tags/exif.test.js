@@ -5,12 +5,25 @@ import { mkdtemp, writeFile, mkdir, rm } from 'node:fs/promises';
 import { tmpdir } from 'node:os';
 import path from 'node:path';
 import { EXIF_WINDOW_BYTES, JPEG_EXTENSIONS, THUMB_MIME, isJpegStart, parseExif, verifyThumb } from '../../../src/library/tags/exif.js';
-import { baseJpegBuffer, buildExifJpeg } from '../../helpers/exif-jpeg.js';
+import { baseJpegBuffer, buildExifJpeg, leftBandJpegBuffer, rightBandJpegBuffer } from '../../helpers/exif-jpeg.js';
+
+const NULLS = { orientation: null, takenAt: null, thumbOffset: null, thumbLength: null };
 
 test('constants', () => {
   assert.equal(EXIF_WINDOW_BYTES, 131072);
   assert.deepEqual(JPEG_EXTENSIONS, ['jpg', 'jpeg', 'jfif']);
+  assert.ok(Object.isFrozen(JPEG_EXTENSIONS));
   assert.equal(THUMB_MIME, 'image/jpeg');
+});
+
+test('fixture base JPEGs are tiny (<= 2 KiB, <= 64 px) and pairwise distinct', () => {
+  const bases = [baseJpegBuffer(), leftBandJpegBuffer(), rightBandJpegBuffer()];
+  for (const b of bases) {
+    assert.ok(isJpegStart(b) && b.length <= 2048);
+    const sof = b.indexOf(Buffer.from([0xff, 0xc0]));
+    assert.ok(sof > 0 && b.readUInt16BE(sof + 5) <= 64 && b.readUInt16BE(sof + 7) <= 64);
+  }
+  assert.ok(!bases[0].equals(bases[1]) && !bases[0].equals(bases[2]) && !bases[1].equals(bases[2]));
 });
 
 test('isJpegStart: true only for a buffer of at least 2 bytes starting FF D8', () => {
@@ -73,9 +86,21 @@ for (const bad of ['0000:00:00 00:00:00', '2024:13:01 10:00:00', '2024:07:32 10:
   });
 }
 
+test('parseExif: an invalid DateTimeOriginal falls back to a valid IFD0 DateTime', () => {
+  const buf = buildExifJpeg({ dateTimeOriginal: '0000:00:00 00:00:00', dateTime: '2021:09:09 09:09:09' });
+  assert.equal(parseExif(buf).takenAt, '2021-09-09T09:09:09');
+});
+
 test('parseExif: Compression other than 6 rejects the thumbnail', () => {
   const buf = buildExifJpeg({ thumbnail: { compression: 1 } });
   const result = parseExif(buf);
+  assert.equal(result.thumbOffset, null);
+  assert.equal(result.thumbLength, null);
+});
+
+test('parseExif: a present but unreadable Compression tag (unknown TIFF type) rejects the thumbnail', () => {
+  const result = parseExif(buildExifJpeg({ orientation: 1, thumbnail: { compression: 6, compressionType: 99 } }));
+  assert.equal(result.orientation, 1);
   assert.equal(result.thumbOffset, null);
   assert.equal(result.thumbLength, null);
 });
@@ -92,6 +117,16 @@ test('parseExif: a thumbnail range declared outside the APP1 segment is rejected
   const result = parseExif(buf);
   assert.equal(result.thumbOffset, null);
   assert.equal(result.thumbLength, null);
+  // Starts inside APP1 (valid FF D8) but its length runs past the segment's declared end.
+  assert.equal(parseExif(buildExifJpeg({ thumbnail: { compression: 6, length: 60000 } })).thumbOffset, null);
+});
+
+test('parseExif: a thumbnail inside the declared APP1 but beyond the bytes read is accepted without the SOI peek', () => {
+  const full = buildExifJpeg({ thumbnail: { compression: 6 } });
+  const { thumbOffset, thumbLength } = parseExif(full);
+  assert.ok(thumbOffset !== null && thumbLength !== null);
+  assert.deepEqual(parseExif(full.subarray(0, thumbOffset)), { ...NULLS, thumbOffset, thumbLength });
+  assert.deepEqual(parseExif(full.subarray(0, thumbOffset + 1)), { ...NULLS, thumbOffset, thumbLength });
 });
 
 test('parseExif: a thumbnail length of 0 is rejected', () => {
@@ -124,6 +159,43 @@ test('parseExif: an Exif sub-IFD self-loop (cycle guard) falls back to IFD0 Date
 test('parseExif: an out-of-window Exif sub-IFD offset falls back to IFD0 DateTime instead of throwing', () => {
   const buf = buildExifJpeg({ dateTime: '2018:02:02 02:02:02', dateTimeOriginal: '2024:01:01 00:00:00', exifIfdOffsetOverrideRel: 999999 });
   assert.equal(parseExif(buf).takenAt, '2018-02-02T02:02:02');
+});
+
+test('parseExif: an IFD0 offset outside the window or past the APP1 declared end yields null fields', () => {
+  const opts = { orientation: 6, dateTime: '2020:01:01 00:00:00', thumbnail: { compression: 6 } };
+  assert.deepEqual(parseExif(buildExifJpeg({ ...opts, ifd0OffsetOverrideRel: 999999 })), NULLS);
+  const buf = buildExifJpeg(opts);
+  const segmentEnd = 4 + buf.readUInt16BE(4); // APP1 length field sits right after SOI + FF E1
+  assert.ok(segmentEnd + 16 < buf.length); // the base image's DQT follows, so bytes exist there
+  buf.writeUInt32LE(segmentEnd - 12, 16); // TIFF header at 12; its IFD0 offset at 16
+  assert.deepEqual(parseExif(buf), NULLS);
+});
+
+test('parseExif: an Exif APP1 starting past the first EXIF_WINDOW_BYTES is ignored', () => {
+  const exif = buildExifJpeg({ orientation: 3 });
+  const app2 = Buffer.concat([Buffer.from([0xff, 0xe2, 0xff, 0xff]), Buffer.alloc(0xfffd)]); // max-size APPn
+  assert.equal(parseExif(Buffer.concat([exif.subarray(0, 2), app2, exif.subarray(2)])).orientation, 3);
+  const buf = Buffer.concat([exif.subarray(0, 2), app2, app2, exif.subarray(2)]);
+  assert.ok(buf.length > EXIF_WINDOW_BYTES);
+  assert.deepEqual(parseExif(buf), NULLS);
+});
+
+test('parseExif: an out-of-window IFD1 (next-IFD) offset yields no thumbnail but keeps IFD0 fields', () => {
+  const buf = buildExifJpeg({ orientation: 8, dateTime: '2020:01:01 00:00:00', thumbnail: { compression: 6 }, ifd1OffsetOverrideRel: 999999 });
+  assert.deepEqual(parseExif(buf), { ...NULLS, orientation: 8, takenAt: '2020-01-01T00:00:00' });
+});
+
+test('parseExif: the marker walk skips APP0/non-Exif APP1/COM/DQT and stops at SOS or a non-marker byte', () => {
+  const exif = buildExifJpeg({ orientation: 3, thumbnail: { compression: 6 } });
+  /** @param {number} marker @param {string} text */
+  const seg = (marker, text) => Buffer.concat([Buffer.from([0xff, marker]), Buffer.from([0, text.length + 2]), Buffer.from(text, 'latin1')]);
+  const lead = Buffer.concat([seg(0xe0, 'JFIF\0\x01\x01'), seg(0xe1, 'http://ns.adobe.com/xap/1.0/\0'), seg(0xfe, 'comment'), seg(0xdb, 'x')]);
+  const shifted = Buffer.concat([exif.subarray(0, 2), lead, exif.subarray(2)]);
+  const base = parseExif(exif);
+  assert.deepEqual(parseExif(shifted), { ...base, thumbOffset: (base.thumbOffset ?? 0) + lead.length });
+  const afterSos = Buffer.concat([exif.subarray(0, 2), Buffer.from([0xff, 0xda, 0, 2]), exif.subarray(2)]);
+  assert.deepEqual(parseExif(afterSos), NULLS);
+  assert.deepEqual(parseExif(Buffer.concat([exif.subarray(0, 2), Buffer.from([0x00]), exif.subarray(2)])), NULLS);
 });
 
 test('parseExif: every truncation length of a valid sample never throws and yields sane fields', () => {
@@ -164,50 +236,6 @@ test('verifyThumb: matching size/mtime and a JPEG SOI at the offset returns true
   const stat = await (await import('node:fs/promises')).stat(file);
   const ok = await verifyThumb(file, { thumbOffset, sourceSize: stat.size, sourceMtimeMs: Math.trunc(stat.mtimeMs) });
   assert.equal(ok, true);
-});
-
-test('verifyThumb: a changed size or mtime returns false', async (t) => {
-  const dir = await mkdtemp(path.join(tmpdir(), 'exif-thumb-'));
-  t.after(() => rm(dir, { recursive: true, force: true }));
-  const file = path.join(dir, 'photo.jpg');
-  const buf = buildExifJpeg({ thumbnail: { compression: 6 } });
-  await writeFile(file, buf);
-  const thumbOffset = parseExif(buf).thumbOffset ?? -1;
-  assert.equal(await verifyThumb(file, { thumbOffset, sourceSize: 1, sourceMtimeMs: 0 }), false);
-  const fs = await import('node:fs/promises');
-  const stat = await fs.stat(file);
-  assert.equal(await verifyThumb(file, { thumbOffset, sourceSize: stat.size, sourceMtimeMs: Math.trunc(stat.mtimeMs) + 1000 }), false);
-});
-
-test('verifyThumb: a directory instead of a file returns false', async (t) => {
-  const dir = await mkdtemp(path.join(tmpdir(), 'exif-thumb-'));
-  t.after(() => rm(dir, { recursive: true, force: true }));
-  const sub = path.join(dir, 'sub');
-  await mkdir(sub);
-  const ok = await verifyThumb(sub, { thumbOffset: 0, sourceSize: 0, sourceMtimeMs: 0 });
-  assert.equal(ok, false);
-});
-
-test('verifyThumb: a short read at the offset (near EOF) returns false', async (t) => {
-  const dir = await mkdtemp(path.join(tmpdir(), 'exif-thumb-'));
-  t.after(() => rm(dir, { recursive: true, force: true }));
-  const file = path.join(dir, 'photo.jpg');
-  await writeFile(file, Buffer.from([0xff, 0xd8]));
-  const fs = await import('node:fs/promises');
-  const stat = await fs.stat(file);
-  const ok = await verifyThumb(file, { thumbOffset: stat.size - 1, sourceSize: stat.size, sourceMtimeMs: Math.trunc(stat.mtimeMs) });
-  assert.equal(ok, false);
-});
-
-test('verifyThumb: bytes at the offset not starting FF D8 return false', async (t) => {
-  const dir = await mkdtemp(path.join(tmpdir(), 'exif-thumb-'));
-  t.after(() => rm(dir, { recursive: true, force: true }));
-  const file = path.join(dir, 'photo.jpg');
-  await writeFile(file, Buffer.from([0x00, 0x00, 0x00, 0x00]));
-  const fs = await import('node:fs/promises');
-  const stat = await fs.stat(file);
-  const ok = await verifyThumb(file, { thumbOffset: 0, sourceSize: stat.size, sourceMtimeMs: Math.trunc(stat.mtimeMs) });
-  assert.equal(ok, false);
 });
 
 test('verifyThumb: an openFile rejection returns false without throwing', async () => {
@@ -251,8 +279,11 @@ test('verifyThumb: every opened handle is closed, on every success and failure p
   ];
   for (const { label, file, expected, wantOk, breakRead } of scenarios) {
     let closed = false;
+    let opens = 0;
     /** @param {string} p */
     const spy = async (p) => {
+      opens += 1;
+      assert.equal(p, file);
       const handle = await fs.open(p, 'r');
       const close = handle.close.bind(handle);
       handle.close = async (...args) => { closed = true; return close(...args); };
@@ -261,6 +292,7 @@ test('verifyThumb: every opened handle is closed, on every success and failure p
     };
     const ok = await verifyThumb(file, expected, { openFile: spy });
     assert.equal(ok, wantOk, `unexpected result for scenario "${label}"`);
+    assert.equal(opens, 1, `openFile not called exactly once for scenario "${label}"`);
     assert.equal(closed, true, `handle not closed for scenario "${label}"`);
   }
 });

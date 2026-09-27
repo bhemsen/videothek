@@ -554,7 +554,12 @@ Human QA (Chromium + Firefox; desktop 1280 px and 390 px mobile emulation;
   for a real file (APP1 ≤ 64 KiB, read window 128 KiB) and only diverge for a
   deliberately truncated test buffer. `parseExif` also wraps its body in a
   top-level try/catch as a defensive backstop on top of the explicit bounds
-  checks, matching "never throws" for any bounds-check gap.
+  checks, matching "never throws" for any bounds-check gap. "Fallback IFD0
+  DateTime" applies whenever DateTimeOriginal yields no valid date (absent,
+  unreadable or invalid such as `0000:00:00 00:00:00`), not only when absent;
+  "Compression absent or 6" treats a present but unreadable Compression entry
+  (unknown TIFF type, out-of-bounds value) as not 6, so the thumbnail is
+  rejected.
 - 2026-09-27 (#75, `test/helpers/exif-jpeg.js`): the embedded base JPEG is a
   16x16 baseline grayscale image built from flat 8x8 blocks (top block-row
   dark, bottom light) — a flat block's DCT has no AC energy, so the one-off

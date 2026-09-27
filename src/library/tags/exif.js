@@ -17,7 +17,7 @@ import { open as fsOpen } from 'node:fs/promises';
 /** @typedef {{ entries: Map<number, { type: number, count: number, entryStart: number }>, next: number }} Ifd */
 
 export const EXIF_WINDOW_BYTES = 131072;
-export const JPEG_EXTENSIONS = ['jpg', 'jpeg', 'jfif'];
+export const JPEG_EXTENSIONS = Object.freeze(['jpg', 'jpeg', 'jfif']);
 export const THUMB_MIME = 'image/jpeg';
 
 const MAX_IFD_ENTRIES = 512;
@@ -240,20 +240,18 @@ function readAsciiTag(buf, ifd, tag, tiffStart, little, limit) {
 
 /**
  * DateTimeOriginal from the Exif sub-IFD (`0x8769`/`0x9003`), falling back to
- * IFD0's DateTime (`0x0132`) only when absent by *presence*, not validity —
- * a present-but-invalid DateTimeOriginal is not retried against IFD0.
+ * IFD0's DateTime (`0x0132`) whenever DateTimeOriginal yields no valid date —
+ * absent, unreadable or invalid (e.g. `0000:00:00 00:00:00`).
  * @param {Buffer} buf @param {Ifd} ifd0 @param {number} tiffStart @param {boolean} little @param {number} limit @param {Set<number>} visited @returns {string | null}
  */
 function readTakenAt(buf, ifd0, tiffStart, little, limit, visited) {
-  /** @type {string | null} */
-  let raw = null;
   const exifIfdOffset = readLongTag(buf, ifd0, 0x8769, tiffStart, little, limit);
-  if (exifIfdOffset !== null) {
-    const exifIfd = readIfd(buf, tiffStart, exifIfdOffset, little, limit, visited);
-    if (exifIfd) raw = readAsciiTag(buf, exifIfd, 0x9003, tiffStart, little, limit);
-  }
-  if (raw === null) raw = readAsciiTag(buf, ifd0, 0x0132, tiffStart, little, limit);
-  return raw === null ? null : formatTakenAt(raw);
+  const exifIfd = exifIfdOffset === null ? null : readIfd(buf, tiffStart, exifIfdOffset, little, limit, visited);
+  const original = exifIfd ? readAsciiTag(buf, exifIfd, 0x9003, tiffStart, little, limit) : null;
+  const fromOriginal = original === null ? null : formatTakenAt(original);
+  if (fromOriginal !== null) return fromOriginal;
+  const fallback = readAsciiTag(buf, ifd0, 0x0132, tiffStart, little, limit);
+  return fallback === null ? null : formatTakenAt(fallback);
 }
 
 /**
@@ -274,7 +272,7 @@ function formatTakenAt(raw) {
 
 /**
  * Reads IFD1 (IFD0's next-IFD) and accepts its thumbnail only when
- * Compression is absent or 6, `0 < length <= 65535`, its range lies inside
+ * Compression is absent or a readable 6, `0 < length <= 65535`, its range lies inside
  * the APP1 segment's declared length, and — when its first two bytes lie
  * inside `window` — they are the JPEG SOI marker.
  * @param {Buffer} buf @param {Ifd} ifd0 @param {number} tiffStart @param {boolean} little
@@ -287,8 +285,7 @@ function readThumbLocation(buf, ifd0, tiffStart, little, limit, payloadStart, se
   if (!ifd0.next) return none;
   const ifd1 = readIfd(buf, tiffStart, ifd0.next, little, limit, visited);
   if (!ifd1) return none;
-  const compression = readShortTag(buf, ifd1, 0x0103, tiffStart, little, limit, 0, 0xffff);
-  if (compression !== null && compression !== 6) return none;
+  if (ifd1.entries.has(0x0103) && readShortTag(buf, ifd1, 0x0103, tiffStart, little, limit, 6, 6) === null) return none;
   const offsetRel = readLongTag(buf, ifd1, 0x0201, tiffStart, little, limit);
   const length = readLongTag(buf, ifd1, 0x0202, tiffStart, little, limit);
   if (offsetRel === null || length === null || length <= 0 || length > MAX_THUMB_LENGTH) return none;
