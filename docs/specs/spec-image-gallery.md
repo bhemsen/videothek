@@ -662,3 +662,34 @@ Human QA (Chromium + Firefox; desktop 1280 px and 390 px mobile emulation;
   genuinely-pending `await` — so a test can call `syncImageMeta()` several
   times, or insert a new item, while the first call is provably still
   in-flight, without any timer or manual event-loop tick.
+- 2026-09-27 (#83, `public/js/images.js` + `image-tiles.js` + `image-icons.js`):
+  folder navigation reuses P5's proven `public/js/audio/app.js` pattern
+  verbatim — a single `document` `click` listener intercepts a primary,
+  unmodified click on a same-origin `/images` link (folder tiles, breadcrumb
+  links, the "Zu Bilder" error link), skips a fragment-only change (the
+  shell's skip link) via the same `isFragmentOnlyChange` guard, then
+  `pushState`s and re-renders; `popstate` re-renders the same way. A
+  `navToken` counter (the audio app's own guard) drops a stale fetch response
+  superseded by a later navigation. Verified in a real browser (not just
+  `npm test`, since neither routing module is DOM-free) that a folder-tile
+  click never reloads the page (a `window`-scoped marker set before the click
+  survives it) and that `history.back()` correctly restores the parent
+  folder via `popstate` without a reload.
+- 2026-09-27 (#83, `image-tiles.js` thumbnail fallback): the Acceptance
+  row's "thumb onerror falls back once to url" applies only to item tiles,
+  which carry a separate `url` field — a folder `cover` carries only
+  `{ thumbUrl, thumbOrientation }` (no `id`/`url`, so the client cannot
+  derive an original URL for it), so a cover's `onerror` falls back directly
+  to the fallback glyph in one step, while an item's falls back to `url`
+  first (resetting its orientation class, since the browser rotates
+  originals itself) and only then to the glyph. Both paths, and a folder
+  tile's no-cover case, reuse P1's `icon('images')` as the fallback/no-cover
+  glyph per the Prior decisions' "folder-less 'Bilder' glyph" note — the
+  crossed-out `imageOffIcon` from this issue's own `image-icons.js` is
+  reserved for the distinct "Nicht anzeigbar"/"Nicht abspielbar" tiles.
+- 2026-09-27 (#83, `image-icons.js`): built with all five icons the Tiles
+  Prior decision row names for the module (`folder`, `play`, `image-off`,
+  `chevron-left/right`, `close`) even though this page only renders the
+  first three — `chevronLeftIcon`/`chevronRightIcon`/`closeIcon` exist for
+  #84's lightbox, which depends on #83 and does not list `image-icons.js`
+  among its own files, so the module's contract has to be complete already.
