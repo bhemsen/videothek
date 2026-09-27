@@ -497,6 +497,12 @@ Firefox, desktop and a 390 px phone viewport):
   repository function is `getNextEpisode` in P3's own `src/db/episodes.js`
   (exported for P4 instead of living in P2's repository module), and "Zurück"
   requires a same-origin referrer and `history.length > 1` (D10).
+- 2026-09-27 (#181): `filmOffIcon()`'s frame path is now a hollow rounded
+  rectangle — two oppositely-wound rounded-rect subpaths in one `d`, so the
+  default nonzero fill rule punches out the interior — instead of a solid
+  fill. The previous solid fill made the same-colour diagonal slash path
+  invisible; corner "sprocket" squares and the slash path are unchanged. No
+  `createIcon`/`icons.js` change, no new colour or px literal.
 - 2026-09-26: cross-phase consolidation — P4 integrates through the
   `loadItem`/`startPlayback` seam and `trackPlayback` performs the resume seek
   (D11); `docs/architecture.md` edits listed in scope and made by the

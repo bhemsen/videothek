@@ -1333,3 +1333,35 @@ and desktop 1440 px, compared with the design exports):
   to sections", and the mockup's highlighted first chip is static illustration,
   not a stated requirement; not built to keep the page free of scroll-position
   JS the spec never asks for.
+- 2026-09-27 (#176): the page-scoped-`movies.css` split from the #37 decision
+  log above turned out to diverge from the shared header rather than reuse it
+  — `movies.css` redefined `.library-header` without `align-items`/
+  `justify-content` overrides, so `library.css`'s centering rules bled through
+  the cascade and centered the Filme header while shrink-wrapping the sort
+  control (`/series`'s separate `.sort-links`/`.sort-link` two-pill control
+  never matched the segmented `filme-mobile.png`/`serien-mobile.png` mockups
+  either). Fix: both pages' header + full-width segmented sort control now
+  come from one new file, `public/css/library-header.css` (`.library-header`,
+  `.library-header__heading`, `.library-header__count`, `.sort-control`,
+  `.sort-control__link`), linked by both `movies.html` and `series.html`;
+  `library.css`'s old `.sort-links`/`.sort-link` rules and its conflicting
+  `.library-header` are removed, and `series.js`'s sort nav now renders
+  `.sort-control`/`.sort-control__link` to match. Not folded into `library.css`
+  itself — that file already sits at the constitution's 300-line cap.
+  `movies.html`'s `<link>` to `movies.css` was replaced with one to
+  `library-header.css`; `movies.css` itself is kept as an empty, no-longer-
+  linked file (rather than deleted) with a header comment documenting the bug.
+- 2026-09-27 (#177): `.episode-row__number`'s `flex: 0 0 auto` sized the
+  column to each row's own content, so `01`/`01–02`/`–` produced different
+  column widths and misaligned titles. Fixed to `flex: 0 0 var(--space-12)`
+  (48 px) with `text-align: right`, matching the exported mockup's
+  fixed-width, right-aligned number column (`serie-detail-desktop.html`'s
+  `.episode-num`) while sizing the column to the widest real value
+  (`01–02`) instead of the mockup's 2-digit-only 24 px — verified in a
+  headless-Chromium probe that `01`, `01–02` and `–` in `font-mono` at
+  `--text-md` all fit inside 48 px without clipping or forcing the flex
+  item wider than its basis (32 px was borderline/clipped in the same
+  probe). Confirmed live via `getBoundingClientRect()` on `/series-detail`
+  for the "Dark" fixture: every row's title starts at the same x
+  regardless of number content, including the real `–` case (Extras/
+  Interview).

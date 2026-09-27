@@ -10,6 +10,7 @@ import { ApiError } from './lib/api.js';
 import { getSeries } from './lib/library-api.js';
 import { createPosterTile, createEpisodeRow } from './lib/media-card.js';
 import { pluralize } from './lib/library-format.js';
+import { decorateProgressFor } from './lib/progress-badges.js';
 
 /** @typedef {import('./lib/library-api.js').SeriesDetail} SeriesDetail */
 /** @typedef {import('./lib/library-api.js').SeriesSeason} SeriesSeason */
@@ -160,4 +161,5 @@ async function load() {
     buildChips(series.seasons),
     ...series.seasons.map(buildSeasonSection),
   );
+  decorateProgressFor(main, 'series');
 }
