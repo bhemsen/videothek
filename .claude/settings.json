@@ -1,7 +1,7 @@
 {
   "permissions": {
     "defaultMode": "bypassPermissions",
-    "allow": ["Bash", "WebFetch", "WebSearch"],
+    "allow": ["Bash", "WebFetch", "WebSearch", "Bash(gh pr merge:*)"],
     "deny": [
       "Bash(rm -rf *)",
       "Bash(git push --force)",
