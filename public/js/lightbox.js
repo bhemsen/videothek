@@ -1,0 +1,195 @@
+/**
+ * Full-viewport lightbox over a folder's playable items: images shown at
+ * full size, videos played inline with native controls. One instance lives
+ * for the whole page (its `items` array is refilled in place by `images.js`
+ * on every folder render, so its `<dialog>` and history listener are never
+ * rebuilt). See docs/specs/spec-image-gallery.md "Lightbox".
+ */
+import { el } from './lib/dom.js';
+import { chevronLeftIcon, chevronRightIcon, closeIcon } from './image-icons.js';
+import { formatTakenAt } from './image-format.js';
+import { classifySwipe, keyAction } from './lightbox-gestures.js';
+import { createLightboxHistory } from './lightbox-history.js';
+import { preloadNeighbours, renderSlide } from './lightbox-slide.js';
+
+/** @typedef {import('./image-tiles.js').GalleryItem} GalleryItem */
+
+const SCROLL_LOCK_CLASS = 'lightbox-scroll-lock';
+
+/**
+ * @param {SVGSVGElement} icon
+ * @param {string} label
+ * @param {string} gridAreaClass
+ * @returns {HTMLButtonElement}
+ */
+function buildButton(icon, label, gridAreaClass) {
+  return /** @type {HTMLButtonElement} */ (
+    el('button', { type: 'button', class: `lightbox-btn ${gridAreaClass}`, 'aria-label': label, title: label }, icon)
+  );
+}
+
+/**
+ * @param {{ items: GalleryItem[], onClose: (lastItemId: number | null) => void }} params -
+ *   `items` is read fresh on every `open()` call, so the caller may refill
+ *   the same array in place between opens instead of constructing a new
+ *   lightbox per folder. `onClose` receives the id of the item shown when
+ *   the dialog closed, so the caller can restore focus to its tile.
+ * @returns {{ open: (itemId: number) => void, close: () => void }}
+ */
+export function createLightbox({ items, onClose }) {
+  /** @type {GalleryItem[]} */
+  let sequence = [];
+  let currentIndex = -1;
+  /** @type {{ release: () => void } | null} */
+  let currentSlide = null;
+  /** @type {{ x: number, y: number } | null} */
+  let pointerStart = null;
+
+  const counter = el('p', { class: 'lightbox-counter' });
+  const closeButton = buildButton(closeIcon(), 'Schließen', 'lightbox-close');
+  const prevButton = buildButton(chevronLeftIcon(), 'Vorheriges Bild', 'lightbox-nav--prev');
+  const nextButton = buildButton(chevronRightIcon(), 'Nächstes Bild', 'lightbox-nav--next');
+  const stage = el('div', { class: 'lightbox-stage' });
+  const captionName = el('span', { class: 'lightbox-caption__name' });
+  const captionDate = el('span', { class: 'lightbox-caption__date' });
+  const caption = el(
+    'p',
+    { class: 'lightbox-caption', 'aria-live': 'polite' },
+    captionName,
+    el('span', { class: 'lightbox-caption__sep', 'aria-hidden': 'true' }, ' · '),
+    captionDate,
+  );
+  const hint = el(
+    'p',
+    { class: 'lightbox-hint', 'aria-hidden': 'true' },
+    el('span', { class: 'lightbox-hint__fine' }, '← → Blättern · Esc Schließen'),
+    el('span', { class: 'lightbox-hint__coarse' }, 'Wischen zum Blättern'),
+  );
+  const dialog = /** @type {HTMLDialogElement} */ (
+    el(
+      'dialog',
+      { class: 'lightbox', 'aria-label': 'Bildansicht' },
+      counter,
+      closeButton,
+      prevButton,
+      stage,
+      nextButton,
+      caption,
+      hint,
+    )
+  );
+  document.body.append(dialog);
+
+  const lightboxHistory = createLightboxHistory({
+    onPop: () => {
+      if (dialog.open) dialog.close();
+    },
+  });
+
+  /**
+   * Renders `sequence[currentIndex]` into the stage and updates the chrome.
+   * @returns {void}
+   */
+  function renderCurrent() {
+    const item = sequence[currentIndex];
+    currentSlide?.release();
+    currentSlide = renderSlide(stage, item);
+    preloadNeighbours(sequence, currentIndex);
+    counter.textContent = `${currentIndex + 1} / ${sequence.length}`;
+    captionName.textContent = item.name;
+    captionDate.textContent = formatTakenAt(item.takenAt);
+    prevButton.disabled = currentIndex <= 0;
+    nextButton.disabled = currentIndex >= sequence.length - 1;
+  }
+
+  /**
+   * Steps to the previous/next item. No wrap-around: a step past either end
+   * is a no-op (the matching button is also `disabled` there).
+   * @param {-1 | 1} direction
+   * @returns {void}
+   */
+  function navigate(direction) {
+    const nextIndex = currentIndex + direction;
+    if (nextIndex < 0 || nextIndex >= sequence.length) return;
+    currentIndex = nextIndex;
+    lightboxHistory.replace(sequence[currentIndex].id);
+    renderCurrent();
+  }
+
+  /**
+   * @param {KeyboardEvent} event
+   * @returns {void}
+   */
+  function onKeyDown(event) {
+    const targetTag = event.target instanceof Element ? event.target.tagName : '';
+    const action = keyAction({
+      key: event.key,
+      targetTag,
+      altKey: event.altKey,
+      ctrlKey: event.ctrlKey,
+      metaKey: event.metaKey,
+    });
+    if (action) navigate(action === 'prev' ? -1 : 1);
+  }
+
+  /**
+   * @param {PointerEvent} event
+   * @returns {void}
+   */
+  function onPointerDown(event) {
+    if (!event.isPrimary || event.target instanceof HTMLVideoElement) return;
+    pointerStart = { x: event.clientX, y: event.clientY };
+    stage.addEventListener('pointerup', onPointerUp, { once: true });
+    stage.addEventListener('pointercancel', onPointerCancel, { once: true });
+  }
+
+  /**
+   * @param {PointerEvent} event
+   * @returns {void}
+   */
+  function onPointerUp(event) {
+    stage.removeEventListener('pointercancel', onPointerCancel);
+    const start = pointerStart;
+    pointerStart = null;
+    if (!event.isPrimary || !start) return;
+    const action = classifySwipe(event.clientX - start.x, event.clientY - start.y);
+    if (action) navigate(action === 'prev' ? -1 : 1);
+  }
+
+  /** @returns {void} */
+  function onPointerCancel() {
+    stage.removeEventListener('pointerup', onPointerUp);
+    pointerStart = null;
+  }
+
+  dialog.addEventListener('keydown', onKeyDown);
+  dialog.addEventListener('close', () => {
+    currentSlide?.release();
+    currentSlide = null;
+    document.documentElement.classList.remove(SCROLL_LOCK_CLASS);
+    const lastItemId = currentIndex >= 0 ? sequence[currentIndex].id : null;
+    lightboxHistory.release();
+    onClose(lastItemId);
+  });
+  closeButton.addEventListener('click', () => dialog.close());
+  prevButton.addEventListener('click', () => navigate(-1));
+  nextButton.addEventListener('click', () => navigate(1));
+  stage.addEventListener('pointerdown', onPointerDown);
+
+  return {
+    open(itemId) {
+      sequence = items.filter((item) => item.playable);
+      const index = sequence.findIndex((item) => item.id === itemId);
+      if (index === -1) return;
+      currentIndex = index;
+      renderCurrent();
+      document.documentElement.classList.add(SCROLL_LOCK_CLASS);
+      dialog.showModal();
+      closeButton.focus();
+      lightboxHistory.push(itemId);
+    },
+    close() {
+      if (dialog.open) dialog.close();
+    },
+  };
+}

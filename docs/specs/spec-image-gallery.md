@@ -632,6 +632,36 @@ Human QA (Chromium + Firefox; desktop 1280 px and 390 px mobile emulation;
   (not a static frame). Output is ~1 KiB, well under the 50 KiB cap; fixed
   mtime applied via `exif-jpeg.js --write`'s existing "leave present files'
   mtime alone" behaviour for this file.
+- 2026-09-27 (#84, lightbox): `public/js/images.js`'s batched-rendering helper
+  (`mountBatchedItems`, previously inline) moved to a new `public/js/
+  image-batch.js` — wiring the lightbox's click-to-open, `#bild-<id>` handling
+  and focus-return into `images.js` pushed it past the constitution's 300-line
+  file cap; the split mirrors the `test/api/gallery.test.js` precedent (row
+  above, "single-file suite exceeded the 300-line limit") of factoring out
+  under the cap rather than trimming correct code. `mountBatchedItems` gained
+  an `ensureRendered(itemId)` method (renders every batch up to and including
+  one item) so the lightbox's `onClose` can always focus/scroll to the last
+  shown item even when it was reached by in-lightbox navigation past what had
+  scrolled into view, and so the initial `#bild-<id>` open can force its tile
+  to exist before opening. One createLightbox instance is created once for the
+  page's lifetime instead of per folder view: its `items` array is refilled in
+  place (`length = 0` + `push(...)`) on every `renderView`, and `open(itemId)`
+  recomputes the playable `sequence` from the current contents on each call —
+  avoiding a rebuilt `<dialog>` and a re-registered `popstate` listener (hence
+  a second, orphaned one) on every folder navigation, which the fixed
+  `createLightbox({ items, onClose }) -> { open, close }` signature has no
+  `dispose` hook to unwind. `images.html` gained the one additive
+  `<link rel="stylesheet" href="/css/lightbox.css">` line (not in #84's own
+  Files list, but required for the feature to render at all — the shared-file
+  rule's spirit is edits shared *across concurrent phases*, and this page shell
+  belongs to this spec alone). The spec's own wording for an initial
+  `#bild-<id>` hash ("unknown/non-playable id → hash dropped, no dialog") means
+  the hash is stripped via `replaceState` unconditionally once parsed, before
+  the playable-item check gates only the `lightbox.open()` call — caught by a
+  browser check, not by a unit test (no automated test covers the DOM-heavy
+  `lightbox*.js`/`images.js` modules; only the pure `image-format.js`/
+  `lightbox-gestures.js` helpers have `test/public/*.test.js`, per the spec's
+  own Tests scope).
 - 2026-09-27 (#80, `src/library/image-meta.js`): the single `rerun` flag
   serves both roles the `createImageMetaSync` row describes without a second
   flag: while a pass is in flight, a new `syncImageMeta()` call sets it and

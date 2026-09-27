@@ -1,0 +1,222 @@
+/*
+ * Image lightbox (`public/js/lightbox.js`): full-viewport native <dialog>,
+ * a 3-column/3-or-4-row grid shared by both breakpoints (only the row count
+ * and area assignment change), 44 px round buttons on `secondary`. See
+ * docs/specs/spec-image-gallery.md "Lightbox".
+ *
+ * Every length/colour here is a token from tokens.css, or a calc() built
+ * from one (enforced by test/frontend-rules.test.js); 768 is the only
+ * literal @media length.
+ */
+
+/* Scroll lock while the lightbox is open (class toggled on <html>). */
+
+html.lightbox-scroll-lock,
+html.lightbox-scroll-lock body {
+  overflow: hidden;
+}
+
+/* Dialog shell — overrides base.css's centred, bordered default dialog. */
+
+.lightbox {
+  position: fixed;
+  inset: 0;
+  width: 100vw;
+  height: 100dvh;
+  margin: 0;
+  max-width: none;
+  max-height: none;
+  padding: var(--space-4);
+  border: none;
+  border-radius: 0;
+  background: var(--color-background);
+  color: var(--color-foreground);
+  box-shadow: none;
+}
+
+.lightbox::backdrop {
+  background: var(--color-background);
+}
+
+/* Mobile-first grid: counter/close on top, the stage, the caption, then
+   prev/hint/next in one row (mocks: lightbox-mobile.png). */
+
+.lightbox[open] {
+  display: grid;
+  grid-template-columns: auto 1fr auto;
+  grid-template-rows: auto 1fr auto auto;
+  grid-template-areas:
+    'counter . close'
+    'stage stage stage'
+    'caption caption caption'
+    'prev hint next';
+  gap: var(--space-4);
+}
+
+/* >= 768 px: prev/next flank the stage, caption bottom-left, hint
+   bottom-right (mocks: lightbox-desktop.png). */
+@media (min-width: 768px) {
+  .lightbox[open] {
+    grid-template-rows: auto 1fr auto;
+    grid-template-areas:
+      'counter . close'
+      'prev stage next'
+      'caption . hint';
+  }
+}
+
+.lightbox-counter {
+  grid-area: counter;
+  align-self: start;
+  justify-self: start;
+  margin: 0;
+  color: var(--color-muted);
+  font-size: var(--text-sm);
+}
+
+/* Round icon buttons: close, prev, next. */
+
+.lightbox-btn {
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  width: var(--tap-min);
+  height: var(--tap-min);
+  border: var(--border-width) solid var(--color-border);
+  border-radius: var(--radius-full);
+  background: var(--color-secondary);
+  color: var(--color-foreground);
+  cursor: pointer;
+}
+
+.lightbox-btn:hover:not(:disabled) {
+  background: var(--color-secondary-hover);
+}
+
+.lightbox-btn:active:not(:disabled) {
+  background: var(--color-secondary-active);
+}
+
+.lightbox-btn:disabled {
+  opacity: .4;
+  cursor: not-allowed;
+}
+
+.lightbox-btn svg {
+  width: var(--space-6);
+  height: var(--space-6);
+}
+
+.lightbox-close {
+  grid-area: close;
+  align-self: start;
+  justify-self: end;
+}
+
+.lightbox-nav--prev {
+  grid-area: prev;
+  align-self: center;
+  justify-self: start;
+}
+
+.lightbox-nav--next {
+  grid-area: next;
+  align-self: center;
+  justify-self: end;
+}
+
+/* Stage: the current image/video, never upscaled, letterboxed within the
+   remaining space; touch-action leaves vertical scroll/pinch-zoom native and
+   only intercepts horizontal drags for the swipe gesture. */
+
+.lightbox-stage {
+  grid-area: stage;
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  min-width: 0;
+  min-height: 0;
+  overflow: hidden;
+  touch-action: pan-y pinch-zoom;
+}
+
+.lightbox-slide__media {
+  max-inline-size: 100%;
+  max-block-size: 100%;
+  object-fit: contain;
+}
+
+.lightbox-slide__error {
+  margin: 0;
+  color: var(--color-muted);
+}
+
+.lightbox-caption {
+  grid-area: caption;
+  align-self: end;
+  justify-self: start;
+  margin: 0;
+  min-width: 0;
+}
+
+/* Block by default (< 768 px: name and date stack on separate lines, no
+   separator dot); once the caption becomes a flex row at 768 px, a flex
+   item's own block/inline display no longer matters, so this needs no
+   override there. */
+.lightbox-caption__name,
+.lightbox-caption__date {
+  display: block;
+  overflow: hidden;
+  text-overflow: ellipsis;
+  white-space: nowrap;
+}
+
+.lightbox-caption__name {
+  font-weight: var(--weight-semibold);
+}
+
+.lightbox-caption__date {
+  color: var(--color-muted);
+}
+
+.lightbox-hint {
+  grid-area: hint;
+  align-self: end;
+  justify-self: end;
+  margin: 0;
+  color: var(--color-muted);
+  font-size: var(--text-sm);
+  white-space: nowrap;
+}
+
+.lightbox-hint__coarse {
+  display: none;
+}
+
+@media (pointer: coarse) {
+  .lightbox-hint__fine {
+    display: none;
+  }
+
+  .lightbox-hint__coarse {
+    display: inline;
+  }
+}
+
+.lightbox-caption__sep {
+  display: none;
+}
+
+/* >= 768 px: name · date on one line (mocks: lightbox-desktop.png). */
+@media (min-width: 768px) {
+  .lightbox-caption {
+    display: flex;
+    align-items: baseline;
+    gap: var(--space-1);
+    overflow: hidden;
+  }
+
+  .lightbox-caption__sep {
+    display: inline;
+  }
+}
