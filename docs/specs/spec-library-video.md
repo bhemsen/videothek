@@ -1293,3 +1293,29 @@ and desktop 1440 px, compared with the design exports):
   it and `README.md` warn that deleting the DB file also deletes every
   account, session and all playback progress (the admin is re-created from
   `ADMIN_USER`/`ADMIN_PASSWORD`).
+- 2026-09-27 (#38): document titles use "·" (`el.title = "<Serie> · Videothek"`)
+  instead of the spec text's "–", matching the middle-dot convention every
+  other page in the app already uses (`<title>Filme · Videothek</title>`,
+  etc.) — the spec's dash was shorthand, not a literal deviation from that
+  established, machine-checked-nowhere-but-universal convention.
+- 2026-09-27 (#38): the request-error and missing-series states build on
+  P1's `createEmptyState({ title, text })` with `text: ''` (a single message
+  line, no second sentence) and then `.append()` the state's one interactive
+  control — a `<button class="btn btn-secondary">` for "Erneut versuchen"
+  (spec calls it a button) and a plain, unstyled `<a href="/series">` for
+  "Zu den Serien" (spec calls it a link, and neither is in the "chips, back
+  link, sort links" `--tap-min` list) — since `createEmptyState`'s two `<p>`
+  text params can't host a real, keyboard-focusable control themselves.
+- 2026-09-27 (#38): `library.css` gains the first page-level chrome classes
+  of the whole library UI (`.library-header`/`.sort-link`s, `.back-link`,
+  `.series-detail-header`, `.season-chips`/`.season-chip`,
+  `.season-section`) — #37 (Filme) is expected to reuse `.library-header`/
+  `.sort-link` verbatim for its own header once it lands. The detail
+  header's poster tile reuses `createPosterTile`'s `className` escape hatch
+  at `width: calc(var(--grid-min) * 0.75)` (120 px at the token's 160 px) to
+  size it down from a grid cell without a raw length literal.
+- 2026-09-27 (#38): season chips are a plain in-page anchor `<nav>` with no
+  scroll-spy/"selected" state — the acceptance criterion is only "chips jump
+  to sections", and the mockup's highlighted first chip is static illustration,
+  not a stated requirement; not built to keep the page free of scroll-position
+  JS the spec never asks for.
