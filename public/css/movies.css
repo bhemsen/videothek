@@ -1,0 +1,82 @@
+/*
+ * Filme page (/movies) layout: the title + count header and the A–Z /
+ * "Neu hinzugefügt" sort control. Page-scoped rather than added to the
+ * shared library.css — see docs/specs/spec-library-video.md Decision log
+ * (avoids touching a file the parallel Serien-page issue also needs).
+ *
+ * Every length/colour here is a token from tokens.css, or a calc() built
+ * from one — no raw value outside tokens.css (enforced by
+ * test/frontend-rules.test.js).
+ */
+
+.library-header {
+  display: flex;
+  flex-direction: column;
+  gap: var(--space-4);
+  margin: 0 0 var(--space-6);
+}
+
+.library-header__titles {
+  display: flex;
+  align-items: baseline;
+  gap: var(--space-3);
+}
+
+.library-header__titles .shell-title {
+  margin: 0;
+}
+
+.library-header__count {
+  color: var(--color-muted);
+  font-size: var(--text-md);
+}
+
+.sort-control {
+  display: flex;
+  border-radius: var(--radius-md);
+}
+
+.sort-control__link {
+  display: flex;
+  flex: 1;
+  align-items: center;
+  justify-content: center;
+  min-height: var(--tap-min);
+  padding: 0 var(--space-4);
+  margin-left: calc(var(--border-width) * -1);
+  border: var(--border-width) solid var(--color-border);
+  color: var(--color-muted);
+  font-size: var(--text-md);
+  font-weight: var(--weight-semibold);
+  text-decoration: none;
+}
+
+.sort-control__link:first-child {
+  margin-left: 0;
+  border-top-left-radius: var(--radius-md);
+  border-bottom-left-radius: var(--radius-md);
+}
+
+.sort-control__link:last-child {
+  border-top-right-radius: var(--radius-md);
+  border-bottom-right-radius: var(--radius-md);
+}
+
+.sort-control__link[aria-current='true'] {
+  position: relative;
+  z-index: 1;
+  border-color: var(--color-accent);
+  color: var(--color-accent);
+}
+
+@media (min-width: 768px) {
+  .library-header {
+    flex-direction: row;
+    align-items: center;
+    justify-content: space-between;
+  }
+
+  .sort-control__link {
+    flex: none;
+  }
+}

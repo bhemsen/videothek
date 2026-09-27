@@ -632,3 +632,24 @@ Firefox, desktop and a 390 px phone viewport):
   mapped to `{ index, lang, label }` (dropping `path`) before being returned,
   so the filesystem path decided in "Subtitle sidecars" never reaches the
   JSON response.
+- 2026-09-27: implementation (#50, `public/player.html`,
+  `public/js/player.js`/`player-panel.js`/`player-icons.js`,
+  `public/css/player.css`) — the primary error-panel action ("Zurück zur
+  Übersicht") is always focused on render regardless of state, since design.md
+  only ever positions it first in DOM order; no per-state focus target list
+  was needed. `errorStateFor`'s `headStatus: null` branch (network failure on
+  the `HEAD` probe) is reused as-is for "Verbindung unterbrochen" — the
+  Decision log's "any other code" wording already covers a missing status,
+  so no extra branch was added in `player.js`. `player.js` initially came in
+  at 360 lines (over the constitution's 300-line cap); JSDoc for its private,
+  unexported helpers was compacted to single-line `@param`/`@returns` blocks
+  (the `public/js/audio/player.js` convention) and the three item-detail
+  typedefs were collapsed into one-line forms — no logic changed, and every
+  function stayed well under the 60-line cap. `player-icons.js`'s `filmOffIcon`/
+  `banIcon`/`skipIcon` duplicate the shape language of P2's
+  `library-icons.js` (own path data, not imported) per the spec's "own
+  module per page" split, keeping the player page's file dependency graph
+  free of other phases' owned files. The below-stage "Nächste Folge" button
+  and every panel's own "Nächste Folge: …" action share one `goToNext`
+  handler; the panel is rebuilt from scratch per state (no diffing), matching
+  P1's `el()`-only, no-`innerHTML` DOM style used everywhere else.

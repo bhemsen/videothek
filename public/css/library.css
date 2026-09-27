@@ -153,10 +153,148 @@
   height: var(--space-4);
 }
 
+/* Page header (Filme/Serien): H1 + muted count, A–Z / Neu hinzugefügt sort links */
+
+.library-header {
+  display: flex;
+  flex-wrap: wrap;
+  align-items: center;
+  justify-content: space-between;
+  gap: var(--space-4);
+  margin-bottom: var(--space-6);
+}
+
+.library-header__heading {
+  display: flex;
+  align-items: baseline;
+  gap: var(--space-3);
+}
+
+.library-header__count {
+  color: var(--color-muted);
+  font-size: var(--text-md);
+}
+
+.sort-links {
+  display: flex;
+  gap: var(--space-2);
+}
+
+.sort-link {
+  display: inline-flex;
+  align-items: center;
+  justify-content: center;
+  min-height: var(--tap-min);
+  padding: 0 var(--space-4);
+  border: var(--border-width) solid var(--color-border);
+  border-radius: var(--radius-md);
+  color: var(--color-muted);
+  font-size: var(--text-sm);
+  font-weight: var(--weight-semibold);
+  text-decoration: none;
+}
+
+.sort-link[aria-current='true'] {
+  color: var(--color-accent);
+  border-color: var(--color-accent);
+}
+
+/* Back link (series detail) */
+
+.back-link {
+  display: inline-flex;
+  align-items: center;
+  min-height: var(--tap-min);
+  margin-bottom: var(--space-4);
+  text-decoration: none;
+}
+
+/* Series detail header: poster tile (2:3, scaled down from the grid's
+   --grid-min) + title + meta */
+
+.series-detail-header {
+  display: flex;
+  align-items: flex-end;
+  gap: var(--space-6);
+  margin-bottom: var(--space-8);
+}
+
+.series-detail-header__tile {
+  flex: 0 0 auto;
+  width: calc(var(--grid-min) * 0.75);
+}
+
+.series-detail-header__info {
+  display: flex;
+  flex-direction: column;
+  gap: var(--space-1);
+}
+
+.series-detail-header__meta {
+  margin: 0;
+  color: var(--color-muted);
+  font-size: var(--text-md);
+}
+
+/* Season chips: in-page anchor nav to each season-section below */
+
+.season-chips {
+  display: flex;
+  gap: var(--space-2);
+  margin-bottom: var(--space-8);
+  overflow-x: auto;
+}
+
+.season-chip {
+  flex: 0 0 auto;
+  display: inline-flex;
+  align-items: center;
+  justify-content: center;
+  min-height: var(--tap-min);
+  padding: 0 var(--space-4);
+  border: var(--border-width) solid var(--color-border);
+  border-radius: var(--radius-full);
+  background: var(--color-secondary);
+  color: var(--color-foreground);
+  font-size: var(--text-sm);
+  font-weight: var(--weight-semibold);
+  text-decoration: none;
+  white-space: nowrap;
+}
+
+/* Season section (series detail): H2 + muted episode count above its rows */
+
+.season-section {
+  margin-bottom: var(--space-8);
+}
+
+.season-section__heading {
+  display: flex;
+  align-items: baseline;
+  gap: var(--space-3);
+  margin-bottom: var(--space-3);
+}
+
+.season-section__heading h2 {
+  margin: 0;
+  font-size: var(--text-xl);
+}
+
+.season-section__count {
+  color: var(--color-muted);
+  font-size: var(--text-sm);
+}
+
 @media (min-width: 768px) {
   .episode-row__body {
     flex-direction: row;
     align-items: baseline;
     justify-content: space-between;
+  }
+
+  /* Chips scroll horizontally only below 768 px (spec) */
+  .season-chips {
+    flex-wrap: wrap;
+    overflow-x: visible;
   }
 }
