@@ -52,6 +52,7 @@ function makeCtx(root, db, overrides = {}) {
     now: NOW,
     dirObserver,
     scanSubtree: async () => ({ stats: emptyStats() }),
+    markTouched() {},
     ...overrides,
   };
 }

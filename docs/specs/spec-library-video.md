@@ -351,10 +351,13 @@ metadata in their own tables and never rewrite `library_items`.
 | `reconcile.js` | `reconcilePaths(ctx, relPaths)` → `{ stats, escalate }` | Path reconcile rules below |
 | `scan-queue.js` | `createScanQueue({ runFull, runPaths, onComplete, log })` → `{ requestFull(kind?), requestPaths(relPaths), drainPathsBetweenDirs(), idle(), stop(), running() }` | Serialisation and coalescing only (no I/O) |
 | `scan-stats.js` | `emptyStats()`, `addDirStats(target, part)`, `sweepPrefix(db, rootPrefix, visited, protectedPrefixes, stats)` | `ScanStats` accumulation and the end-of-walk DB sweep, split out of `scanner.js` to keep it under the constitution's 300-line limit |
+| `root-health.js` | `discoverRoots(mediaRoot)`, `rootHealth(mediaRoot, rootName)` → `'missing' | 'unreadable' | 'empty' | null` | Category-root discovery and the one "empty" definition (no entry left after the skip rules) shared by the full scan's root safety and the reconcile's ENOENT check |
 | `scanner.js` | `createScanner({ db, mediaRoot, log, now, dirObserver? })` → `{ requestFull(), requestPaths(relPaths), onScanComplete(listener), status(), idle(), stop() }` | Full/subtree scan, root safety, end-of-walk sweep dispatch, series orphan cleanup, listener dispatch |
 
 - `ctx` = `{ db, mediaRoot, log, now, dirObserver, stats }`, built by
-  `scanner.js`.
+  `scanner.js`; `reconcile.js` additionally gets `scanSubtree(relDir)` and
+  `markTouched(relDir)` (adds the directory of a file it confirmed or
+  indexed to the running full scan's visited set; no-op otherwise).
 - Queue: at most one run in flight. Requests arriving meanwhile are coalesced:
   path sets are unioned; a pending full scan absorbs pending paths; several
   full requests collapse into one. While a full scan runs, pending path
@@ -1197,3 +1200,22 @@ and desktop 1440 px, compared with the design exports):
   directly under `MEDIA_ROOT` (`Thumbs.db`, `.DS_Store`) no longer forces a
   full rescan; and the QA fixture smoke test gained the 2-Staffeln, Babylon
   Berlin and Stromberg episode-count assertions it was missing.
+- 2026-09-27 (#33, PR review round 3): one blocking fix. Round 1's
+  "`readdir` ENOENT = simply vanished, swept" is reverted: it contradicted
+  the walk rule above ("except under directories whose `readdir` failed")
+  and D7 — a lazily unmounted disk surfaces as ENOENT on every not-yet-walked
+  directory, and a category root vanishing between its health check and its
+  walk would have had its whole prefix swept. Every `readdir` failure,
+  ENOENT included, now protects the subtree (`library_dir_failed { dir, code
+  }`, `failedDirs`); for a category root the same race is recorded as a
+  protected root (`library_root_protected { reason: 'missing' |
+  'unreadable' }`). A directory genuinely deleted mid-scan is swept by the
+  next full scan or by the watcher's own reconcile of it. Non-blocking fixes
+  rode along: root discovery/health moved to `root-health.js` so the scan and
+  the reconcile share the spec's "empty" definition (skip rules only — a root
+  holding just an `.nfo` is not empty; previously unknown extensions were
+  dropped first); `ctx.markTouched` keeps the directory of a file reconciled
+  mid-scan from being swept by that scan; the reconcile rejects U+FFFD
+  segments like the walk does; and the single-file reconcile loads its row
+  via `library-repo.js`'s additive `getItemByRelPath(db, relPath)` instead
+  of the whole directory.

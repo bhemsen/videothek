@@ -113,12 +113,14 @@ test('syncDirectory: a stale scan_version forces a re-parse even without a file 
   const db = makeDb();
   const ctx = { db, mediaRoot: root, now: NOW };
   await syncDirectory(ctx, 'Filme');
+  const id1 = loadRow(db, 'Filme/Arrival (2016).webm').id;
   db.prepare('UPDATE library_items SET scan_version = ? WHERE rel_path = ?').run(SCAN_VERSION - 1, 'Filme/Arrival (2016).webm');
 
   const { stats } = await syncDirectory(ctx, 'Filme');
 
   assert.equal(stats.updated, 1);
   assert.equal(loadRow(db, 'Filme/Arrival (2016).webm').scan_version, SCAN_VERSION);
+  assert.equal(loadRow(db, 'Filme/Arrival (2016).webm').id, id1, 'the re-parse keeps the id');
 });
 
 test('syncDirectory: a removed file is deleted', async (t) => {

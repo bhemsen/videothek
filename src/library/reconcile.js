@@ -1,12 +1,13 @@
 // @ts-check
 import { lstat } from 'node:fs/promises';
 import { join } from 'node:path';
-import { isSkippedName, listDirectory } from './walk.js';
+import { isSkippedName } from './walk.js';
 import { buildItem } from './item-builder.js';
 import { upsertBuiltRow } from './dir-sync.js';
 import { categoryForFolder } from './categories.js';
+import { rootHealth } from './root-health.js';
 import { SCAN_VERSION } from './parsers/compat.js';
-import { getItemsByDir, deleteItem, deleteItemsUnderDir } from '../db/library-repo.js';
+import { getItemByRelPath, deleteItem, deleteItemsUnderDir } from '../db/library-repo.js';
 
 /**
  * Reconciles a batch of `MEDIA_ROOT`-relative paths reported by change
@@ -43,6 +44,11 @@ import { getItemsByDir, deleteItem, deleteItemsUnderDir } from '../db/library-re
  *   shape). Provided by `scanner.js` so this module never imports it back
  *   (would be circular: `scanner.js` already imports `reconcile.js` for its
  *   `'paths'` runs).
+ * @property {(relDir: string) => void} markTouched marks the directory of a
+ *   file this reconcile confirmed or (re)indexed as visited by the full scan
+ *   currently running (no-op outside one), so that scan's end-of-walk sweep
+ *   never deletes it — its own walk may have listed the parent before the
+ *   directory existed.
  */
 
 /** @returns {ReconcileStats} */
@@ -93,24 +99,6 @@ async function canIgnoreTopLevel(mediaRoot, relPath) {
 }
 
 /**
- * Whether the category root owning a reconciled path is currently healthy
- * (readable and non-empty). Used only to decide the ENOENT case below; it
- * never itself protects rows or logs anything — an unhealthy root always
- * escalates to a full scan, which owns the real root-safety bookkeeping.
- * @param {string} mediaRoot
- * @param {string} rootName exact on-disk name of the category-root segment
- * @returns {Promise<boolean>}
- */
-async function isRootHealthy(mediaRoot, rootName) {
-  try {
-    const { files, dirs } = await listDirectory(join(mediaRoot, rootName));
-    return files.length + dirs.length > 0;
-  } catch {
-    return false;
-  }
-}
-
-/**
  * Deletes any row for `relPath` and any rows nested under it, bumping
  * `stats.removed` at most once.
  * @param {import('node:sqlite').DatabaseSync} db
@@ -126,8 +114,9 @@ function deletePathAndSubtree(db, relPath, stats) {
 
 /**
  * Whether any `/`-separated segment of `relPath` — not just its last one —
- * is unsafe (`''`, `.` or `..`, which would escape containment) or a skipped
- * name. A watcher can report a path such as `Filme/.hidden/x.mp4` or
+ * is unsafe (`''`, `.` or `..`, which would escape containment), a skipped
+ * name, or contains U+FFFD (undecodable; the walk skips those too, so
+ * indexing one here would flip-flop with every full scan). A watcher can report a path such as `Filme/.hidden/x.mp4` or
  * `Filme/@eaDir/x.mp4` (an ancestor, not the entry itself, matches the skip
  * rules); the whole path must then be treated as skipped — never indexed,
  * never descended into — matching the walk, which never lists a skipped
@@ -136,11 +125,15 @@ function deletePathAndSubtree(db, relPath, stats) {
  * @returns {boolean}
  */
 function hasUnsafeOrSkippedSegment(relPath) {
-  return relPath.split('/').some((segment) => segment === '' || segment === '.' || segment === '..' || isSkippedName(segment));
+  return relPath
+    .split('/')
+    .some((seg) => seg === '' || seg === '.' || seg === '..' || seg.includes('�') || isSkippedName(seg));
 }
 
 /**
- * Handles a path whose `lstat` came back `ENOENT`.
+ * Handles a path whose `lstat` came back `ENOENT`. An unhealthy category
+ * root (missing, unreadable or empty — see `root-health.js`) escalates to a
+ * full scan, which owns the root-safety bookkeeping; nothing is deleted here.
  * @param {ReconcileCtx} ctx
  * @param {string} relPath
  * @param {string} rootName
@@ -148,7 +141,7 @@ function hasUnsafeOrSkippedSegment(relPath) {
  * @returns {Promise<boolean>} whether to escalate to a full scan
  */
 async function reconcileMissing(ctx, relPath, rootName, stats) {
-  if (!(await isRootHealthy(ctx.mediaRoot, rootName))) {
+  if ((await rootHealth(ctx.mediaRoot, rootName)) !== null) {
     return true;
   }
   deletePathAndSubtree(ctx.db, relPath, stats);
@@ -168,8 +161,8 @@ async function reconcileMissing(ctx, relPath, rootName, stats) {
  * @returns {Promise<void>}
  */
 async function reconcileFile(ctx, relPath, category, stat, stats) {
+  const existing = getItemByRelPath(ctx.db, relPath);
   const dir = relPath.slice(0, relPath.lastIndexOf('/'));
-  const existing = getItemsByDir(ctx.db, dir).find((row) => row.rel_path === relPath);
   if (
     existing &&
     existing.size === stat.size &&
@@ -177,6 +170,7 @@ async function reconcileFile(ctx, relPath, category, stat, stats) {
     existing.scan_version === SCAN_VERSION
   ) {
     stats.unchanged += 1;
+    ctx.markTouched(dir);
     return;
   }
   const row = await buildItem({
@@ -191,6 +185,7 @@ async function reconcileFile(ctx, relPath, category, stat, stats) {
     return;
   }
   upsertBuiltRow(ctx.db, row, ctx.now());
+  ctx.markTouched(dir);
   stats[existing ? 'updated' : 'added'] += 1;
 }
 

@@ -1,10 +1,7 @@
 // @ts-check
-import { readdir } from 'node:fs/promises';
-import { join } from 'node:path';
 import { syncDirectory } from './dir-sync.js';
 import { reconcilePaths } from './reconcile.js';
-import { listDirectory, isSkippedName } from './walk.js';
-import { categoryForFolder } from './categories.js';
+import { discoverRoots, rootHealth } from './root-health.js';
 import { hasItemsUnderDir, listIndexedRootNames, deleteOrphanedSeries } from '../db/library-repo.js';
 import { createScanQueue } from './scan-queue.js';
 import { emptyStats, addDirStats, sweepPrefix } from './scan-stats.js';
@@ -78,17 +75,7 @@ export function createScanner({ db, mediaRoot, log, now, dirObserver = NOOP_DIR_
     try {
       result = await syncDirectory(syncCtx, relDir);
     } catch (err) {
-      const code = /** @type {NodeJS.ErrnoException} */ (err)?.code ?? 'unknown';
-      if (code !== 'ENOENT') {
-        log.warn('library_dir_failed', { dir: relDir, code });
-        stats.failedDirs += 1;
-        protectedPrefixes.push(relDir);
-      }
-      // ENOENT: the directory vanished between its parent's listing and its
-      // own readdir (an interleaved reconcile, or a user deleting it mid-scan)
-      // — treated as simply gone, not a failure: it is left out of `visited`
-      // so the end-of-walk sweep deletes its rows, with no warning and no
-      // protected subtree.
+      protectFailedDir(relDir, /** @type {NodeJS.ErrnoException} */ (err)?.code ?? 'unknown', stats, protectedPrefixes);
       return;
     }
     addDirStats(stats, result.stats);
@@ -128,27 +115,41 @@ export function createScanner({ db, mediaRoot, log, now, dirObserver = NOOP_DIR_
   }
 
   /**
-   * @param {string} rootName exact on-disk name, currently listed at the top of `mediaRoot`
-   * @returns {Promise<'empty' | 'unreadable' | null>} `null` = healthy
+   * A directory whose listing failed protects its whole subtree from this
+   * run's sweep — ENOENT included: a lazily unmounted disk surfaces as
+   * ENOENT under a parent listed moments earlier, and must never read as
+   * "every remaining directory was deleted" (spec: walk rule, D7). A
+   * category root failing this way (it vanished or broke between its health
+   * check and its walk) is recorded as a protected root instead.
+   * @param {string} relDir
+   * @param {string} code
+   * @param {ScanStats} stats
+   * @param {string[]} protectedPrefixes
+   * @returns {void}
    */
-  async function checkPresentRootHealth(rootName) {
-    try {
-      const { files, dirs } = await listDirectory(join(mediaRoot, rootName));
-      return files.length + dirs.length === 0 ? 'empty' : null;
-    } catch {
-      return 'unreadable';
+  function protectFailedDir(relDir, code, stats, protectedPrefixes) {
+    if (!relDir.includes('/')) {
+      protectRoot(relDir, code === 'ENOENT' ? 'missing' : 'unreadable', stats, protectedPrefixes);
+      return;
     }
+    log.warn('library_dir_failed', { dir: relDir, code });
+    stats.failedDirs += 1;
+    protectedPrefixes.push(relDir);
   }
 
-  /** @returns {Promise<Set<string>>} exact on-disk names of every category-root directory currently at the top of `mediaRoot` */
-  async function discoverRoots() {
-    const entries = await readdir(mediaRoot, { withFileTypes: true });
-    const names = new Set();
-    for (const entry of entries) {
-      if (entry.isSymbolicLink() || isSkippedName(entry.name) || !entry.isDirectory()) continue;
-      if (categoryForFolder(entry.name)) names.add(entry.name);
-    }
-    return names;
+  /**
+   * Protects an unhealthy category root that still has rows (D7).
+   * @param {string} name
+   * @param {'missing' | 'unreadable' | 'empty'} reason
+   * @param {ScanStats} stats
+   * @param {string[]} protectedPrefixes
+   * @returns {void}
+   */
+  function protectRoot(name, reason, stats, protectedPrefixes) {
+    if (!hasItemsUnderDir(db, name)) return;
+    log.warn('library_root_protected', { root: name, reason });
+    stats.protectedRoots += 1;
+    protectedPrefixes.push(name);
   }
 
   /**
@@ -162,17 +163,13 @@ export function createScanner({ db, mediaRoot, log, now, dirObserver = NOOP_DIR_
    * @returns {Promise<void>}
    */
   async function visitRoot(name, isPresent, stats, visited, protectedPrefixes) {
-    const reason = isPresent ? await checkPresentRootHealth(name) : 'missing';
-    if (!reason) {
-      await walkDir(name, stats, visited, protectedPrefixes);
-      sweepPrefix(db, name, visited, protectedPrefixes, stats);
+    const reason = isPresent ? await rootHealth(mediaRoot, name) : 'missing';
+    if (reason) {
+      protectRoot(name, reason, stats, protectedPrefixes);
       return;
     }
-    if (hasItemsUnderDir(db, name)) {
-      log.warn('library_root_protected', { root: name, reason });
-      stats.protectedRoots += 1;
-      protectedPrefixes.push(name);
-    }
+    await walkDir(name, stats, visited, protectedPrefixes);
+    sweepPrefix(db, name, visited, protectedPrefixes, stats);
   }
 
   /**
@@ -183,7 +180,7 @@ export function createScanner({ db, mediaRoot, log, now, dirObserver = NOOP_DIR_
     const start = Date.now();
     let discovered;
     try {
-      discovered = await discoverRoots();
+      discovered = await discoverRoots(mediaRoot);
     } catch {
       log.warn('library_scan_failed', { reason: 'media_root_unreadable' });
       state.lastError = 'media_root_unreadable';
@@ -221,7 +218,8 @@ export function createScanner({ db, mediaRoot, log, now, dirObserver = NOOP_DIR_
    */
   async function runPathsReconcile(relPaths) {
     const start = Date.now();
-    const { stats, escalate } = await reconcilePaths({ db, mediaRoot, now, dirObserver, scanSubtree }, relPaths);
+    const markTouched = (/** @type {string} */ dir) => void activeFullVisited?.add(dir);
+    const { stats, escalate } = await reconcilePaths({ db, mediaRoot, now, dirObserver, scanSubtree, markTouched }, relPaths);
     // A 'paths' run can delete the last episode of a series (ENOENT, a
     // changed file whose series changed, or a symlink/skipped name); without
     // this, the now-empty series row would linger until the next full scan.

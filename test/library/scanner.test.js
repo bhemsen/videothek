@@ -25,11 +25,13 @@ test('createScanner: a first full scan indexes a small tree', async (t) => {
   assert.ok(scanner.status().lastStats);
 });
 
-test('createScanner: a second full scan of 2 000 unchanged files in 200 dirs performs zero writes', async (t) => {
+test('createScanner: a second full scan of 2 000 unchanged files in 200 dirs performs zero writes and zero sniffs', async (t) => {
   const { root, db, scanner } = await setup(t);
   for (let d = 0; d < 200; d += 1) {
     for (let f = 0; f < 10; f += 1) {
-      await writeMediaFile(root, `Filme/Dir${d}/Movie${f}.webm`);
+      // .mp4 is a sniff-table extension: every re-parse would re-sniff it, so
+      // zero upserts (asserted below via total_changes) means zero sniffs.
+      await writeMediaFile(root, `Filme/Dir${d}/Movie${f}.mp4`);
     }
   }
   scanner.requestFull(); await scanner.idle();

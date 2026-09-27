@@ -10,6 +10,7 @@ import {
   listIndexedRootNames,
   hasItemsUnderDir,
   getItemsByDir,
+  getItemByRelPath,
   upsertSeries,
   deleteOrphanedSeries,
 } from '../../src/db/library-repo.js';
@@ -160,7 +161,7 @@ test('hasItemsUnderDir reflects rows anywhere under a prefix', () => {
   }
 });
 
-test('getItemsByDir loads only the exact directory, not its subdirectories', () => {
+test('getItemsByDir loads only the exact directory, not its subdirectories; getItemByRelPath loads one row', () => {
   const db = makeDb();
   try {
     upsertItem(db, makeItem({ rel_path: 'Filme/a.mp4', dir: 'Filme' }), 1);
@@ -173,6 +174,8 @@ test('getItemsByDir loads only the exact directory, not its subdirectories', () 
       rows.map((r) => r.rel_path).sort(),
       ['Filme/a.mp4', 'Filme/b.mp4']
     );
+    assert.equal(getItemByRelPath(db, 'Filme/Sub/c.mp4')?.dir, 'Filme/Sub');
+    assert.equal(getItemByRelPath(db, 'Filme/missing.mp4'), undefined);
   } finally {
     db.close();
   }

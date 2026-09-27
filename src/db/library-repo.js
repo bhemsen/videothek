@@ -221,6 +221,18 @@ export function getItemsByDir(db, dir) {
 }
 
 /**
+ * Loads the single item at `relPath` (a path reconcile's one-file diff).
+ * @param {import('node:sqlite').DatabaseSync} db
+ * @param {string} relPath
+ * @returns {LibraryItemRow | undefined}
+ */
+export function getItemByRelPath(db, relPath) {
+  return /** @type {LibraryItemRow | undefined} */ (
+    /** @type {unknown} */ (db.prepare('SELECT * FROM library_items WHERE rel_path = ?').get(relPath))
+  );
+}
+
+/**
  * Inserts a newly seen series, or updates one matched by `series_key`, via
  * `ON CONFLICT(series_key) DO UPDATE`. `id` and `added_at` are preserved
  * across updates.
