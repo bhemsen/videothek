@@ -89,86 +89,103 @@ function buildIfd(entries, next, little) {
   return Buffer.concat([u(entries.length, 2, little), ...body, u(next, 4, little)]);
 }
 
+/** @typedef {{ tag: number, type: number, count: number, valueRel?: number, valueInline?: number }} IfdEntry */
+
+/**
+ * @typedef {object} ExifJpegOptions
+ * @property {'II' | 'MM'} [order]
+ * @property {number} [orientation] Omit to leave the tag out.
+ * @property {string} [dateTimeOriginal] Exif sub-IFD DateTimeOriginal.
+ * @property {string} [dateTime] IFD0 DateTime (fallback).
+ * @property {{ data?: Buffer, compression?: number, compressionType?: number, offsetRel?: number, length?: number } | null} [thumbnail]
+ *   IFD1 thumbnail; `compressionType` overrides the Compression entry's TIFF type (default SHORT).
+ * @property {boolean} [exifIfdSelfLoop] ExifIFD offset points back at IFD0.
+ * @property {number} [exifIfdOffsetOverrideRel] Forces the ExifIFD pointer.
+ * @property {boolean} [ifd1SelfLoop] IFD0's next-IFD offset points back at IFD0.
+ * @property {number} [ifd1OffsetOverrideRel] Forces IFD0's next-IFD offset.
+ * @property {number} [ifd0OffsetOverrideRel] Forces the TIFF header's IFD0 offset.
+ * @property {Buffer} [base] Base JPEG to wrap (default {@link baseJpegBuffer}).
+ */
+
+/**
+ * Offsets (relative to the TIFF header) of the structures `buildExifJpeg`
+ * writes, in file order: IFD0, its DateTime string, the Exif sub-IFD, its
+ * DateTimeOriginal string, IFD1 and the thumbnail data.
+ * @param {ExifJpegOptions} o @param {boolean} wantExifIfd
+ */
+function layoutTiff(o, wantExifIfd) {
+  const layout = { ifd0Rel: 8, dateTimeRel: 0, exifIfdRel: 0, dtoRel: 0, ifd1Rel: 0, thumbDataRel: 0 };
+  const n0 = (o.orientation !== undefined ? 1 : 0) + (wantExifIfd ? 1 : 0) + (o.dateTime !== undefined ? 1 : 0);
+  let pos = layout.ifd0Rel + 2 + n0 * 12 + 4;
+  if (o.dateTime !== undefined) { layout.dateTimeRel = pos; pos += dateBytes(o.dateTime).length; }
+  if (wantExifIfd) {
+    layout.exifIfdRel = pos;
+    pos += 2 + (o.dateTimeOriginal !== undefined ? 12 : 0) + 4;
+    if (o.dateTimeOriginal !== undefined) { layout.dtoRel = pos; pos += dateBytes(o.dateTimeOriginal).length; }
+  }
+  if (o.thumbnail) {
+    layout.ifd1Rel = pos;
+    layout.thumbDataRel = pos + 2 + ((o.thumbnail.compression !== undefined ? 1 : 0) + 2) * 12 + 4;
+  }
+  return layout;
+}
+
+/** IFD0 (orientation, ExifIFD pointer, DateTime) plus its next-IFD offset.
+ * @param {ExifJpegOptions} o @param {ReturnType<typeof layoutTiff>} layout @param {boolean} wantExifIfd @param {boolean} little */
+function buildIfd0(o, layout, wantExifIfd, little) {
+  /** @type {IfdEntry[]} */
+  const entries = [];
+  if (o.orientation !== undefined) entries.push({ tag: 0x0112, type: TYPE_SHORT, count: 1, valueInline: o.orientation });
+  if (wantExifIfd) {
+    const exifIfdValueRel = o.exifIfdOffsetOverrideRel ?? (o.exifIfdSelfLoop ? layout.ifd0Rel : layout.exifIfdRel);
+    entries.push({ tag: 0x8769, type: TYPE_LONG, count: 1, valueRel: exifIfdValueRel });
+  }
+  if (o.dateTime !== undefined) entries.push({ tag: 0x0132, type: TYPE_ASCII, count: dateBytes(o.dateTime).length, valueRel: layout.dateTimeRel });
+  const next = o.ifd1OffsetOverrideRel ?? (o.ifd1SelfLoop ? layout.ifd0Rel : o.thumbnail ? layout.ifd1Rel : 0);
+  return buildIfd(entries, next, little);
+}
+
+/** IFD1 (Compression, thumbnail offset/length) followed by the thumbnail bytes.
+ * @param {NonNullable<ExifJpegOptions['thumbnail']>} thumbnail @param {number} thumbDataRel @param {boolean} little */
+function buildThumbIfd(thumbnail, thumbDataRel, little) {
+  const data = thumbnail.data ?? baseJpegBuffer();
+  /** @type {IfdEntry[]} */
+  const entries = [];
+  if (thumbnail.compression !== undefined) {
+    entries.push({ tag: 0x0103, type: thumbnail.compressionType ?? TYPE_SHORT, count: 1, valueInline: thumbnail.compression });
+  }
+  entries.push({ tag: 0x0201, type: TYPE_LONG, count: 1, valueRel: thumbnail.offsetRel ?? thumbDataRel });
+  entries.push({ tag: 0x0202, type: TYPE_LONG, count: 1, valueInline: thumbnail.length ?? data.length });
+  return Buffer.concat([buildIfd(entries, 0, little), data]);
+}
+
 /**
  * Builds a JPEG buffer (SOI + APP1/EXIF + the rest of a base image) covering
  * both byte orders, orientation, dates, an IFD1 thumbnail and malformed
  * variants (out-of-range/oversized/misplaced thumbnail, IFD self-loops for
- * the cycle guard, an out-of-window ExifIFD pointer).
+ * the cycle guard, out-of-window IFD pointers).
  *
- * @param {object} [opts]
- * @param {'II' | 'MM'} [opts.order]
- * @param {number} [opts.orientation] Omit to leave the tag out.
- * @param {string} [opts.dateTimeOriginal] Exif sub-IFD DateTimeOriginal.
- * @param {string} [opts.dateTime] IFD0 DateTime (fallback).
- * @param {{ data?: Buffer, compression?: number, offsetRel?: number, length?: number } | null} [opts.thumbnail]
- * @param {boolean} [opts.exifIfdSelfLoop] ExifIFD offset points back at IFD0.
- * @param {number} [opts.exifIfdOffsetOverrideRel] Forces the ExifIFD pointer.
- * @param {boolean} [opts.ifd1SelfLoop] IFD0's next-IFD offset points back at IFD0.
- * @param {Buffer} [opts.base] Base JPEG to wrap (default {@link baseJpegBuffer}).
+ * @param {ExifJpegOptions} [opts]
  * @returns {Buffer}
  */
 export function buildExifJpeg(opts = {}) {
-  const {
-    order = 'II', orientation, dateTimeOriginal, dateTime, thumbnail = null,
-    exifIfdSelfLoop = false, exifIfdOffsetOverrideRel, ifd1SelfLoop = false, base = baseJpegBuffer(),
-  } = opts;
+  const { order = 'II', dateTimeOriginal, dateTime, thumbnail = null, base = baseJpegBuffer() } = opts;
   const little = order === 'II';
-  const wantExifIfd = dateTimeOriginal !== undefined || exifIfdOffsetOverrideRel !== undefined || exifIfdSelfLoop;
-
-  let pos = 8; // TIFF header size
-  const ifd0Rel = pos;
-  const n0 = (orientation !== undefined ? 1 : 0) + (wantExifIfd ? 1 : 0) + (dateTime !== undefined ? 1 : 0);
-  pos += 2 + n0 * 12 + 4;
-  /** @type {number | undefined} */
-  let dateTimeRel;
-  if (dateTime !== undefined) { dateTimeRel = pos; pos += dateBytes(dateTime).length; }
-  /** @type {number | undefined} */
-  let exifIfdRel;
-  /** @type {number | undefined} */
-  let dtoRel;
-  if (wantExifIfd) {
-    exifIfdRel = pos;
-    pos += 2 + (dateTimeOriginal !== undefined ? 12 : 0) + 4;
-    if (dateTimeOriginal !== undefined) { dtoRel = pos; pos += dateBytes(dateTimeOriginal).length; }
-  }
-  let ifd1Rel = 0;
-  let thumbDataRel = 0;
-  if (thumbnail) {
-    ifd1Rel = pos;
-    pos += 2 + ((thumbnail.compression !== undefined ? 1 : 0) + 2) * 12 + 4;
-    thumbDataRel = pos;
-    pos += (thumbnail.data ?? baseJpegBuffer()).length;
-  }
-
-  /** @type {{ tag: number, type: number, count: number, valueRel?: number, valueInline?: number }[]} */
-  const ifd0Entries = [];
-  if (orientation !== undefined) ifd0Entries.push({ tag: 0x0112, type: TYPE_SHORT, count: 1, valueInline: orientation });
-  if (wantExifIfd) {
-    const exifIfdValueRel = exifIfdOffsetOverrideRel ?? (exifIfdSelfLoop ? ifd0Rel : exifIfdRel ?? 0);
-    ifd0Entries.push({ tag: 0x8769, type: TYPE_LONG, count: 1, valueRel: exifIfdValueRel });
-  }
-  if (dateTime !== undefined) ifd0Entries.push({ tag: 0x0132, type: TYPE_ASCII, count: dateBytes(dateTime).length, valueRel: dateTimeRel ?? 0 });
+  const wantExifIfd = dateTimeOriginal !== undefined || opts.exifIfdOffsetOverrideRel !== undefined || Boolean(opts.exifIfdSelfLoop);
+  const layout = layoutTiff(opts, wantExifIfd);
   /** @type {Buffer[]} */
-  const parts = [buildIfd(ifd0Entries, ifd1SelfLoop ? ifd0Rel : thumbnail ? ifd1Rel : 0, little)];
+  const parts = [buildIfd0(opts, layout, wantExifIfd, little)];
   if (dateTime !== undefined) parts.push(dateBytes(dateTime));
   if (wantExifIfd) {
     const exifEntries = dateTimeOriginal !== undefined
-      ? [{ tag: 0x9003, type: TYPE_ASCII, count: dateBytes(dateTimeOriginal).length, valueRel: dtoRel ?? 0 }]
+      ? [{ tag: 0x9003, type: TYPE_ASCII, count: dateBytes(dateTimeOriginal).length, valueRel: layout.dtoRel }]
       : [];
     parts.push(buildIfd(exifEntries, 0, little));
     if (dateTimeOriginal !== undefined) parts.push(dateBytes(dateTimeOriginal));
   }
-  if (thumbnail) {
-    const thumbData = thumbnail.data ?? baseJpegBuffer();
-    /** @type {{ tag: number, type: number, count: number, valueRel?: number, valueInline?: number }[]} */
-    const ifd1Entries = [];
-    if (thumbnail.compression !== undefined) ifd1Entries.push({ tag: 0x0103, type: TYPE_SHORT, count: 1, valueInline: thumbnail.compression });
-    ifd1Entries.push({ tag: 0x0201, type: TYPE_LONG, count: 1, valueRel: thumbnail.offsetRel ?? thumbDataRel });
-    ifd1Entries.push({ tag: 0x0202, type: TYPE_LONG, count: 1, valueInline: thumbnail.length ?? thumbData.length });
-    parts.push(buildIfd(ifd1Entries, 0, little), thumbData);
-  }
-
-  const tiff = Buffer.concat([Buffer.from(order, 'ascii'), u(42, 2, little), u(ifd0Rel, 4, little), ...parts]);
+  if (thumbnail) parts.push(buildThumbIfd(thumbnail, layout.thumbDataRel, little));
+  const ifd0Pointer = opts.ifd0OffsetOverrideRel ?? layout.ifd0Rel;
+  const tiff = Buffer.concat([Buffer.from(order, 'ascii'), u(42, 2, little), u(ifd0Pointer, 4, little), ...parts]);
   const payload = Buffer.concat([Buffer.from('Exif\0\0', 'latin1'), tiff]);
   const app1 = Buffer.concat([Buffer.from([0xff, 0xe1]), u(2 + payload.length, 2, false), payload]);
   return Buffer.concat([base.subarray(0, 2), app1, base.subarray(2)]);
