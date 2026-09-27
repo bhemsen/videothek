@@ -28,12 +28,16 @@ export function skipIcon() {
 
 /**
  * The destructive film-strip-with-slash glyph shown at the top of every
- * error panel (48 px via CSS).
+ * error panel (48 px via CSS). The frame is an outlined (hollow) rounded
+ * rectangle — two oppositely-wound rounded-rect subpaths in one `d`, so the
+ * default nonzero fill rule punches out the interior — so the diagonal slash
+ * stays visible instead of disappearing onto a solid fill.
  * @returns {SVGSVGElement}
  */
 export function filmOffIcon() {
   return createIcon([
-    'M4 4h16a1 1 0 0 1 1 1v14a1 1 0 0 1-1 1H4a1 1 0 0 1-1-1V5a1 1 0 0 1 1-1zm2 2v2h2V6H6zm10 0v2h2V6h-2zM6 16v2h2v-2H6zm10 0v2h2v-2h-2z',
+    'M5 4H19A2 2 0 0 1 21 6V18A2 2 0 0 1 19 20H5A2 2 0 0 1 3 18V6A2 2 0 0 1 5 4ZM5 6V18H19V6H5Z',
+    'M6 7h2v2H6zM16 7h2v2h-2zM6 15h2v2H6zM16 15h2v2h-2z',
     'M4.7 3.29L3.29 4.7l16 16 1.41-1.41z',
   ]);
 }
