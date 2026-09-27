@@ -9,6 +9,7 @@ import {
 } from '../db/library-queries.js';
 import { requireUser } from '../http/guards.js';
 import { sendError, sendJson } from '../http/respond.js';
+import { toItemDetailJson } from './item-detail.js';
 import { toItemJson } from './library-json.js';
 
 /**
@@ -139,17 +140,17 @@ function handleSeriesDetail(res, ctx, deps) {
  * `GET /api/library/items/:id`.
  * @param {import('node:http').ServerResponse} res
  * @param {RequestContext} ctx
- * @param {{ db: import('node:sqlite').DatabaseSync }} deps
- * @returns {void}
+ * @param {{ db: import('node:sqlite').DatabaseSync, config: import('../config.js').Config }} deps
+ * @returns {Promise<void>}
  */
-function handleItemDetail(res, ctx, deps) {
+async function handleItemDetail(res, ctx, deps) {
   const id = parseId(ctx.params.id);
   const row = id === null ? undefined : getItemById(deps.db, id);
   if (!row) {
     sendError(res, 404, 'not_found');
     return;
   }
-  sendJson(res, 200, toItemJson(row));
+  sendJson(res, 200, await toItemDetailJson({ db: deps.db, mediaRoot: deps.config.mediaRoot }, row));
 }
 
 /**
@@ -157,7 +158,7 @@ function handleItemDetail(res, ctx, deps) {
  * (`requireUser`); `deps.library` is optional (absent -> `scan` defaults to
  * `{ running: false, lastCompletedAt: null }`).
  * @param {ReturnType<typeof import('../http/router.js').createRouter>} router
- * @param {{ db: import('node:sqlite').DatabaseSync, library?: LibraryStatusSource } & Record<string, unknown>} deps
+ * @param {{ db: import('node:sqlite').DatabaseSync, config: import('../config.js').Config, library?: LibraryStatusSource } & Record<string, unknown>} deps
  * @returns {void}
  */
 export function registerLibraryRoutes(router, deps) {
