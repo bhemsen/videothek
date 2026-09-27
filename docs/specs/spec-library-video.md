@@ -1293,3 +1293,43 @@ and desktop 1440 px, compared with the design exports):
   it and `README.md` warn that deleting the DB file also deletes every
   account, session and all playback progress (the admin is re-created from
   `ADMIN_USER`/`ADMIN_PASSWORD`).
+- 2026-09-27 (#37): the Filme page's header (title + count) and A–Z /
+  "Neu hinzugefügt" sort control get their own `public/css/movies.css`
+  instead of new rules in the shared `library.css` — issue #38 (Serien /
+  series detail, same header pattern) is implemented in parallel and would
+  otherwise edit the same shared file; a small amount of CSS duplication
+  across the per-page stylesheets is preferred over that merge risk, mirroring
+  the project's existing per-page stylesheet convention (`home.css`,
+  `admin.css`, `audio*.css`).
+- 2026-09-27 (#37): kept the already-shipped placeholder page title
+  ("Filme · Videothek", middle dot) instead of the "Filme – Videothek" en-dash
+  form this spec's UI section names — every other page (P1's shell, login,
+  admin, 404, the other four category placeholders) already uses the middle
+  dot, and this issue does not touch that established, already-merged
+  convention.
+- 2026-09-27 (#38): document titles use "·" (`el.title = "<Serie> · Videothek"`)
+  instead of the spec text's "–", matching the middle-dot convention every
+  other page in the app already uses (`<title>Filme · Videothek</title>`,
+  etc.) — the spec's dash was shorthand, not a literal deviation from that
+  established, machine-checked-nowhere-but-universal convention.
+- 2026-09-27 (#38): the request-error and missing-series states build on
+  P1's `createEmptyState({ title, text })` with `text: ''` (a single message
+  line, no second sentence) and then `.append()` the state's one interactive
+  control — a `<button class="btn btn-secondary">` for "Erneut versuchen"
+  (spec calls it a button) and a plain, unstyled `<a href="/series">` for
+  "Zu den Serien" (spec calls it a link, and neither is in the "chips, back
+  link, sort links" `--tap-min` list) — since `createEmptyState`'s two `<p>`
+  text params can't host a real, keyboard-focusable control themselves.
+- 2026-09-27 (#38): `library.css` gains the first page-level chrome classes
+  of the whole library UI (`.library-header`/`.sort-link`s, `.back-link`,
+  `.series-detail-header`, `.season-chips`/`.season-chip`,
+  `.season-section`) — #37 (Filme) is expected to reuse `.library-header`/
+  `.sort-link` verbatim for its own header once it lands. The detail
+  header's poster tile reuses `createPosterTile`'s `className` escape hatch
+  at `width: calc(var(--grid-min) * 0.75)` (120 px at the token's 160 px) to
+  size it down from a grid cell without a raw length literal.
+- 2026-09-27 (#38): season chips are a plain in-page anchor `<nav>` with no
+  scroll-spy/"selected" state — the acceptance criterion is only "chips jump
+  to sections", and the mockup's highlighted first chip is static illustration,
+  not a stated requirement; not built to keep the page free of scroll-position
+  JS the spec never asks for.
