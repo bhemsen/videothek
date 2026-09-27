@@ -355,6 +355,8 @@ QA-only, optional:
 | **Frontend file layout (declared deviation):** the two pages `public/music.html` and `public/audiobooks.html` share one module tree `public/js/audio/` (entry `app.js`) and `public/css/audio.css`, `audio-music.css`, `audio-books.css`, instead of Phase 1's per-page `public/js/<page>.js` / `public/css/<page>.css` convention; recorded in `docs/architecture.md` by the metadata-pass issue. | One shell and one persistent player must serve both pages (D14/H8); per-page entry modules would duplicate it and break playback continuity across `pushState` navigation. | 2026-09-26 |
 | **Custom control bar over a hidden `<audio>` (declared deviation from design.md's Player line "native `<video>`/`<audio>` controls"):** the `<audio>` element has no `controls` attribute; the bar's own buttons, seek slider and time labels drive it. Video (Phase 3) keeps native controls. Recorded in `docs/architecture.md`. | Native audio controls offer no previous/next or 15/30 s skip and cannot show the queue's title/cover; the bar must stay visible and stable across view changes. | 2026-09-26 |
 | **Docs edits:** `docs/prior-art.md` gets the two Phase 5 concerns in this spec PR; `docs/architecture.md` component map and key flows are edited by the metadata-pass issue (D13). The Subsonic play-queue reference is dropped. | D13; H7 removed the music-session design the Subsonic reference supported. | 2026-09-26 |
+| **Migration 004 / `audio-meta-repo.js` (#63) implementation notes:** `listStaleAudioItems` returns raw snake_case `library_items` rows (the same `LibraryItemRow` shape as `library-repo.js`'s `getItemsByDir`) via a `LEFT JOIN audio_meta` staleness filter — it feeds the internal metadata pass, not the API, so no camelCase mapping. `listAudioRows`/`listGroupRows`/`getAudioRow` share one `INNER JOIN` projection that aliases columns to camelCase directly in SQL and converts `playable` from its stored 0/1 to a real boolean in JS (SQLite has no boolean type). `upsertAudioMeta`'s input mirrors the table's snake_case columns verbatim, matching `upsertItem`'s convention. Since migration 003 (issue #51) is not yet merged, its "004 applies … with and without 003" test builds two temp migration dirs — one with only 001/002/004, one that adds a synthetic minimal `progress` table standing in for 003 — instead of depending on the real file. | Keeps the pass/API boundary consistent with the existing `library-repo.js` conventions; unblocks the 003/004 independence test without a merge-order dependency on #51. | 2026-09-26 |
+| **`src/db/audio-progress.js` (#67) implementation notes:** both queries alias columns to camelCase directly in SQL (`listAudioRows`'s convention), and both spread the `node:sqlite` row into a plain object before returning it — the driver hands back a null-prototype object, which fails `assert.deepEqual`/`assert/strict` (a strict `deepStrictEqual`) for callers and tests that compare a full row shape; `audio-meta-repo.js`'s joined reads avoid the same trap only incidentally, via `toAudioRow`'s spread for the unrelated `playable` boolean conversion. `listAudioProgress` applies no `finished`/threshold/playable filter (only category + presence via the join) since its only caller-to-be, the audiobook resume derivation (#69, `deriveBookProgress`), needs uncounted rows too to compute `state`/`fraction` itself; `getLatestMusicResume` is the only function with the threshold/playable/`finished=0`/`audio_meta`-presence filter, matching the "Repository functions" row exactly. `startThreshold` is received as a plain parameter, never imported from `src/api/progress-rules.js` here — that import belongs to the API layer (#68), keeping this module's only dependency on migrations 002–004. | Prevents a null-prototype/plain-object mismatch that is easy to miss (`assert.deepEqual` under `node:assert/strict` is strict); keeping `listAudioProgress` filter-free matches its stated per-file/counted-row consumer without duplicating `getLatestMusicResume`'s WHERE clause. | 2026-09-27 |
 
 ## Tracking
 
@@ -659,3 +661,39 @@ compared with the exports):
   also get `year: null` — "ignore tags for group display" is read to cover
   the tag-derived year like it covers title/artist, not just the two fields
   the row names explicitly.
+- 2026-09-27: issue #71 implementation (`public/js/audio/{queue,player,format}.js`)
+  — verified the Phase 4 `progress.js` merged on main: `stopTracker` sets
+  `stopped`, clears the interval and removes every listener before calling
+  `report()` (unawaited), so `stop()` dispatches its report and detaches
+  listeners/timers synchronously before its first await exactly as this
+  issue requires; no Phase 4 fix needed. `createQueue`'s `startIndex` rule
+  ("a non-playable start item → the next playable one") is read as a forward
+  search from `startIndex` that wraps to the start of `items` when no
+  playable item follows, so a queue always has a current item whenever any
+  member is playable — the row does not name this edge case. The player's
+  bounded switch is implemented as `raceWithTimeout(outgoing.stop(), 1000)`
+  (a manual race that clears the 1 s timer once `stop()` wins) rather than
+  the row's literal `Promise.race([prev.stop(), delay(1000)])`, to avoid
+  leaking a pending timer on every fast switch; behaviour (wait for `stop()`,
+  capped at 1 s, old handle never called again) is unchanged and covered by
+  the never-resolving-`stop()` test. `formatPercent(null)` — not named in the
+  "German formatting" row — returns `'–'` (no `%`), matching the `–:–`
+  placeholder style of `formatDuration`/`formatTotal`.
+- 2026-09-27: PR #126 review resolutions (issue #71) — blocking: `goTo`'s
+  in-flight switch is now guarded by a monotonic `switchToken` rather than by
+  reading `state.handle === null` as "first play"; `state.handle` keeps
+  pointing at the outgoing handle for the whole bounded wait (it is no longer
+  cleared up front), so a second switch requested inside that window (a
+  double next/previous, a row click, `playQueue`, or the outgoing item's own
+  `ended`/`error` firing mid-wait) is never mistaken for the page's first
+  play, and a switch superseded before its wait settles starts nothing —
+  it creates no handle, so none is left unstopped. Non-blocking, applied:
+  `onError` re-reads `state.queue`/`current()` after its `HEAD` `await` and
+  drops a stale error (the user having switched away meanwhile) instead of
+  advancing from, or showing a message for, the wrong item; `formatPercent`
+  rounds to 1e-4 of a percentage point before flooring, since
+  `Math.floor(fraction * 100)` (the row's literal formula) mid-floors an
+  exact fraction on a binary-float artefact (e.g. `0.29 * 100 ===
+  28.999999999999996`) — the visible contract (floored whole percent) is
+  unchanged, only the float rounding underneath it; `defaultHeadMedia` gained
+  direct test coverage via a stubbed `globalThis.fetch`.

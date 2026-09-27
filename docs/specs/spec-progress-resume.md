@@ -799,3 +799,65 @@ phone 390 px and desktop 1440 px, compared with the design exports):
   "Gesehen" pill named in tokens (`--text-xs`, `--weight-semibold`);
   pure `nextFocusIndex` extracted and tested; P5's read-only
   `audio-progress.js` join acknowledged in the repository rule.
+- 2026-09-26: implementation (#51) — `upsertProgress` returns the written row
+  via `RETURNING` (not fixed by the spec) so the API layer's `PUT` handler
+  gets the post-write entry without a second `getProgressRow` call;
+  `listContinueRows`/`listStateRows`/`listSeriesProgressRows` select
+  `library_items.*` plus the four progress columns under their own names (no
+  collision, so no aliasing was needed beyond `AS` for clarity); migration
+  003's gap-application (independent of 002) and last-write-wins are
+  additionally exercised against the real `001`/`003` files, not only
+  synthetic ones as in `migrate.test.js`. Adding migration 003 to the shared
+  `src/db/migrations/` directory made two pre-existing tests' hardcoded
+  `migrate(db) === [1, 2]` expectations (`test/db/index.test.js`,
+  `test/db/library-repo.test.js`) stale; updated them to `[1, 2, 3]`, the only
+  edit to files outside this issue's list.
+- 2026-09-26: `public/js/lib/progress.js` implementation (#55) — a stored
+  `position` that is `>=` the media's `duration` (with `resume: true`) is
+  treated the same as "nothing to resume": reporting arms directly on the
+  next metadata, no seek is attempted, and no further resume is retried for
+  that playback. Once a resume seek has landed once (via `seeked` or the
+  `playing` fallback), a later `emptied` never re-issues it — only P3's own
+  reload seek moves `currentTime` after that point, so `trackPlayback` never
+  fights it.
+- 2026-09-26: implementation (#52) — `src/api/progress-rules.js` fixes the
+  names/shapes the spec left open: `validateProgressBody(body)` ->
+  `{ position, duration } | null`; `decideProgressWrite({ category, position,
+  duration, existingFinished })` -> `{ write: false }` or `{ write: true,
+  finished }` (the three write-rule steps collapsed into one discriminated
+  result so a caller never upserts on the guarded branch);
+  `deriveProgressState({ finished, position })` ->
+  `'none' | 'in_progress' | 'finished'` (also the function
+  `progress-next-up.js` uses to find *L* and ignore `none` rows —
+  the reason that issue depends on this one); `toProgressEntryJson({ itemId,
+  position, duration, finished, updatedAt })` -> the entry JSON (`updatedAt:
+  null` passes through as `null`, matching the "no row" entry);
+  `parseProgressQuery(searchParams)` -> `{ categories, view, limit } | null`,
+  `null` on any violation (caller maps it to `400 invalid_query`); the
+  `category`/`limit` defaults and the valid category set are derived from
+  P2's `CATEGORIES` at module load, never re-hardcoded.
+- 2026-09-27: implementation (#53) — `computeNextUp(rows, { getNext,
+  getState })` is generic over two independent row shapes (the `rows`
+  element type and `getNext`'s return type) rather than one shared type,
+  because the real caller's `getNext` is P3's `getNextEpisode(db, row)`,
+  which returns a plain `LibraryItemRow`, not the `progress`-joined row shape
+  `rows` carries — forcing one shared type would mistype the real
+  integration. Series are grouped with a `Map` keyed by `series_id`,
+  preserving first-seen order; the spec does not fix an order across
+  multiple series' `next_up` entries, so `src/api/progress.js` (a later
+  issue) is free to merge/sort them with the continue-view rows before
+  applying `limit`. *L* is found by reusing `deriveProgressState` from
+  `progress-rules.js` (per #52's decision log, the same function the state
+  view and player use) to filter `none` rows and derive `in_progress` vs.
+  `finished`, rather than re-deriving the write-rule thresholds here.
+- 2026-09-27: review fix (#53/PR #130) — `SeriesProgressRow.series_id` widened
+  to `number | null | undefined` (optional), and `groupBySeries`'s `Map` key
+  type widened to match: the real caller's row type, `ProgressItemRow`
+  (`src/db/progress.js`, via `LibraryItemRow`), has `series_id` optional, so
+  the stricter `number | null` made `computeNextUp(listSeriesProgressRows(db,
+  userId), { getNext: (row) => getNextEpisode(db, row), ... })` fail `tsc
+  --strict` with TS2345 — the exact real integration this module's generic
+  design exists to type-check. A type-only guard function (never invoked,
+  same pattern as `test/public/player-stage.test.js`) was added to
+  `test/api/progress-next-up.test.js` to keep that call site checked going
+  forward.
