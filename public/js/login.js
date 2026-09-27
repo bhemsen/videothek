@@ -7,6 +7,7 @@
 import { el } from './lib/dom.js';
 import { icon } from './lib/icons.js';
 import { request, ApiError, safeNext } from './lib/api.js';
+import { loginErrorMessage } from './login-messages.js';
 
 const usernameInput = /** @type {HTMLInputElement} */ (el('input', {
   id: 'username',
@@ -47,7 +48,7 @@ const form = el(
 
 document.body.append(
   el(
-    'div',
+    'main',
     { class: 'login-page' },
     el('p', { class: 'login-wordmark' }, icon('logo'), 'Videothek'),
     el('div', { class: 'login-card' }, el('h1', {}, 'Anmelden'), form),
@@ -73,10 +74,13 @@ async function handleSubmit(event) {
     const next = new URLSearchParams(location.search).get('next');
     location.assign(safeNext(next));
   } catch (error) {
-    passwordInput.value = '';
-    passwordInput.setAttribute('aria-invalid', 'true');
-    passwordInput.focus();
-    setError(error instanceof ApiError ? errorMessage(error) : errorMessage(null));
+    const apiError = error instanceof ApiError ? error : null;
+    if (apiError?.code === 'invalid_credentials') {
+      passwordInput.value = '';
+      passwordInput.setAttribute('aria-invalid', 'true');
+      passwordInput.focus();
+    }
+    setError(loginErrorMessage(apiError?.code ?? null, apiError?.retryAfterSec ?? null));
     submitButton.disabled = false;
   }
 }
@@ -97,28 +101,3 @@ function setError(message) {
   errorLine.hidden = false;
 }
 
-/**
- * Maps a login `ApiError` to its German message; `null` (a non-`ApiError`
- * failure) falls back to the same generic text as an unknown error code.
- * @param {ApiError | null} error
- * @returns {string}
- */
-function errorMessage(error) {
-  if (error?.code === 'invalid_credentials') return 'Benutzername oder Passwort falsch.';
-  if (error?.code === 'too_many_attempts') return throttleMessage(error.retryAfterSec);
-  return 'Etwas ist schiefgelaufen. Bitte erneut versuchen.';
-}
-
-/**
- * Formats the `too_many_attempts` message with the retry minute count
- * (`max(1, ceil(retryAfterSec / 60))`, singular "1 Minute"); `null` (header
- * absent) falls back to a time-less variant.
- * @param {number | null} retryAfterSec
- * @returns {string}
- */
-function throttleMessage(retryAfterSec) {
-  if (retryAfterSec === null) return 'Zu viele Fehlversuche. Bitte später erneut versuchen.';
-  const minutes = Math.max(1, Math.ceil(retryAfterSec / 60));
-  const unit = minutes === 1 ? 'Minute' : 'Minuten';
-  return `Zu viele Fehlversuche. Bitte in ${minutes} ${unit} erneut versuchen.`;
-}
