@@ -557,3 +557,38 @@ Human QA (Chromium + Firefox; desktop 1280 px and 390 px mobile emulation;
   `test/db/library-repo.test.js`, which migrate the shared default directory,
   now assert containment of the versions they need instead of an exact
   list, so adding a sibling migration no longer requires editing them.
+- 2026-09-27 (#75, `src/library/tags/exif.js`): the IFD cycle guard is a
+  shared `Set` of absolute IFD start offsets visited across the three fixed
+  reads (IFD0, its Exif sub-IFD, IFD1) rather than a generic "follow next"
+  loop — the reader never chains past IFD1, so this is enough to make a
+  self-referencing offset (IFD0 as its own Exif pointer or next-IFD) a no-op
+  instead of a special case. The thumbnail's "inside the APP1 segment" check
+  uses the segment's *declared* end (from its length field, unclamped),
+  while any actual byte access (TIFF/IFD parsing, the thumbnail's FF D8 peek)
+  is bounded by `min(declared end, bytes actually read)` — the two coincide
+  for a real file (APP1 ≤ 64 KiB, read window 128 KiB) and only diverge for a
+  deliberately truncated test buffer. `parseExif` also wraps its body in a
+  top-level try/catch as a defensive backstop on top of the explicit bounds
+  checks, matching "never throws" for any bounds-check gap. "Fallback IFD0
+  DateTime" applies whenever DateTimeOriginal yields no valid date (absent,
+  unreadable or invalid such as `0000:00:00 00:00:00`), not only when absent;
+  "Compression absent or 6" treats a present but unreadable Compression entry
+  (unknown TIFF type, out-of-bounds value) as not 6, so the thumbnail is
+  rejected. The marker walk skips every length-bearing segment (DQT, SOFn,
+  DHT, ...), not only APPn/COM, so a table segment before APP1 does not stop
+  it.
+- 2026-09-27 (#75, `test/helpers/exif-jpeg.js`): the embedded base JPEG is a
+  16x16 baseline grayscale image built from flat 8x8 blocks (top block-row
+  dark, bottom light) — a flat block's DCT has no AC energy, so the one-off
+  generator (not committed) needed no real DCT, only the DC term, and the
+  custom AC Huffman table needs only one symbol (EOB), avoiding transcribing
+  the large standard 162-symbol table; verified by decoding the output
+  visually before embedding it as base64. The QA fixture tree's non-JPEG
+  entries (`.heic`/`.mov`/`.png`/`.gif`) are a few arbitrary bytes per the
+  Fixtures row's explicit sanction; `VID_0433.webm` is that row's one
+  exception (a real, decodable VP8/VP9 file, ≤ 50 KiB), committed separately
+  by the docs/fixtures issue, so `--write` never generates or overwrites it —
+  it only re-applies the fixed mtime when the file is already present and
+  otherwise leaves it out. Capture dates/times for the fixture files the QA
+  tree row leaves unpinned (Tag 1/Tag 2, `geburtstag.jpg`, `alias.jpg`) were
+  chosen to keep chronological order plausible.
