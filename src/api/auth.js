@@ -6,7 +6,7 @@
 
 import { DUMMY_HASH, verifyPassword } from '../auth/password.js';
 import { createLoginLimiter } from '../auth/rate-limit.js';
-import { normalizeUsername } from '../auth/validation.js';
+import { normalizeUsername, validatePassword, validateUsername } from '../auth/validation.js';
 import { getUserByUsername } from '../db/users.js';
 import { serializeCookie } from '../http/cookies.js';
 import { requireUser } from '../http/guards.js';
@@ -15,6 +15,10 @@ import { isHttps } from '../http/security.js';
 
 const SESSION_COOKIE = 'vt_session';
 const SESSION_MAX_AGE_SEC = 30 * 24 * 60 * 60; // 2592000, matches the 30-day idle session lifetime
+// Caps the throttle key and the logged `user` value (in code points): valid
+// usernames have at most 32, so a longer (up to 16 KiB) body value never
+// becomes a huge Map key or log field, and a cut value stays invalid.
+const MAX_USERNAME_KEY_LENGTH = 64;
 
 /**
  * @param {import('node:http').IncomingMessage} req
@@ -69,20 +73,25 @@ async function handleLogin(req, res, ctx, deps, limiter) {
     return;
   }
 
-  const username = normalizeUsername(body.username);
+  const username = [...normalizeUsername(body.username)].slice(0, MAX_USERNAME_KEY_LENGTH).join('');
   const check = limiter.check(username);
   if (!check.allowed) {
     deps.log.warn('login_throttled', { user: username });
     sendError(res, 429, 'too_many_attempts', { 'Retry-After': String(check.retryAfterSec) });
     return;
   }
+  // Count the attempt synchronously, before the first await: otherwise every
+  // request arriving while earlier scrypt verifies are still running would
+  // pass `check` too. A successful verify resets the key below.
+  limiter.fail(username);
 
-  const user = getUserByUsername(deps.db, username);
-  // Always verify against a real hash, the user's own or the fixed dummy
-  // one, so an unknown username costs the same time as a wrong password.
-  const validPassword = await verifyPassword(body.password, user ? user.password_hash : DUMMY_HASH);
-  if (!user || !validPassword) {
-    limiter.fail(username);
+  const user = validateUsername(username) === null ? undefined : getUserByUsername(deps.db, username);
+  // Always verify against a real hash — the user's own, or the fixed dummy
+  // one for an unknown/invalid username or an out-of-range password — so
+  // every rejection costs the same time (no username enumeration).
+  const hash = user && validatePassword(body.password) ? user.password_hash : DUMMY_HASH;
+  const validPassword = await verifyPassword(body.password, hash);
+  if (!user || hash === DUMMY_HASH || !validPassword) {
     deps.log.warn('login_failed', { user: username, ip: clientIp(req) });
     sendError(res, 401, 'invalid_credentials');
     return;

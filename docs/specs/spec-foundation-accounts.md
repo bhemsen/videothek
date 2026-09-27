@@ -1008,3 +1008,16 @@ Chromium and Firefox, mobile ≤ 767 px and desktop ≥ 1024 px viewport):
   `startTestApp` — that helper is outside this issue's Files list (owned by
   #17) and has no way to pin `dataDir` across two separate app instances, so
   pinning it locally kept the change additive.
+- 2026-09-27 (#18, review): `handleLogin` counts an attempt with
+  `limiter.fail` synchronously right after `check` passes (before the scrypt
+  `await`) and `reset`s on success; checking and counting only after the
+  verify let concurrent wrong-password requests all pass `check` (40 parallel
+  attempts, no `429`). Unknown usernames, usernames failing
+  `validateUsername` and passwords outside 8–256 code points are all verified
+  against `DUMMY_HASH` (decision row "Passwords"); the throttle key and the
+  logged `user` are the normalized username cut to 64 code points, so a
+  16 KiB body value never becomes a Map key or log field. The concurrency,
+  input-bound and log-hygiene tests live in `test/api/auth-throttle.test.js`
+  and the raw request/cookie helpers in `test/helpers/auth-http.js` — both
+  added beyond the issue's Files list because `test/api/auth.test.js` would
+  otherwise exceed the 300-line limit.

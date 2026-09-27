@@ -1,13 +1,12 @@
 /**
  * `POST /login`, `POST /logout`, `GET /api/me` — session cookie, throttling
- * and fixation-defence scenarios. Uses the raw `http` request helper other
- * `startTestApp`-based tests already share (see `test/app.test.js`); the
- * restart test builds its own `createApp` pair against one `DATA_DIR`.
+ * and fixation-defence scenarios (concurrent throttling, log hygiene and
+ * input-bound cases live in `auth-throttle.test.js`). The restart test
+ * builds its own `createApp` pair against one `DATA_DIR`.
  */
 
 import { test } from 'node:test';
 import assert from 'node:assert/strict';
-import http from 'node:http';
 import { mkdirSync, mkdtempSync, rmSync } from 'node:fs';
 import { tmpdir } from 'node:os';
 import path from 'node:path';
@@ -17,53 +16,9 @@ import { migrate, openDatabase } from '../../src/db/index.js';
 import { insertUser } from '../../src/db/users.js';
 import { createLogger } from '../../src/log.js';
 import { startTestApp } from '../helpers/app.js';
+import { request, sessionCookie, sessionSetCookie } from '../helpers/auth-http.js';
 
 const PASSWORD = 'correct-horse-battery';
-
-/**
- * @param {string} baseUrl
- * @param {string} method
- * @param {string} pathname
- * @param {{ headers?: Record<string, string>, json?: unknown }} [options]
- * @returns {Promise<{ status: number, headers: import('node:http').IncomingHttpHeaders, body: string }>}
- */
-function request(baseUrl, method, pathname, { headers = {}, json } = {}) {
-  return new Promise((resolve, reject) => {
-    const body = json === undefined ? undefined : JSON.stringify(json);
-    const reqHeaders = body === undefined ? headers : { ...headers, 'Content-Type': 'application/json' };
-    const req = http.request(`${baseUrl}${pathname}`, { method, headers: reqHeaders, agent: false }, (res) => {
-      const chunks = /** @type {Buffer[]} */ ([]);
-      res.on('data', (chunk) => chunks.push(chunk));
-      res.on('end', () =>
-        resolve({
-          status: /** @type {number} */ (res.statusCode),
-          headers: res.headers,
-          body: Buffer.concat(chunks).toString('utf8'),
-        }),
-      );
-    });
-    req.on('error', reject);
-    req.end(body);
-  });
-}
-
-/**
- * @param {import('node:http').IncomingHttpHeaders} headers
- * @returns {string[]}
- */
-function setCookies(headers) {
-  return headers['set-cookie'] ?? [];
-}
-
-/**
- * @param {import('node:http').IncomingHttpHeaders} headers
- * @returns {string}
- */
-function sessionCookie(headers) {
-  const cookie = setCookies(headers).find((c) => c.startsWith('vt_session='));
-  assert.ok(cookie, `expected a vt_session Set-Cookie among ${JSON.stringify(setCookies(headers))}`);
-  return /** @type {string} */ (cookie).split(';')[0];
-}
 
 test('correct credentials answer 200 with the user and a session cookie; GET /api/me then works', async () => {
   const app = await startTestApp();
@@ -97,7 +52,9 @@ test('a malformed body answers 400 invalid_json; wrong password and an unknown u
     });
     assert.equal(wrongPassword.status, 401);
     assert.deepEqual(JSON.parse(wrongPassword.body), { error: 'invalid_credentials' });
-    assert.ok(app.deps.logLines.some((line) => line.includes('login_failed') && line.includes('"user":"bob"')));
+    const failed = app.deps.logLines.map((line) => JSON.parse(line)).find((entry) => entry.event === 'login_failed');
+    assert.equal(failed?.user, 'bob');
+    assert.equal(failed?.ip, '127.0.0.1');
     assert.ok(!app.deps.logLines.some((line) => line.includes('wrong-password')));
 
     const unknownUser = await request(app.baseUrl, 'POST', '/login', {
@@ -182,7 +139,7 @@ test('the session cookie is HttpOnly/SameSite=Lax/Max-Age=2592000 and Secure onl
   try {
     await app.createUser('frank', PASSWORD);
     const plain = await request(app.baseUrl, 'POST', '/login', { json: { username: 'frank', password: PASSWORD } });
-    const plainCookie = /** @type {string} */ (setCookies(plain.headers).find((c) => c.startsWith('vt_session=')));
+    const plainCookie = sessionSetCookie(plain.headers);
     assert.match(plainCookie, /HttpOnly/);
     assert.match(plainCookie, /SameSite=Lax/);
     assert.match(plainCookie, /Max-Age=2592000/);
@@ -192,7 +149,7 @@ test('the session cookie is HttpOnly/SameSite=Lax/Max-Age=2592000 and Secure onl
       headers: { 'X-Forwarded-Proto': 'https' },
       json: { username: 'frank', password: PASSWORD },
     });
-    const secureCookie = /** @type {string} */ (setCookies(secure.headers).find((c) => c.startsWith('vt_session=')));
+    const secureCookie = sessionSetCookie(secure.headers);
     assert.match(secureCookie, /Secure/);
   } finally {
     await app.close();
@@ -209,13 +166,13 @@ test('logout answers 204 and clears the cookie; logging out again with the same 
     const logout = await request(app.baseUrl, 'POST', '/logout', { headers: { Cookie: cookie } });
     assert.equal(logout.status, 204);
     assert.equal(logout.body, '');
-    const cleared = /** @type {string} */ (setCookies(logout.headers).find((c) => c.startsWith('vt_session=')));
-    assert.match(cleared, /Max-Age=0/);
+    assert.match(sessionSetCookie(logout.headers), /Max-Age=0/);
     assert.ok(app.deps.logLines.some((line) => line.includes('"event":"logout"')));
 
     const again = await request(app.baseUrl, 'POST', '/logout', { headers: { Cookie: cookie } });
     assert.equal(again.status, 401);
     assert.deepEqual(JSON.parse(again.body), { error: 'unauthorized' });
+    assert.match(sessionSetCookie(again.headers), /Max-Age=0/);
 
     const me = await request(app.baseUrl, 'GET', '/api/me', { headers: { Cookie: cookie } });
     assert.equal(me.status, 401);
@@ -265,34 +222,37 @@ test('a session survives an app restart against the same DATA_DIR', async () => 
   const tempRoot = mkdtempSync(path.join(tmpdir(), 'videothek-auth-restart-'));
   const mediaRoot = path.join(tempRoot, 'media');
   mkdirSync(mediaRoot, { recursive: true });
-  const dataDir = path.join(tempRoot, 'data');
-  const config = /** @type {any} */ ({ mediaRoot, dataDir });
+  const config = /** @type {any} */ ({ mediaRoot, dataDir: path.join(tempRoot, 'data') });
+  /** @type {Array<() => unknown>} releases the running instance, newest first */
+  const cleanups = [];
+  const stop = async () => {
+    for (let fn = cleanups.pop(); fn; fn = cleanups.pop()) await fn();
+  };
+  const boot = async () => {
+    const db = openDatabase(config.dataDir);
+    cleanups.push(() => db.close());
+    migrate(db);
+    const app = createApp({ config, db, log: createLogger({ out: { write() {} }, err: { write() {} } }) });
+    const baseUrl = await listenAndBaseUrl(app.server);
+    cleanups.push(() => app.close());
+    return { db, baseUrl };
+  };
   try {
-    let db = openDatabase(dataDir);
-    migrate(db);
-    insertUser(db, {
-      username: 'ivan',
-      passwordHash: await hashPassword(PASSWORD),
-      role: 'user',
-      createdAt: Date.now(),
-    });
-    let app = createApp({ config, db, log: createLogger({ out: { write() {} }, err: { write() {} } }) });
-    let baseUrl = await listenAndBaseUrl(app.server);
-    const login = await request(baseUrl, 'POST', '/login', { json: { username: 'ivan', password: PASSWORD } });
+    const first = await boot();
+    const passwordHash = await hashPassword(PASSWORD);
+    insertUser(first.db, { username: 'ivan', passwordHash, role: 'user', createdAt: Date.now() });
+    const login = await request(first.baseUrl, 'POST', '/login', { json: { username: 'ivan', password: PASSWORD } });
     const cookie = sessionCookie(login.headers);
-    await app.close();
-    db.close();
+    await stop();
 
-    db = openDatabase(dataDir);
-    migrate(db);
-    app = createApp({ config, db, log: createLogger({ out: { write() {} }, err: { write() {} } }) });
-    baseUrl = await listenAndBaseUrl(app.server);
-    const me = await request(baseUrl, 'GET', '/api/me', { headers: { Cookie: cookie } });
+    const second = await boot();
+    const me = await request(second.baseUrl, 'GET', '/api/me', { headers: { Cookie: cookie } });
     assert.equal(me.status, 200);
     assert.deepEqual(JSON.parse(me.body), { id: 1, username: 'ivan', role: 'user' });
-    await app.close();
-    db.close();
   } finally {
+    // Server and DB are released even when an assertion failed, so the temp
+    // dir removal cannot hit a locked DB file (EBUSY on Windows).
+    await stop();
     rmSync(tempRoot, { recursive: true, force: true });
   }
 });
