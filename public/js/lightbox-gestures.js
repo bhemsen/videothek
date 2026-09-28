@@ -1,5 +1,6 @@
 /**
- * Pure, DOM-free swipe/key classification for the image lightbox. No DOM
+ * Pure, DOM-free swipe/key classification and nav-focus fallback for the
+ * image lightbox. No DOM
  * access, no imports from `src/` — see docs/specs/spec-image-gallery.md,
  * unit-tested from `test/public/`.
  */
@@ -36,5 +37,23 @@ export function keyAction({ key, targetTag, altKey, ctrlKey, metaKey }) {
   if (altKey || ctrlKey || metaKey) return null;
   if (key === 'ArrowLeft') return 'prev';
   if (key === 'ArrowRight') return 'next';
+  return null;
+}
+
+/**
+ * Decides where focus must move before the prev/next buttons are
+ * (re-)disabled, so a focused button that becomes `disabled` never drops
+ * focus to `<body>` (outside the dialog, where its arrow-key listener no
+ * longer fires). `focused: 'none'` means focus already left the open dialog
+ * (e.g. a focused `<video>` was replaced by the next slide); it is pulled
+ * back to Schließen for the same reason.
+ * @param {{ focused: 'prev' | 'next' | 'other' | 'none', atStart: boolean, atEnd: boolean }} state
+ * @returns {'prev' | 'next' | 'close' | null} The control to focus, or
+ *   `null` when the focused control stays enabled.
+ */
+export function navFocusTarget({ focused, atStart, atEnd }) {
+  if (focused === 'none') return 'close';
+  if (focused === 'prev' && atStart) return atEnd ? 'close' : 'next';
+  if (focused === 'next' && atEnd) return atStart ? 'close' : 'prev';
   return null;
 }
