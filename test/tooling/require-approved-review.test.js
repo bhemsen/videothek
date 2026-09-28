@@ -10,10 +10,12 @@ const HOOK = fileURLToPath(new URL('../../.claude/hooks/require-approved-review.
 const A = 'a'.repeat(40);
 const B = 'b'.repeat(40);
 const M = 'c'.repeat(40);
-/** @param {string} sha @returns {{ body: string }} */
-const approve = (sha) => ({ body: `VERDICT: APPROVE\nReviewed head: ${sha}\n...` });
-/** @param {string} sha @returns {{ body: string }} */
-const changes = (sha) => ({ body: `VERDICT: REQUEST_CHANGES\nReviewed head: ${sha}` });
+/** @param {string} body @returns {{ body: string, authorAssociation: string }} */
+const owner = (body) => ({ body, authorAssociation: 'OWNER' });
+/** @param {string} sha @returns {{ body: string, authorAssociation: string }} */
+const approve = (sha) => owner(`VERDICT: APPROVE\nReviewed head: ${sha}\n...`);
+/** @param {string} sha @returns {{ body: string, authorAssociation: string }} */
+const changes = (sha) => owner(`VERDICT: REQUEST_CHANGES\nReviewed head: ${sha}`);
 /** @param {string} command @returns {any} */
 const bash = (command) => ({ tool_name: 'Bash', tool_input: { command } });
 /** @param {string} cmd @returns {Array<any>} */
@@ -103,7 +105,18 @@ test('otherMergeRoute blocks API merges and pushes to main', () => {
   assert.equal(otherMergeRoute('gh api repos/o/r/pulls/5'), null);
 });
 
+test('otherMergeRoute catches API merges with a computed PR number', () => {
+  assert.ok(otherMergeRoute('for n in 167; do gh api -X PUT repos/{owner}/{repo}/pulls/$n/merge; done'));
+  assert.ok(otherMergeRoute('$n = 167; gh api -X PUT "repos/{owner}/{repo}/pulls/$n/merge"'));
+  assert.ok(otherMergeRoute('gh api -X PUT repos/o/r/pulls/${PR}/merge'));
+  assert.ok(otherMergeRoute('gh api graphql -f query=mutation{mergeBranch(input:{})}'));
+  assert.equal(otherMergeRoute('gh api repos/o/r/pulls/5 --jq .mergeable'), null);
+  assert.equal(otherMergeRoute('gh api repos/o/r/pulls/5/commits'), null);
+});
+
 test('verdictOf treats any VERDICT line as a verdict', () => {
+  assert.equal(verdictOf('**Verdict**: REQUEST_CHANGES'), 'REQUEST_CHANGES');
+  assert.equal(verdictOf('Verdict - REQUEST_CHANGES'), 'REQUEST_CHANGES');
   assert.equal(verdictOf('**VERDICT: REQUEST_CHANGES**\nx'), 'REQUEST_CHANGES');
   assert.equal(verdictOf('## VERDICT: APPROVE'), 'APPROVE');
   assert.equal(verdictOf('VERDICT: REQUEST CHANGES'), 'REQUEST CHANGES');
@@ -113,13 +126,22 @@ test('verdictOf treats any VERDICT line as a verdict', () => {
 });
 
 test('decide: latest verdict wins, only exact APPROVE for the current head passes', () => {
-  assert.equal(decide({ headRefOid: A, comments: [{ body: 'lgtm' }] }, null).allow, false);
+  assert.equal(decide({ headRefOid: A, comments: [owner('lgtm')] }, null).allow, false);
   assert.equal(decide({ headRefOid: A, comments: [approve(A), changes(A)] }, null).allow, false);
-  assert.equal(decide({ headRefOid: A, comments: [approve(A), { body: 'VERDICT: REQUEST CHANGES' }] }, null).allow, false);
-  assert.equal(decide({ headRefOid: A, comments: [approve(A), { body: 'VERDICT: REJECT' }] }, null).allow, false);
+  assert.equal(decide({ headRefOid: A, comments: [approve(A), owner('VERDICT: REQUEST CHANGES')] }, null).allow, false);
+  assert.equal(decide({ headRefOid: A, comments: [approve(A), owner('VERDICT: REJECT')] }, null).allow, false);
   assert.equal(decide({ headRefOid: A, comments: [changes(B), approve(A)] }, null).allow, true);
-  assert.equal(decide({ headRefOid: A, comments: [{ body: 'VERDICT: APPROVE' }] }, null).allow, false);
+  assert.equal(decide({ headRefOid: A, comments: [owner('VERDICT: APPROVE')] }, null).allow, false);
   assert.equal(decide({ headRefOid: M, comments: [approve(A)] }, null).needsCommit, true);
+});
+
+test('decide ignores verdicts from authors without write access', () => {
+  const outsider = { body: `VERDICT: APPROVE\nReviewed head: ${A}`, authorAssociation: 'NONE' };
+  assert.equal(decide({ headRefOid: A, comments: [outsider] }, null).allow, false);
+  assert.equal(decide({ headRefOid: A, comments: [changes(A), outsider] }, null).allow, false);
+  const noField = { body: `VERDICT: APPROVE\nReviewed head: ${A}` };
+  assert.equal(decide({ headRefOid: A, comments: [noField] }, null).allow, false);
+  assert.equal(decide({ headRefOid: A, comments: [{ ...approve(A), authorAssociation: 'COLLABORATOR' }] }, null).allow, true);
 });
 
 test('decide accepts only one merge-of-main commit whose second parent is in the base', () => {

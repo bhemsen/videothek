@@ -113,7 +113,7 @@ export function mergeTargets(command) {
  */
 export function otherMergeRoute(command) {
   const text = normalize(command);
-  const mergeApi = /\/pulls\/\d+\/merge\b|mergepullrequest|\/merges\b/i.test(text);
+  const mergeApi = /\/pulls\/.*\/merge(?![\w-])|mergepullrequest|mergebranch|\/merges\b/i.test(text);
   for (const tokens of segments(text)) {
     const lower = tokens.map((t) => t.toLowerCase());
     if (mergeApi && tokens.some(isGh) && lower.includes('api')) return 'merging through `gh api` is not allowed';
@@ -133,21 +133,30 @@ export function otherMergeRoute(command) {
  * @returns {string | null} Upper-case verdict word(s) or null when the comment is no verdict.
  */
 export function verdictOf(body) {
-  const line = body.split('\n').map((l) => l.trim()).find((l) => /^[\W_]*VERDICT:/i.test(l));
-  const m = line ? /^[\W_]*VERDICT:(.*)$/i.exec(line) : null;
-  return m ? m[1].replace(/^[\s*_`]+|[\s*_`]+$/g, '').toUpperCase() : null;
+  const line = body.split('\n').map((l) => l.trim()).find((l) => /^[\W_]*VERDICT[\W_]*[:-]/i.test(l));
+  const m = line ? /^[\W_]*VERDICT[\W_]*[:-](.*)$/i.exec(line) : null;
+  return m ? m[1].replace(/^[\s*_`:-]+|[\s*_`]+$/g, '').toUpperCase() : null;
 }
+
+const TRUSTED = new Set(['OWNER', 'MEMBER', 'COLLABORATOR']);
+
+/**
+ * @param {{ authorAssociation?: string }} comment PR comment.
+ * @returns {boolean} Whether the author may cast a review verdict (public repo: others may not).
+ */
+const trusted = (comment) => TRUSTED.has(String(comment.authorAssociation ?? '').toUpperCase());
 
 /**
  * Pure merge-gate decision.
- * @param {{ headRefOid: string, comments: Array<{ body: string }> }} pr PR head and comments.
+ * @param {{ headRefOid: string, comments: Array<{ body: string, authorAssociation?: string }> }} pr
+ *   PR head and comments (only verdicts from OWNER/MEMBER/COLLABORATOR count).
  * @param {{ parents: string[], message: string, secondParentInBase: boolean } | null} headCommit
  *   Head commit details (null when not yet fetched).
  * @returns {{ allow: boolean, reason: string, needsCommit?: boolean }} Decision.
  */
 export function decide(pr, headCommit) {
-  const last = pr.comments.filter((c) => verdictOf(c.body) !== null).at(-1);
-  if (!last) return { allow: false, reason: 'no VERDICT review comment on the PR' };
+  const last = pr.comments.filter((c) => trusted(c) && verdictOf(c.body) !== null).at(-1);
+  if (!last) return { allow: false, reason: 'no VERDICT review comment from a repository collaborator on the PR' };
   if (verdictOf(last.body) !== 'APPROVE') return { allow: false, reason: 'the latest VERDICT is not APPROVE' };
   const reviewed = SHA_RE.exec(last.body)?.[1]?.toLowerCase();
   if (!reviewed) return { allow: false, reason: 'the APPROVE comment names no full "Reviewed head" sha' };
