@@ -1,12 +1,7 @@
 {
   "permissions": {
     "defaultMode": "bypassPermissions",
-    "allow": [
-      "Bash",
-      "WebFetch",
-      "WebSearch",
-      "Bash(gh pr merge:*)"
-    ],
+    "allow": ["Bash", "WebFetch", "WebSearch", "Bash(gh pr merge:*)"],
     "deny": [
       "Bash(rm -rf *)",
       "Bash(git push --force)",
@@ -29,7 +24,7 @@
   "hooks": {
     "PreToolUse": [
       {
-        "matcher": "Bash",
+        "matcher": "Bash|PowerShell",
         "hooks": [
           {
             "type": "command",
