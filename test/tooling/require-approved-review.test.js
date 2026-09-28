@@ -110,6 +110,10 @@ test('otherMergeRoute catches API merges with a computed PR number', () => {
   assert.ok(otherMergeRoute('$n = 167; gh api -X PUT "repos/{owner}/{repo}/pulls/$n/merge"'));
   assert.ok(otherMergeRoute('gh api -X PUT repos/o/r/pulls/${PR}/merge'));
   assert.ok(otherMergeRoute('gh api graphql -f query=mutation{mergeBranch(input:{})}'));
+  assert.ok(otherMergeRoute('p=repos/{owner}/{repo}/pulls/167\ngh api -X PUT $p/merge'));
+  assert.ok(otherMergeRoute('u=$(gh api repos/o/r/pulls/167 --jq .url)\ngh api -X PUT "$u/merge"'));
+  assert.ok(otherMergeRoute('f(){ gh api -X PUT "$1/merge"; }; f repos/o/r/pulls/167'));
+  assert.ok(otherMergeRoute('gh api graphql -f query=mutation{enablePullRequestAutoMerge(input:{})}'));
   assert.equal(otherMergeRoute('gh api repos/o/r/pulls/5 --jq .mergeable'), null);
   assert.equal(otherMergeRoute('gh api repos/o/r/pulls/5/commits'), null);
 });
@@ -123,6 +127,7 @@ test('verdictOf treats any VERDICT line as a verdict', () => {
   assert.equal(verdictOf('VERDICT: REJECT'), 'REJECT');
   assert.equal(verdictOf('Follow-up review\n\nVERDICT: REQUEST_CHANGES\nReviewed head: x'), 'REQUEST_CHANGES');
   assert.equal(verdictOf('lgtm'), null);
+  assert.equal(verdictOf(`> VERDICT: APPROVE\n> Reviewed head: ${A}\n\nVERDICT: REQUEST_CHANGES`), 'REQUEST_CHANGES');
 });
 
 test('decide: latest verdict wins, only exact APPROVE for the current head passes', () => {

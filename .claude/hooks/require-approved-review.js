@@ -113,10 +113,11 @@ export function mergeTargets(command) {
  */
 export function otherMergeRoute(command) {
   const text = normalize(command);
-  const mergeApi = /\/pulls\/.*\/merge(?![\w-])|mergepullrequest|mergebranch|\/merges\b/i.test(text);
+  const mergeApi = /\/pulls\/.*\/merge(?![\w-])|mergepullrequest|mergebranch|automerge|\/merges\b/is.test(text);
   for (const tokens of segments(text)) {
     const lower = tokens.map((t) => t.toLowerCase());
-    if (mergeApi && tokens.some(isGh) && lower.includes('api')) return 'merging through `gh api` is not allowed';
+    const apiCall = tokens.some(isGh) && lower.includes('api');
+    if (apiCall && (mergeApi || lower.some((t) => /\/merge(?![\w-])/.test(t)))) return 'merging through `gh api` is not allowed';
     const git = lower.findIndex(isGit);
     const push = lower.indexOf('push', git + 1);
     if (git >= 0 && push > git && lower.slice(push + 1).some((t) => /^\+?((head|[^:]+):)?(refs\/heads\/)?(main|master)$/.test(t))) {
@@ -133,7 +134,8 @@ export function otherMergeRoute(command) {
  * @returns {string | null} Upper-case verdict word(s) or null when the comment is no verdict.
  */
 export function verdictOf(body) {
-  const line = body.split('\n').map((l) => l.trim()).find((l) => /^[\W_]*VERDICT[\W_]*[:-]/i.test(l));
+  const line = body.split('\n').map((l) => l.trim())
+    .find((l) => !l.startsWith('>') && /^[\W_]*VERDICT[\W_]*[:-]/i.test(l));
   const m = line ? /^[\W_]*VERDICT[\W_]*[:-](.*)$/i.exec(line) : null;
   return m ? m[1].replace(/^[\s*_`:-]+|[\s*_`]+$/g, '').toUpperCase() : null;
 }
