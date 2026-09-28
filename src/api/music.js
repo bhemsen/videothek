@@ -63,8 +63,8 @@ function toArtistSectionJson(section) {
 /** @typedef {{ trackId: number, albumId: number, title: string, artist: string | null, albumTitle: string | null, coverId: number, position: number, duration: number | null, updatedAt: string }} MusicResumeJson */
 
 /**
- * Builds the Musik "Weiterhören" card's JSON, or `null` when none is
- * offerable (`getLatestMusicResume`); exported for the start page's card.
+ * Builds the Musik "Weiterhören" card's JSON, or `null` when the user has no
+ * offerable music row (`getLatestMusicResume`).
  * @param {import('node:sqlite').DatabaseSync} db
  * @param {number} userId
  * @returns {MusicResumeJson | null}
