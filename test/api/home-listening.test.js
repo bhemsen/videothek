@@ -69,6 +69,9 @@ test('GET /api/home/listening: no progress -> empty items, even with a library t
   try {
     await app.createUser('alice', 'password123');
     const cookie = await app.login('alice', 'password123');
+
+    assert.deepEqual(await get(app.baseUrl, '/api/home/listening', cookie), { status: 200, body: { items: [] } });
+
     seedBook(app.db, { groupKey: 'Hörbücher/Ohne Fortschritt' });
 
     const { status, body } = await get(app.baseUrl, '/api/home/listening', cookie);
