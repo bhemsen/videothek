@@ -6,6 +6,30 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 
 ## [Unreleased]
 
+## [0.2.0] - 2026-09-28
+
+The start page now shows more than "Weiterschauen": what you were listening to, and what was recently added to each category.
+
+### Added
+
+- **"Weiterhören" on the start page:** a row below "Weiterschauen".
+  - It lists every audiobook in progress with its chapter and remaining time. A book whose current chapter is finished shows the next one.
+  - It also shows the latest unfinished music track.
+  - Cards link into the audio section, where one click resumes playback.
+  - Backed by the new `GET /api/home/listening`.
+- **Category previews on the start page:** one section each for Filme, Serien, Musik, Hörbücher and Bilder.
+  - Each section shows the count, the ten most recently added entries (folders for Bilder) and an "Alle anzeigen" link.
+  - Empty categories are hidden.
+  - Backed by the new `GET /api/home/previews`. Its queries are limited, so the start page never loads a whole library.
+
+### Changed
+
+- The start page's "Willkommen" message appears only when every row has loaded and all are empty. It no longer flashes briefly while the page loads.
+
+### Known limitations
+
+- The new start-page rows were checked in Chromium (headless Edge) only. The Firefox check is still open, as it is for the earlier phases.
+
 ## [0.1.0] - 2026-09-28
 
 First release: one dependency-free Node.js 24 process that makes movies, series, music,
@@ -64,5 +88,6 @@ resume across devices.
 - Very long usernames can push the desktop header into horizontal scrolling (#201).
 - Pages are served in German only.
 
-[Unreleased]: https://github.com/bhemsen/videothek/compare/v0.1.0...HEAD
+[Unreleased]: https://github.com/bhemsen/videothek/compare/v0.2.0...HEAD
+[0.2.0]: https://github.com/bhemsen/videothek/compare/v0.1.0...v0.2.0
 [0.1.0]: https://github.com/bhemsen/videothek/releases/tag/v0.1.0
