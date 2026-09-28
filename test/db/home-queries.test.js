@@ -75,15 +75,19 @@ test('listStartedBookGroupKeys: only audiobooks, only the given user, distinct k
       category: 'audiobooks', relPath: 'Hörbücher/Buch/02.mp3', groupKey: 'Hörbücher/Buch',
       groupTitle: 'Buch', title: 'Teil 2', trackNo: 2, addedAt: 1,
     });
+    seedAudio(db, {
+      category: 'audiobooks', relPath: 'Hörbücher/NurBob/01.mp3', groupKey: 'Hörbücher/NurBob',
+      groupTitle: 'NurBob', title: 'Teil 1', addedAt: 1,
+    });
     seedProgress(db, { userId: alice, relPath: 'Hörbücher/Buch/01.mp3', position: 40, duration: 180, updatedAt: 1 });
     seedProgress(db, { userId: alice, relPath: 'Hörbücher/Buch/02.mp3', position: 40, duration: 180, updatedAt: 2 });
-    seedProgress(db, { userId: bob, relPath: 'Hörbücher/Buch/01.mp3', position: 40, duration: 180, updatedAt: 3 });
+    seedProgress(db, { userId: bob, relPath: 'Hörbücher/NurBob/01.mp3', position: 40, duration: 180, updatedAt: 3 });
 
     // Only audiobooks: the music row never surfaces. Distinct keys: the book's
     // two counted rows still yield its group key once.
+    // Per-user: each user's own book only, the other user's book excluded.
     assert.deepEqual(listStartedBookGroupKeys(db, { userId: alice, startThreshold: 30 }), ['Hörbücher/Buch']);
-    // Per-user: Bob has his own counted row on the same book.
-    assert.deepEqual(listStartedBookGroupKeys(db, { userId: bob, startThreshold: 30 }), ['Hörbücher/Buch']);
+    assert.deepEqual(listStartedBookGroupKeys(db, { userId: bob, startThreshold: 30 }), ['Hörbücher/NurBob']);
   } finally {
     db.close();
   }
