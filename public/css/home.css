@@ -1,8 +1,8 @@
 /*
- * Home page layout (home overview contract §7, §8): `.home-rows` holds three
- * fixed slots — "Weiterschauen", "Weiterhören", the category previews — each
- * stacked with a gap. The "Willkommen" empty state reuses base.css's
- * .empty-state unchanged.
+ * Home page layout (see docs/architecture.md "Start page" and key flow 8):
+ * `.home-rows` holds three fixed slots — "Weiterschauen", "Weiterhören", the
+ * category previews — each stacked with a gap. The "Willkommen" empty state
+ * reuses base.css's .empty-state unchanged.
  */
 
 .home-rows {

@@ -2,7 +2,7 @@
  * Pure, DOM-free formatting helpers for the start page's "Weiterhören" row
  * and its category previews: hrefs, progress fractions/text, meta lines, and
  * the previews' per-category section table. No DOM access; unit-tested from
- * test/public/home-format.test.js. See the home overview contract §6.2.
+ * test/public/home-format.test.js. See docs/architecture.md "Start page".
  */
 import { formatRemaining } from './progress.js';
 import { pluralize } from './library-format.js';

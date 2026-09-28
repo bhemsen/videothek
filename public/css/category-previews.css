@@ -1,8 +1,9 @@
 /*
- * Category previews on the start page (home overview contract §6.6, §8): one
- * section per library category, each a horizontal scroll-snap list of cards
- * reusing the category pages' own card styles (library.css, images.css,
- * audio.css — all class-scoped, injected alongside this file).
+ * Category previews on the start page (see docs/architecture.md "Start page"
+ * and key flow 8): one section per library category, each a horizontal
+ * scroll-snap list of cards reusing the category pages' own card styles
+ * (library.css, images.css, audio.css — all class-scoped, injected alongside
+ * this file).
  *
  * The scroller rules below are intentionally duplicated from
  * listen-row.css: each row module owns its injected stylesheet, and this

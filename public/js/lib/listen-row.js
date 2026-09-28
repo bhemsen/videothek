@@ -3,7 +3,8 @@
  * plus every in-progress audiobook, as a horizontal scroll-snap list of
  * cover cards linking into the audio pages (no playback on "/"). Injects its
  * own stylesheet plus `audio.css` (class-scoped, reused for `coverImg` and
- * its `.cover-img` anchor) — see the home overview contract §6.5.
+ * its `.cover-img` anchor) — see docs/architecture.md "Start page" and key
+ * flow 8.
  */
 import { el } from './dom.js';
 import { coverImg } from '../audio/cover-img.js';

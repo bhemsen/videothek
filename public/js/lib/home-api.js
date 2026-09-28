@@ -2,7 +2,7 @@
  * Home overview API client (`GET /api/home/*`), thin wrappers over P1's
  * `request`. Response types mirror the server's `home-listening.js`/
  * `home-previews.js` shapes and are redeclared here since `public/` never
- * imports `src/` — see the home overview contract §6.1.
+ * imports `src/` — see docs/architecture.md "Start page" and key flow 8.
  */
 import { request } from './api.js';
 

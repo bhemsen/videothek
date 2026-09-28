@@ -1,7 +1,7 @@
 /**
  * Shared Left/Right card-row navigation for the new home rows.
  * `continue-row.js` keeps its own byte-identical copy of this logic instead
- * of importing it — see the home overview contract §6.3.
+ * of importing it.
  */
 
 /**

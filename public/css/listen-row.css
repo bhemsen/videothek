@@ -1,8 +1,9 @@
 /*
- * "Weiterhören" row on the start page (home overview contract §6.5, §8): a
- * horizontal scroll-snap list of music/audiobook resume cards, styled after
- * `continue-row.css`. `audio.css` (injected alongside this file) supplies
- * `.cover-img` and its relative positioning, which anchors the progress bar.
+ * "Weiterhören" row on the start page (see docs/architecture.md "Start page"
+ * and key flow 8): a horizontal scroll-snap list of music/audiobook resume
+ * cards, styled after `continue-row.css`. `audio.css` (injected alongside
+ * this file) supplies `.cover-img` and its relative positioning, which
+ * anchors the progress bar.
  */
 
 .listen-row__list {

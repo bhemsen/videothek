@@ -3,7 +3,8 @@
  * (movies, series, music, audiobooks, images), each a horizontal row of the
  * category's most recently added items plus an "Alle anzeigen" link. Reuses
  * the category pages' own card builders and their (class-scoped) stylesheets
- * instead of duplicating card CSS — see the home overview contract §6.6.
+ * instead of duplicating card CSS — see docs/architecture.md "Start page"
+ * and key flow 8.
  */
 import { el } from './dom.js';
 import { coverImg } from '../audio/cover-img.js';
