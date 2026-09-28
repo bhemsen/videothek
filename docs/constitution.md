@@ -52,7 +52,7 @@
 
 - No npm runtime dependency, no bundler, no frontend framework, no CSS framework.
 - No writes, moves or deletes under `MEDIA_ROOT`.
-- No transcoding in the app process. Child processes are allowed only for the configured external converter (`CONVERTER_CMD`): spawned from `src/convert/run-converter.js` with an argv array, never through a shell, one at a time. The app hands the converter a contract (argv, working directory, temp directory), verified against the stub converter in tests but not enforceable on a child process: the converter only reads its source and creates files only inside the per-job output and temp directories it is given. A result counts only after videothek's own format check (MP4 codec sniff; FLAC/Ogg-Opus magic).
+- No transcoding in the app process. Code under `src/` starts child processes only for the configured external converter (`CONVERTER_CMD`) and only from `src/convert/run-converter.js`: `spawn` with an argv array, never through a shell, one at a time, with `cwd` and `TMPDIR`/`TEMP`/`TMP` set to a per-job directory under `CONVERT_DIR`, and an allowlisted environment that never contains `ADMIN_PASSWORD`. A result counts only after videothek's own format check (MP4 codec sniff; FLAC/Ogg-Opus magic). The converter's own side of the contract is in `docs/architecture.md` (Boundaries).
 - No outbound network calls (metadata, telemetry, CDNs) — all assets served locally.
 - No secrets or password hashes in logs; no plaintext passwords stored.
 - No `eval`, `new Function`, or `innerHTML` with unescaped data.
