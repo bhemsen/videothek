@@ -35,7 +35,9 @@ so anyone can pick up on any device exactly where they left off.
 
 A single process with no runtime package dependencies that covers all five
 categories behind one login and one resume store, built to run indefinitely on
-the weakest hardware in the house. Jellyfin, Navidrome and Audiobookshelf
+the weakest hardware in the house. Files the browser cannot play can optionally
+be handed to the household's own external converter, which runs as a separate
+process; the app itself never transcodes. Jellyfin, Navidrome and Audiobookshelf
 together offer more features but as three separate services; this project trades
 feature breadth for one minimal footprint. Evidence and per-reference ADOPT/AVOID
 harvest: `docs/prior-art.md`.
@@ -56,11 +58,16 @@ harvest: `docs/prior-art.md`.
 ### In
 
 - Media root read directly from a path configured via environment variable;
-  files are never copied, moved or modified.
+  nothing under it is ever written, moved or modified. Derived copies (converted
+  files) live outside it, by default under the app's data directory.
 - Categories: movies, series (season/episode grouping), music (artist/album),
   audiobooks (chapters/files per book), images (folder gallery).
 - In-browser playback/viewing of browser-compatible formats; incompatible files
   are listed and clearly marked as not playable.
+- Optional, on demand: when an external converter is configured, the admin can
+  convert a not-playable video or audio item into a browser-playable copy. The
+  copy plays under the same item and keeps its resume position. Without a
+  converter this option does not exist.
 - Accounts created by an admin; login; per-user playback progress and
   "continue watching/listening".
 - Automatic library refresh when files are added, changed or removed.
@@ -68,7 +75,8 @@ harvest: `docs/prior-art.md`.
 
 ### Out
 
-- Transcoding or remuxing of any kind (possible later phase).
+- Live transcoding while streaming, automatic or library-wide conversion, and
+  any conversion inside the app process itself.
 - Online metadata, posters or artwork lookups.
 - Uploading, editing or deleting media through the app.
 - Self-registration, roles beyond admin/user, per-item permissions.
