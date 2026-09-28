@@ -33,7 +33,8 @@ resume across devices.
   "Weiterschauen" row on the start page (incl. next episode), progress bars and "Gesehen" badges.
 - **Music & audiobooks (Phase 5)** — ID3v2.3/2.4 and FLAC tag readers, MPEG duration, folder
   conventions, music and audiobook APIs with derived book resume, cover art route, audio
-  section with persistent player bar, queue and Media Session.
+  section with persistent player bar, queue and Media Session, "Musik" overview and album
+  views, "Hörbücher" grid and book views.
 - **Image gallery (Phase 6)** — EXIF reader with embedded thumbnails, image metadata sync,
   gallery API and `/images` folder view, lightbox with inline video and browser-history
   integration.
@@ -41,8 +42,8 @@ resume across devices.
 ### Fixed
 
 - UI fidelity to the mockups found by automated milestone QA and post-merge audits: category
-  nav spacing and its overlap with the account menu at 768–900 px, account menu width, admin
-  mobile card labels, page heading and empty-state typography, Filme header on phones, series
+  nav spacing and its overlap with the account menu at 768–900 px, account menu width and icon
+  size, admin mobile card labels, page heading and empty-state typography, Filme header on phones, series
   detail layout, episode title alignment, player error panel icon and mobile spacing, audiobook
   view headings and cards, mobile audio player bar position.
 - Lightbox keyboard focus at the first/last item and Back after reloading a `#bild-` link.
@@ -57,8 +58,10 @@ resume across devices.
   gallery); human checks are still open for all phases: Firefox, touch devices/iOS Safari,
   Raspberry Pi 4 memory budget (< 100 MB idle RSS, two 1080p streams), real media codecs, and
   graceful shutdown on Linux.
-- No transcoding: formats the browser cannot play are listed as "Nicht abspielbar". Converting
-  them is planned for a later phase.
+- No transcoding: formats the browser cannot play are listed as "Nicht abspielbar" (images as
+  "Nicht anzeigbar"). Converting them is out of scope for this release; it may come in a later
+  phase.
+- Very long usernames can push the desktop header into horizontal scrolling (#201).
 - Pages are served in German only.
 
 [Unreleased]: https://github.com/bhemsen/videothek/compare/v0.1.0...HEAD
