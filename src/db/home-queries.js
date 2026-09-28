@@ -77,7 +77,7 @@ const STARTED_BOOK_GROUPS_SQL = `
  * `startThreshold` is always a bound parameter, never a literal.
  * @param {import('node:sqlite').DatabaseSync} db
  * @param {{ userId: number, startThreshold: number }} params
- * @returns {string[]} group keys, in no particular order
+ * @returns {string[]} group keys, ordered by group_key (the listening tie-break test relies on this order)
  */
 export function listStartedBookGroupKeys(db, { userId, startThreshold }) {
   const rows = /** @type {{ groupKey: string }[]} */ (
