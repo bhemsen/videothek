@@ -16,6 +16,7 @@ import { UNKNOWN_ARTIST, UNTITLED_ALBUM } from '../audio/music-queue.js';
 
 const UNKNOWN_AUTHOR = 'Unbekannter Autor';
 const MIDDLE_DOT = '·';
+const NO_BREAK_SPACE = ' ';
 
 /**
  * The link target for a "Weiterhören" card.
@@ -48,7 +49,8 @@ export function listenProgressText(item) {
 /**
  * The visible meta line for a "Weiterhören" card: artist/next-file title
  * plus the remaining time, joined by a middle dot; either part is omitted
- * when unknown (an empty file title contributes nothing).
+ * when unknown (an empty file title contributes nothing). The remaining time
+ * never breaks internally, so a wrapping line breaks after the dot instead.
  * @param {ListeningItem} item
  * @returns {string}
  */
@@ -58,12 +60,22 @@ export function listenMeta(item) {
 }
 
 /**
+ * `formatRemaining`'s text with no-break spaces, so "Noch 7 Min." stays on
+ * one line inside the narrow card's wrapping meta line.
+ * @param {number} seconds
+ * @returns {string}
+ */
+function remainingPart(seconds) {
+  return formatRemaining(seconds).replaceAll(' ', NO_BREAK_SPACE);
+}
+
+/**
  * @param {MusicListeningItem} item
  * @returns {string[]}
  */
 function musicMetaParts(item) {
   const parts = [item.artist ?? UNKNOWN_ARTIST];
-  if (item.duration !== null) parts.push(formatRemaining(Math.max(0, item.duration - item.position)));
+  if (item.duration !== null) parts.push(remainingPart(Math.max(0, item.duration - item.position)));
   return parts;
 }
 
@@ -74,7 +86,7 @@ function musicMetaParts(item) {
 function audiobookMetaParts(item) {
   const parts = [];
   if (item.resume.fileTitle !== '') parts.push(item.resume.fileTitle);
-  if (item.remaining !== null) parts.push(formatRemaining(item.remaining));
+  if (item.remaining !== null) parts.push(remainingPart(item.remaining));
   return parts;
 }
 
