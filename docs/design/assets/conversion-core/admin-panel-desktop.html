@@ -1,0 +1,479 @@
+<!DOCTYPE html>
+<html lang="de">
+<head>
+<meta charset="UTF-8">
+<meta name="viewport" content="width=device-width, initial-scale=1.0">
+<title>Admin Konvertierung – Desktop</title>
+<style>
+  :root {
+    --color-background: #0f1115;
+    --color-foreground: #e8eaed;
+    --color-primary: #ff7a1a;
+    --color-secondary: #1c2029;
+    --color-accent: #4fb3ff;
+    --color-muted: #9aa0aa;
+    --color-border: #2a2f3a;
+    --color-destructive: #ff5c5c;
+
+    --font-sans: system-ui, -apple-system, 'Segoe UI', Roboto, 'Helvetica Neue', Arial, sans-serif;
+    --font-mono: ui-monospace, 'SFMono-Regular', Consolas, 'Liberation Mono', monospace;
+
+    --text-xs: 12px;
+    --text-sm: 14px;
+    --text-md: 16px;
+    --text-lg: 20px;
+    --text-xl: 24px;
+    --text-2xl: 32px;
+
+    --weight-regular: 400;
+    --weight-semibold: 600;
+    --weight-bold: 700;
+    --leading-body: 1.5;
+    --leading-heading: 1.2;
+
+    --space-1: 4px;
+    --space-2: 8px;
+    --space-3: 12px;
+    --space-4: 16px;
+    --space-6: 24px;
+    --space-8: 32px;
+    --space-12: 48px;
+    --space-16: 64px;
+
+    --radius-sm: 4px;
+    --radius-md: 8px;
+    --radius-lg: 16px;
+    --radius-full: 9999px;
+
+    --shadow-sm: 0 1px 2px rgba(0, 0, 0, .4);
+    --shadow-md: 0 8px 24px rgba(0, 0, 0, .5);
+  }
+
+  *, *::before, *::after { box-sizing: border-box; margin: 0; padding: 0; }
+
+  body {
+    background-color: var(--color-background);
+    color: var(--color-foreground);
+    font-family: var(--font-sans);
+    line-height: var(--leading-body);
+    -webkit-font-smoothing: antialiased;
+  }
+
+  /* Header */
+  header {
+    height: 64px;
+    border-bottom: 1px solid var(--color-border);
+    background-color: var(--color-background);
+  }
+
+  .header-inner {
+    max-width: 1440px;
+    margin: 0 auto;
+    height: 100%;
+    padding: 0 var(--space-8);
+    display: flex;
+    align-items: center;
+    justify-content: space-between;
+  }
+
+  .brand {
+    display: flex;
+    align-items: center;
+    gap: var(--space-3);
+    text-decoration: none;
+    color: var(--color-foreground);
+  }
+
+  .brand-icon { width: 32px; height: 32px; display: flex; align-items: center; justify-content: center; }
+
+  .brand-title { font-size: var(--text-lg); font-weight: var(--weight-bold); }
+
+  nav { display: flex; align-items: center; gap: var(--space-8); height: 100%; }
+
+  .nav-item {
+    display: flex;
+    align-items: center;
+    gap: var(--space-2);
+    height: 100%;
+    text-decoration: none;
+    color: var(--color-muted);
+    font-size: var(--text-sm);
+    font-weight: var(--weight-semibold);
+  }
+
+  .nav-item svg { width: 18px; height: 18px; }
+
+  .user-menu {
+    display: flex;
+    align-items: center;
+    gap: var(--space-2);
+    color: var(--color-foreground);
+    font-size: var(--text-sm);
+    font-weight: var(--weight-semibold);
+  }
+
+  .user-avatar {
+    width: 32px;
+    height: 32px;
+    border-radius: var(--radius-full);
+    background-color: var(--color-secondary);
+    border: 1px solid var(--color-border);
+    display: flex;
+    align-items: center;
+    justify-content: center;
+    font-weight: var(--weight-semibold);
+    font-size: var(--text-sm);
+    color: var(--color-primary);
+  }
+
+  /* Main */
+  main {
+    max-width: 1440px;
+    margin: 0 auto;
+    padding: var(--space-8);
+  }
+
+  h1 { font-size: var(--text-2xl); font-weight: var(--weight-semibold); line-height: var(--leading-heading); }
+  .page-subtitle { color: var(--color-muted); font-size: var(--text-sm); margin-top: var(--space-1); }
+
+  /* Compact illustrative user table */
+  .users-card {
+    margin-top: var(--space-4);
+    background-color: var(--color-secondary);
+    border: 1px solid var(--color-border);
+    border-radius: var(--radius-md);
+    overflow: hidden;
+  }
+
+  .users-row {
+    display: grid;
+    grid-template-columns: 1fr 120px 140px 260px;
+    align-items: center;
+    padding: var(--space-3) var(--space-4);
+    border-bottom: 1px solid var(--color-border);
+    gap: var(--space-3);
+  }
+
+  .users-row:last-child { border-bottom: none; }
+  .users-row.head { color: var(--color-muted); font-size: var(--text-xs); text-transform: uppercase; letter-spacing: .04em; }
+  .users-row .uname { font-weight: var(--weight-semibold); }
+  .users-row .self-tag { color: var(--color-muted); font-weight: var(--weight-regular); }
+  .role-pill {
+    display: inline-flex;
+    align-items: center;
+    padding: 2px var(--space-2);
+    border-radius: var(--radius-full);
+    font-size: var(--text-xs);
+    font-weight: var(--weight-semibold);
+    width: fit-content;
+  }
+  .role-admin { color: var(--color-primary); border: 1px solid var(--color-primary); background-color: color-mix(in srgb, var(--color-primary) 8%, transparent); }
+  .role-user { color: var(--color-muted); border: 1px solid var(--color-border); }
+  .users-row .created { color: var(--color-muted); font-size: var(--text-sm); }
+  .row-actions { display: flex; gap: var(--space-2); }
+  .row-actions .btn-sm { font-size: var(--text-xs); padding: 0 var(--space-3); }
+  .users-ellipsis { justify-content: center; color: var(--color-muted); font-size: var(--text-sm); }
+
+  /* Buttons */
+  .btn {
+    display: inline-flex;
+    align-items: center;
+    justify-content: center;
+    height: 44px;
+    padding: 0 var(--space-4);
+    border-radius: var(--radius-md);
+    font-family: inherit;
+    font-size: var(--text-sm);
+    font-weight: var(--weight-semibold);
+    border: 1px solid var(--color-border);
+    background-color: var(--color-secondary);
+    color: var(--color-foreground);
+    cursor: pointer;
+    white-space: nowrap;
+  }
+  .btn:hover { background-color: color-mix(in srgb, var(--color-secondary), white 8%); }
+  .btn:active { background-color: color-mix(in srgb, var(--color-secondary), black 8%); }
+  .btn:focus-visible { outline: 2px solid var(--color-primary); outline-offset: 2px; }
+  .btn-danger { color: var(--color-destructive); }
+  .btn-danger:hover { background-color: color-mix(in srgb, var(--color-destructive) 8%, transparent); }
+
+  a:focus-visible { outline: 2px solid var(--color-primary); outline-offset: 2px; }
+
+  /* Konvertierung section */
+  h2 {
+    margin-top: var(--space-12);
+    font-size: var(--text-xl);
+    font-weight: var(--weight-semibold);
+    line-height: var(--leading-heading);
+  }
+
+  .usage-line { margin-top: var(--space-2); color: var(--color-muted); font-size: var(--text-sm); }
+
+  .group { margin-top: var(--space-6); }
+
+  .group-heading {
+    font-size: var(--text-xs);
+    font-weight: var(--weight-semibold);
+    text-transform: uppercase;
+    letter-spacing: .05em;
+    color: var(--color-muted);
+    margin-bottom: var(--space-2);
+  }
+
+  .group-card {
+    background-color: var(--color-secondary);
+    border: 1px solid var(--color-border);
+    border-radius: var(--radius-md);
+    overflow: hidden;
+  }
+
+  .row {
+    display: flex;
+    align-items: center;
+    justify-content: space-between;
+    gap: var(--space-4);
+    padding: var(--space-3) var(--space-4);
+    border-bottom: 1px solid var(--color-border);
+    min-height: 48px;
+  }
+  .row:last-child { border-bottom: none; }
+
+  .row-main { min-width: 0; }
+  .row-title { font-size: var(--text-md); font-weight: var(--weight-semibold); }
+  .row-meta { margin-top: var(--space-1); font-size: var(--text-sm); color: var(--color-muted); }
+  .row-note { margin-top: var(--space-1); font-size: var(--text-xs); color: var(--color-muted); }
+
+  .row-status {
+    display: flex;
+    align-items: center;
+    gap: var(--space-3);
+    flex-shrink: 0;
+  }
+
+  .status-text { font-size: var(--text-sm); color: var(--color-muted); white-space: nowrap; }
+  .status-text.running { color: var(--color-foreground); display: flex; align-items: center; gap: var(--space-2); }
+  .status-text.done { color: var(--color-foreground); display: flex; align-items: center; gap: var(--space-2); }
+
+  .dot {
+    width: 8px;
+    height: 8px;
+    border-radius: var(--radius-full);
+    background-color: var(--color-primary);
+  }
+
+  .fail-block { display: flex; flex-direction: column; align-items: flex-end; gap: var(--space-2); }
+  .fail-reason { font-size: var(--text-sm); color: var(--color-destructive); text-align: right; }
+
+  .btn-inline { padding: 0 var(--space-3); font-size: var(--text-xs); }
+
+  /* Empty / disabled reference states */
+  .states-heading {
+    margin-top: var(--space-12);
+    font-size: var(--text-xs);
+    font-weight: var(--weight-semibold);
+    text-transform: uppercase;
+    letter-spacing: .05em;
+    color: var(--color-muted);
+    margin-bottom: var(--space-2);
+  }
+  .states-row { display: flex; gap: var(--space-4); }
+  .state-box {
+    flex: 1;
+    border: 1px dashed var(--color-border);
+    border-radius: var(--radius-md);
+    padding: var(--space-4);
+    color: var(--color-muted);
+    font-size: var(--text-sm);
+  }
+</style>
+</head>
+<body>
+  <header>
+    <div class="header-inner">
+      <a href="#" class="brand" aria-label="Videothek Startseite">
+        <span class="brand-icon">
+          <svg width="16" height="18" viewBox="0 0 14 16" fill="none" xmlns="http://www.w3.org/2000/svg" style="color: var(--color-primary)">
+            <path d="M12.5 7.13397C13.1667 7.51887 13.1667 8.48113 12.5 8.86603L2 14.9282C1.33333 15.3131 0.5 14.832 0.5 14.0622L0.5 1.93782C0.5 1.16802 1.33333 0.686895 2 1.0718L12.5 7.13397Z" fill="currentColor"/>
+          </svg>
+        </span>
+        <span class="brand-title">Videothek</span>
+      </a>
+      <nav aria-label="Kategorienavigation">
+        <a href="#" class="nav-item">Filme</a>
+        <a href="#" class="nav-item">Serien</a>
+        <a href="#" class="nav-item">Musik</a>
+        <a href="#" class="nav-item">Hörbücher</a>
+        <a href="#" class="nav-item">Bilder</a>
+      </nav>
+      <div class="user-menu">
+        <span class="user-avatar" aria-hidden="true">A</span>
+        <span>admin</span>
+      </div>
+    </div>
+  </header>
+
+  <main>
+    <h1>Benutzerverwaltung</h1>
+    <p class="page-subtitle">4 Konten</p>
+
+    <div class="users-card" aria-label="Benutzerliste (Ausschnitt)">
+      <div class="users-row head">
+        <span>Benutzername</span>
+        <span>Rolle</span>
+        <span>Angelegt am</span>
+        <span>Aktionen</span>
+      </div>
+      <div class="users-row">
+        <span class="uname">admin <span class="self-tag">(du)</span></span>
+        <span class="role-pill role-admin">Admin</span>
+        <span class="created">26.09.2026</span>
+        <span class="row-actions">
+          <button type="button" class="btn btn-sm">Passwort zurücksetzen</button>
+          <button type="button" class="btn btn-sm btn-danger">Löschen</button>
+        </span>
+      </div>
+      <div class="users-row">
+        <span class="uname">anna</span>
+        <span class="role-pill role-user">Benutzer</span>
+        <span class="created">26.09.2026</span>
+        <span class="row-actions">
+          <button type="button" class="btn btn-sm">Passwort zurücksetzen</button>
+          <button type="button" class="btn btn-sm btn-danger">Löschen</button>
+        </span>
+      </div>
+      <div class="users-row">
+        <span class="uname">ben</span>
+        <span class="role-pill role-user">Benutzer</span>
+        <span class="created">26.09.2026</span>
+        <span class="row-actions">
+          <button type="button" class="btn btn-sm">Passwort zurücksetzen</button>
+          <button type="button" class="btn btn-sm btn-danger">Löschen</button>
+        </span>
+      </div>
+      <div class="users-row">
+        <span class="users-ellipsis" style="grid-column: 1 / -1;">… und 1 weiteres Konto</span>
+      </div>
+    </div>
+
+    <h2>Konvertierung</h2>
+    <p class="usage-line">Kopien: 12,3 GB in 8 Dateien · 180 GB frei</p>
+
+    <div class="group">
+      <div class="group-heading">Läuft gerade</div>
+      <div class="group-card">
+        <div class="row">
+          <div class="row-main">
+            <div class="row-title">Dark · S1 · F4</div>
+            <div class="row-meta">Serien · MKV</div>
+          </div>
+          <div class="row-status">
+            <span class="status-text running"><span class="dot" aria-hidden="true"></span>Wird konvertiert …</span>
+          </div>
+        </div>
+      </div>
+    </div>
+
+    <div class="group">
+      <div class="group-heading">Warteschlange</div>
+      <div class="group-card">
+        <div class="row">
+          <div class="row-main">
+            <div class="row-title">Metropolis</div>
+            <div class="row-meta">Filme · MKV</div>
+          </div>
+          <div class="row-status">
+            <span class="status-text">Platz 1</span>
+          </div>
+        </div>
+        <div class="row">
+          <div class="row-main">
+            <div class="row-title">Die Insel der blauen Delfine · Kapitel 12</div>
+            <div class="row-meta">Hörbücher · WMA</div>
+          </div>
+          <div class="row-status">
+            <span class="status-text">Platz 2</span>
+          </div>
+        </div>
+      </div>
+    </div>
+
+    <div class="group">
+      <div class="group-heading">Fehlgeschlagen</div>
+      <div class="group-card">
+        <div class="row">
+          <div class="row-main">
+            <div class="row-title">07 Herbstwind</div>
+            <div class="row-meta">Musik · APE</div>
+          </div>
+          <div class="fail-block">
+            <span class="fail-reason">Ergebnis ist im Browser nicht abspielbar</span>
+            <button type="button" class="btn btn-inline">Erneut versuchen</button>
+          </div>
+        </div>
+      </div>
+    </div>
+
+    <div class="group">
+      <div class="group-heading">Veraltet – Quelle geändert</div>
+      <div class="group-card">
+        <div class="row">
+          <div class="row-main">
+            <div class="row-title">Good Bye, Lenin!</div>
+            <div class="row-meta">Filme · MKV</div>
+          </div>
+          <div class="row-status">
+            <button type="button" class="btn btn-inline">Erneut konvertieren</button>
+          </div>
+        </div>
+      </div>
+    </div>
+
+    <div class="group">
+      <div class="group-heading">Fertig</div>
+      <div class="group-card">
+        <div class="row">
+          <div class="row-main">
+            <div class="row-title">Babylon Berlin · S2 · F5</div>
+            <div class="row-meta">Serien · MKV</div>
+            <div class="row-note">Tonspur auf AAC transkodiert</div>
+          </div>
+          <div class="row-status">
+            <span class="status-text done">
+              <svg width="14" height="14" viewBox="0 0 12 12" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true">
+                <polyline points="2 6 5 9 10 3"></polyline>
+              </svg>
+              Konvertiert
+            </span>
+          </div>
+        </div>
+        <div class="row">
+          <div class="row-main">
+            <div class="row-title">Mondscheinsonate</div>
+            <div class="row-meta">Musik · WMA</div>
+            <div class="row-note">Verlustfrei zu FLAC konvertiert</div>
+          </div>
+          <div class="row-status">
+            <span class="status-text done">
+              <svg width="14" height="14" viewBox="0 0 12 12" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true">
+                <polyline points="2 6 5 9 10 3"></polyline>
+              </svg>
+              Konvertiert
+            </span>
+          </div>
+        </div>
+      </div>
+    </div>
+
+    <!-- The dashed box below and the "Weitere Zustände (Referenz)" heading only frame this review; they are not UI to build. -->
+    <div class="states-heading">Weitere Zustände (Referenz)</div>
+    <div class="states-row">
+      <div class="state-box">
+        Konvertierung ist nicht eingerichtet (CONVERTER_CMD fehlt).
+        <p class="usage-line">Kopien: 12,3 GB in 8 Dateien · 180 GB frei</p>
+      </div>
+      <div class="state-box">Keine Konvertierungen.</div>
+      <div class="state-box"><span style="color: var(--color-destructive)">Status konnte nicht geladen werden.</span></div>
+    </div>
+  </main>
+</body>
+</html>
