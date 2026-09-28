@@ -178,6 +178,13 @@ test('listRecentAudioGroupKeys: newest group first by MAX(added_at), then MAX(mt
       category: 'music', relPath: 'Musik/Old/Album/01.mp3', groupKey: 'Musik/Old/Album',
       groupTitle: 'Album', groupArtist: 'Old', title: 'Titel', addedAt: 1, mtimeMs: 100,
     });
+    // Same added_at as the ties below, but a lower mtime_ms and a key that sorts before both
+    // — this is the only pair that can catch the MAX(mtime_ms) tie-break level being dropped
+    // or its direction flipped (TieA/TieB alone would still sort correctly either way).
+    seedAudio(db, {
+      category: 'music', relPath: 'Musik/Mid/Album/01.mp3', groupKey: 'Musik/Mid/Album',
+      groupTitle: 'Album', groupArtist: 'Mid', title: 'Titel', addedAt: 2, mtimeMs: 150,
+    });
     seedAudio(db, {
       category: 'music', relPath: 'Musik/TieB/Album/01.mp3', groupKey: 'Musik/TieB/Album',
       groupTitle: 'Album', groupArtist: 'TieB', title: 'Titel', addedAt: 2, mtimeMs: 200,
@@ -189,7 +196,7 @@ test('listRecentAudioGroupKeys: newest group first by MAX(added_at), then MAX(mt
 
     assert.deepEqual(
       listRecentAudioGroupKeys(db, 'music', 10),
-      ['Musik/TieA/Album', 'Musik/TieB/Album', 'Musik/Old/Album']
+      ['Musik/TieA/Album', 'Musik/TieB/Album', 'Musik/Mid/Album', 'Musik/Old/Album']
     );
   } finally {
     db.close();
