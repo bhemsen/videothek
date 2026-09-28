@@ -9,7 +9,7 @@
 | --------- | ---- | -------------- |
 | Entry point | `src/server.js` | Reads config, opens DB, starts scanner, the conversion queue (only when `CONVERTER_CMD` is set) + HTTP server, graceful shutdown (stops the queue before closing the DB) |
 | App assembly | `src/app.js` | Session resolution, origin check, dispatch, error mapping |
-| Config | `src/config.js`, `src/config-converter.js` | `src/config.js` is the sole reader of `process.env`; validates `MEDIA_ROOT` exists and is readable; parses `CONVERTER_CMD` into argv (whitespace split, absolute first token), resolves `CONVERT_DIR` (default `DATA_DIR/converted`, never overlapping `MEDIA_ROOT`) and builds the converter's allowlisted environment. The pure converter parsers and the shared `isInside` containment helper live in `src/config-converter.js` (imports nothing from `src/`) |
+| Config | `src/config.js`, `src/config-converter.js` | `src/config.js` is the sole reader of `process.env` and calls the pure converter parsers in `src/config-converter.js` with it; validates `MEDIA_ROOT` exists and is readable; parses `CONVERTER_CMD` into argv (whitespace split, absolute first token), resolves `CONVERT_DIR` (default `DATA_DIR/converted`, never overlapping `MEDIA_ROOT`) and builds the converter's allowlisted environment. The pure converter parsers and the shared `isInside` containment helper live in `src/config-converter.js` (imports nothing from `src/`) |
 | Logging | `src/log.js` | JSON-line logger |
 | HTTP core | `src/http/` | Router, static/page serving, JSON helpers, cookies, security headers + origin check, `requireUser`/`requireAdmin` guards (`src/http/guards.js`) |
 | Range parsing | `src/http/range.js` | Parses a `Range` request header into a satisfiable byte window or `unsatisfiable`/`none` |
@@ -77,4 +77,4 @@
 - Schema change -> new numbered migration in `src/db/migrations/`; never edit an applied migration.
 - New UI page -> `public/<page>.html` + `public/js/<page>.js`; shared UI helpers in `public/js/lib/`.
 - Declared deviation — audio section: `public/music.html` and `public/audiobooks.html` share one module tree `public/js/audio/` (entry `app.js`) and `public/css/audio.css`/`audio-music.css`/`audio-books.css`, instead of a per-page `public/js/<page>.js`/`public/css/<page>.css`, because one persistent player must survive client-side `pushState` navigation between the two pages; its bottom bar drives a hidden `<audio>` with its own controls instead of the native `<video>`/`<audio>` controls design.md otherwise specifies, since native controls offer no previous/next, 15/30 s skip or queue title/cover (`docs/specs/spec-music-audiobooks.md` "Frontend file layout" and "Custom control bar" decisions).
-- New config value -> `src/config.js` + `.env.example` + README.
+- New config value -> `src/config.js` (the only `process.env` reader; pure parsers may live in a sibling leaf module such as `src/config-converter.js`, called from `src/config.js`) + `.env.example` + README.

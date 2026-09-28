@@ -65,7 +65,7 @@ milestone. A completed spec is moved to `docs/specs/archive/`.
 - Migration `006-conversions.sql` and the repository `src/db/conversions.js`.
 - The effective `playable` flag: the `upsertItem` SQL in `src/db/library-repo.js`
   also counts a fresh `playable` conversion.
-- `src/convert/`: target mapping, converter spawn and JSON Lines reader, run
+- `src/convert/`: target mapping, pure JSON Lines reader, converter spawn, run
   interpretation, output verification, and the one-at-a-time queue with
   graceful stop; startup recovery in `src/server.js`.
 - `GET /media/:id` serves the fresh converted copy when one exists.
@@ -119,7 +119,9 @@ milestone. A completed spec is moved to `docs/specs/archive/`.
   `node:child_process`, and it uses only `spawn`. It builds the argv itself:
   `spawn(cmd[0], [...cmd.slice(1), '--to', target, '--json', source, outDir])`
   with `shell` never set (Node default `false`), no `detached`,
-  `stdio: ['ignore', 'pipe', 'pipe']`, `windowsHide: true` and `env`.
+  `stdio: ['ignore', 'pipe', 'pipe']`, `windowsHide: true`, `env` and
+  `cwd` = the per-job dir (the parent of `outDir`), so relative writes of the
+  converter land in the removed work dir, never in videothek's own cwd.
   `source` is the realpath returned by `resolveMediaPath`. It is always
   absolute, so it can never be read as an option.
 - **Constitution-test change** (made by the spawn issue, not in this docs PR):
@@ -132,9 +134,12 @@ milestone. A completed spec is moved to `docs/specs/archive/`.
   changes to match. A new test asserts, on the comment-stripped source of
   that file (`readSourceForScan`, string literals kept), that its only
   `child_process` import is `import { spawn } from 'node:child_process'`,
-  that `/\bshell\s*:/` does not match, and that no word-bounded `exec`,
-  `execFile`, `execSync` or `fork` identifier occurs (`execPath` does not
-  match `\bexec\b`).
+  that `child_process` occurs exactly once (no second or dynamic import),
+  that `/\bshell\s*:/` does not match, and that no bare call of `exec`,
+  `execFile`, `execSync`, `execFileSync` or `fork` occurs, checked with
+  `/(?<![.\w$])(?:exec|execFile|execSync|execFileSync|fork)\s*\(/`. A member
+  call such as `re.exec(` is allowed: with only `{ spawn }` importable, no
+  `child_process` function can be reached through a member.
 - Containment: every path taken from a client, from the DB (`rel_path`,
   `output_rel`) or from the converter goes through `resolveMediaPath(root,
   rel)` from `src/media/paths.js`, which is root-agnostic and is not changed.
@@ -167,8 +172,8 @@ milestone. A completed spec is moved to `docs/specs/archive/`.
 | Variable | Rule | Config property |
 |---|---|---|
 | `CONVERTER_CMD` | unset/empty → `null` (feature off). Otherwise split on `/\s+/` after trimming, with no quote or escape handling. 1–32 tokens; the first token must be an absolute path. It is not checked for existence, so a missing converter fails jobs (`converter_unavailable`) and never blocks startup. Validated in every mode, also under `requireMediaRoot: false` (precedent: `PORT`), so an invalid value also stops the reset-password CLI. | `converterCmd: string[] \| null` (frozen) |
-| `CONVERT_DIR` | unset → `<dataDir>/converted`. Otherwise resolved against `cwd` like `DATA_DIR`. Only under `requireMediaRoot`: `CONVERT_DIR` must not be inside `MEDIA_ROOT` and `MEDIA_ROOT` must not be inside `CONVERT_DIR` (both directions, via the existing `isInside`, lexical). Not created here; the realpath check follows in the queue's `start()`. | `convertDir: string` |
-| — | Child environment: copies only `PATH`, `HOME`, `LANG`, `LC_ALL`, `TMPDIR`, `TEMP`, `TMP`, `SystemRoot` (those set) from `env`. The lookup is case-insensitive on `win32` (a plain-object `env` there spells it `Path`); the copy keeps the key as found. `ADMIN_PASSWORD` and every other variable never reach the converter. Sufficient for the Node stub; the Phase-8 adapter issue revisits it. | `converterEnv: Readonly<Record<string,string>>` |
+| `CONVERT_DIR` | unset → `<dataDir>/converted`. Otherwise resolved against `cwd` like `DATA_DIR`. Only under `requireMediaRoot`: `CONVERT_DIR` must not be inside `MEDIA_ROOT` and `MEDIA_ROOT` must not be inside `CONVERT_DIR` (both directions, via the existing `isInside`, lexical; problem `CONVERT_DIR: must not overlap MEDIA_ROOT`). When `CONVERT_DIR` is unset (default derived from `DATA_DIR`), this problem is not pushed if the `DATA_DIR: must not be inside MEDIA_ROOT` problem already fired, so a bad `DATA_DIR` still yields exactly one problem (the existing `test/config.test.js` assertions stay green). An explicitly set `CONVERT_DIR` is always checked in both directions. Not created here; the realpath check follows in the queue's `start()`. `CONVERT_DIR` must also not lie inside the app's `public/` directory (static files are served without a session); the README warns about this, config does not check it. | `convertDir: string` |
+| — | Child environment (`pickConverterEnv(env, { platform })` in `src/config-converter.js`): copies only `PATH`, `HOME`, `LANG`, `LC_ALL`, `TMPDIR`, `TEMP`, `TMP`, `SystemRoot` (those set) from `env`. The lookup is case-insensitive on `win32` (a plain-object `env` there spells it `Path`); the copy keeps the key as found. `ADMIN_PASSWORD` and every other variable never reach the converter. Sufficient for the Node stub; the Phase-8 adapter issue revisits it. | `converterEnv: Readonly<Record<string,string>>` |
 
 Problems use the existing `"<VAR>: <rule>"` format and never include a value.
 The pure parsers live in the new `src/config-converter.js` (taking `env` as a
@@ -189,7 +194,17 @@ Windows use a Node path without spaces or its 8.3 short name
 Tests are unaffected (they pass arrays). Startup logs `conversion_enabled {}`
 or `conversion_disabled {}` and never logs the command. The README also notes
 that deleting the database file under `DATA_DIR` orphans the copies under
-`CONVERT_DIR` (they are no longer served and can be deleted by hand).
+`CONVERT_DIR` (they are no longer served and can be deleted by hand). Further
+README notes from the config issue:
+
+- Run the service as a user with read-only access to `MEDIA_ROOT`. This is the
+  only enforcement that also covers the converter child process (the
+  constitution's read-only rule binds videothek's own code; the converter
+  contract below binds the converter).
+- Until Phase 8, conversions run without `nice`/`ionice`, so on a Pi a running
+  conversion can make concurrent streams stutter.
+- `CONVERT_DIR` must not lie inside the app's `public/` directory, because
+  static files are served without a session.
 
 ### Data model (migration `006-conversions.sql`)
 
@@ -277,8 +292,10 @@ comes before `audiobooks → opus` (a `.mid` audiobook file is not convertible):
 | category `music`, ext in `ape aif aiff wv dsf dff m4a m4b` (lossless-capable) | `flac` |
 | category `music`, any other audio ext | `opus` |
 
-`isConvertible(row)` = `row.playable === 0 && row.size > 0 &&
-targetFor(row) !== null` (a zero-byte source would always fail).
+`isConvertible(row)` = `!row.playable && row.size > 0 &&
+targetFor(row) !== null` (a zero-byte source would always fail;
+`LibraryItemRow.playable` is typed `boolean` while SQLite returns `0`/`1`, so
+only a truthiness test type-checks and works for both).
 `TARGETS = { web: { file: 'web.mp4', ext: 'mp4', kind: 'video' }, flac: {
 file: 'audio.flac', ext: 'flac', kind: 'audio' }, opus: { file: 'audio.opus',
 ext: 'opus', kind: 'audio' } }`. `storageKey(relPath)` → `sha256` hex via
@@ -291,6 +308,14 @@ must satisfy it, and the stub emulates it.
 
 - **Invocation:** `<CONVERTER_CMD tokens…> --to web|flac|opus --json <SRC> <OUTDIR>`,
   where `SRC` is an absolute file and `OUTDIR` an existing empty directory.
+  The working directory is the per-job dir (`OUTDIR`'s parent).
+- **Side effects:** `SRC` is only read. The converter creates or changes files
+  only inside `OUTDIR` (no temp or `.partial` file next to `SRC`). This is part
+  of the minimum contract behind the amended constitution Don't on child
+  processes (constitution.md "Child processes are allowed only for the
+  configured external converter"), which Phase 8 extends; videothek cannot
+  enforce it on a child process, so the README recommends a service user with
+  read-only access to `MEDIA_ROOT`.
 - **Output format:** `--to web` always writes an MP4 (`.mp4`), also for
   VP9/AV1 video (VP9/AV1 in MP4 pass the sniff as `vp09`/`av01`). `flac`
   writes `.flac`, `opus` writes an Ogg Opus `.opus`.
@@ -303,15 +328,29 @@ must satisfy it, and the stub emulates it.
 - **Exit codes:** `0` = nothing failed (includes skipped/unsupported),
   `1` = failed, `2` = usage error or tool missing, `130` = interrupted.
 - **stderr:** free text. Only the last 4 KiB (bytes) are kept, solely for
-  `error_detail`. stderr is never logged (ffmpeg prints absolute paths).
+  `error_detail`, in a fixed 4 KiB ring buffer (memory stays bounded however
+  much the converter prints). stderr is never logged (ffmpeg prints absolute
+  paths).
 - **Limits:** a single stdout line over 64 KiB, or more than 1 MiB of stdout in
   total, kills the child (`SIGKILL`) and fails the job
   (`converter_output_invalid`). Both caps count bytes before decoding; lines
   are decoded with a `StringDecoder` so a multi-byte character split across
-  chunks stays intact.
+  chunks stays intact. Once a cap trips, the runner stops accumulating stdout
+  and destroys the stdout stream, because a grandchild holding the pipe can
+  keep writing during the `closeGraceMs` wait.
+
+**JSON Lines reader** (`src/convert/jsonl.js`, pure, mirrored by
+`test/convert/jsonl.test.js`): `createJsonLinesReader({ maxLineBytes =
+65536, maxTotalBytes = 1048576 })` → `{ push(chunk: Buffer): 'ok' | 'cap',
+end(): void, records, invalid }` (byte caps, `StringDecoder`, `\r` stripping,
+empty lines skipped) and `validateRecord(value)` → a normalised record, `null`
+for an object without `outcome` (ignored), or `'invalid'`. The runner feeds
+stdout chunks into it. Keeping these pure makes the line cap vs the total cap,
+a multi-byte character split across chunks, bad field types, a relative
+`output` and note truncation unit-testable without a stub mode for each.
 
 **Runner** (`src/convert/run-converter.js`):
-`runConverter({ cmd, env, target, source, outDir })` →
+`runConverter({ cmd, env, target, source, outDir, cwd, closeGraceMs = 2000 })` →
 `{ result: Promise<RunResult>, kill(signal): void }`, where
 `RunResult = { spawnError, exitCode, signal, killedBy, records, stdoutInvalid, stderrTail }`.
 
@@ -326,12 +365,13 @@ must satisfy it, and the stub emulates it.
   `result` settles, so none keeps the event loop alive.
 - `killedBy` is `'cap'` after a cap kill (which also sets
   `stdoutInvalid = true`), `'stop'` after a `kill()` call, else `null`.
-- Record validation (any violation → `stdoutInvalid`): a non-object line, bad
+- Record validation (`validateRecord` in `jsonl.js`; any violation →
+  `stdoutInvalid`): a non-object line, bad
   JSON, `outcome` not in the set, `output` not a string or not
   `path.isAbsolute`, `error` not string/null, `notes` not an array or a
   non-string entry. `notes` keeps the first 10 entries, each cut to 200
   characters.
-- `stderrTail`: the last 4 KiB as bytes, leading UTF-8 continuation bytes
+- `stderrTail`: the last 4 KiB (ring buffer) as bytes, leading UTF-8 continuation bytes
   (`0x80`–`0xBF`) dropped, then decoded.
 - It does not interpret the result.
 
@@ -364,9 +404,13 @@ converter):
 
 1. `resolveMediaPath(outDir, path.relative(outDir, output))` must return a
    path (inside `outDir`, exists, no symlink escape). Otherwise
+   `converter_output_invalid`. From here on only this resolved realpath is
+   used: `verifyOutput` returns `{ ok: true, path: <realpath> }`, and step 6
+   of the job renames exactly that path (a symlink reported inside `out/` is
+   never published and cannot dangle once the work dir is removed).
+2. The resolved path (`lstat`) must be a regular file with `size > 0` and a
+   lower-case extension equal to `TARGETS[target].ext`. Otherwise
    `converter_output_invalid`.
-2. Must be a regular file with `size > 0` and a lower-case extension equal to
-   `TARGETS[target].ext`. Otherwise `converter_output_invalid`.
 3. `mp4`: `sniffMp4Codecs(abs)` must be non-null (strict: "unknown" fails
    here, unlike the scanner), must have ≥ 1 video track, and
    `resolvePlayable({ ext, size, codecs })` must be true. `flac`: bytes 0–3 are
@@ -392,7 +436,7 @@ Modes:
 | Mode | Behaviour |
 |---|---|
 | `ok` (default) | writes `<OUTDIR>/<src stem>.<ext>`: with `--sample-dir`, a copy of `sample.<ext>` from it (human QA); otherwise synthetic bytes (MP4 boxes `avc1` + `mp4a` via `test/helpers/mp4-boxes.js`, a `fLaC` header, or an Ogg page with `OpusHead`). Prints the record plus a summary line; exit 0 |
-| `echo` | writes `{ argv, env }` as JSON to `<OUTDIR>/echo.json`, no record, exit 0 |
+| `echo` | writes `{ argv, env, cwd }` as JSON to `<OUTDIR>/echo.json`, no record, exit 0 |
 | `not-browser-safe` | MP4 with an `hvc1` video track, outcome `converted`, exit 0 |
 | `fail` | record `failed` with `error: "ffmpeg exited with 1"`, exit 1 |
 | `unsupported` / `skipped` | that outcome, no file, exit 0 |
@@ -410,16 +454,21 @@ Modes:
 ### Queue (`src/convert/queue.js`)
 
 `createConversionQueue({ db, config, log, now, run = runConverter,
-killGraceMs = 5000 })` → `{ start(): Promise<boolean>, kick(): void,
-stop(): Promise<void> }`. The per-job pipeline may live in
+killGraceMs = 5000, removeDir = (p) => fs.rm(p, { recursive: true, force:
+true, maxRetries: 3 }) })` → `{ start(): Promise<boolean>, kick(): void,
+stop(): Promise<void> }`. `removeDir` is the test seam for step 7's removal
+(an injected rejection proves a cleanup error never changes the end state). The per-job pipeline may live in
 `src/convert/job.js` and the directory handling (setup, work dir create and
 remove) in `src/convert/work-dir.js`, each with its mirrored test.
 
 - **`start()`:** `mkdir -p` `convertDir`; `fs.realpath` both `convertDir` and
   `mediaRoot` and repeat the overlap check in both directions with `isInside`
-  from `src/config-converter.js` (catches a symlinked `CONVERT_DIR`); then
-  remove `convertDir/.videothek-work/` entirely (leftovers of a crash). Any
-  failure (mkdir `EACCES`/`ENOSPC`/`EROFS`, overlap) logs `conversion_dir_unavailable { code }` (`code` = errno code or
+  from `src/config-converter.js` (catches a symlinked `CONVERT_DIR`); keep the
+  realpath of `convertDir` as `convertDirReal`; then remove
+  `convertDir/.videothek-work/` entirely (leftovers of a crash). Any failure
+  (mkdir `EACCES`/`ENOSPC`/`EROFS`, overlap, or an `rm` error of
+  `.videothek-work/` such as `ENOTEMPTY`/`EBUSY` from an orphan still writing)
+  logs `conversion_dir_unavailable { code }` (`code` = errno code or
   `overlap`), writes nothing, and resolves `false`: the server then runs with
   conversions disabled (POST `503`). On success it marks the queue ready,
   calls `kick()` and resolves `true`. Recovery of `converting` rows is not
@@ -439,30 +488,44 @@ remove) in `src/convert/work-dir.js`, each with its mirrored test.
   3. `mkdir(convertDir/.videothek-work, { recursive: true })` (`start()`
      removed it, and nothing else re-creates it), then create a fresh unique
      work dir with `fs.mkdtemp(convertDir/.videothek-work/<storage_key>-)`,
-     `realpath` it, `mkdir` `out/` inside, and use the realpath'd `out/` as
-     `OUTDIR` for the converter and `verifyOutput`. A unique name per attempt
+     `realpath` it and check `isInside(convertDirReal, <that realpath>)`
+     (catches a `.videothek-work` symlink planted in advance; a violation →
+     `storage_failed`), `mkdir` `out/` inside, and use the realpath'd `out/` as
+     `OUTDIR` for the converter and `verifyOutput` (and its parent, the job
+     dir, as the converter's `cwd`). A unique name per attempt
      keeps an orphaned converter from an earlier crash out of the new dir.
-     Errors → `storage_failed`.
+     Errors of this step's `mkdir`/`mkdtemp`/`realpath` → `storage_failed`.
   4. Immediately before the spawn: if `stopping` is set (`stop()` arrived
      during the awaits of steps 1–3) → `interrupted` without calling `run`.
      Otherwise `run({ cmd: config.converterCmd, env: config.converterEnv,
-     target, source, outDir })`, keep the returned handle as the running
+     target, source, outDir, cwd: <job dir> })`, keep the returned handle as the running
      job's handle, then `await result`. The `stopping` check and the `run`
      call happen in the same synchronous step, so `stop()` either sees the
      handle or the job sees `stopping`.
   5. If `stop()` was called by now → `interrupted` (skip the rest). Else
      `interpretRun`, then `verifyOutput`, then re-check the source. The
      converter's notes pass through `redactDetail` before they are stored.
-  6. Publish: `mkdir` `convertDir/<storage_key>/`, then `rename` the output to
+  6. Publish: `mkdir` `convertDir/<storage_key>/`, `realpath` it and check
+     `isInside(convertDirReal, …)` (a pre-planted symlink → `storage_failed`),
+     then `rename` the realpath returned by `verifyOutput` to
      `<storage_key>/<TARGETS[target].file>` (same file system, atomic, and it
      replaces a stale copy). Then the publish transaction (status `playable`,
      `output_rel`, `output_size`, `notes`, `error = NULL`, `finished_at`, plus
-     the `library_items` flag). A filesystem error here → `storage_failed`.
+     the `library_items` flag). A `mkdir`/`realpath`/`rename` error here →
+     `storage_failed`.
   7. Remove the per-job dir `.videothek-work/<storage_key>-<unique>/`
      (including `out/` and anything the converter wrote beside it), always, in
-     `finally`.
+     `finally`. This removal never changes the recorded end state: the end
+     state (`playable` or `failed` with its real code) is written before it,
+     and a removal error (e.g. `EBUSY`/`EPERM`/`ENOTEMPTY` after
+     `maxRetries`, from an orphan still writing or a lingering Windows handle)
+     is only logged as `conversion_cleanup_failed { key, code }` (no path) and
+     left for the next `start()` wipe. It is caught, so it never reaches the
+     `internal` path either.
 
-  Any failure → `failed` with the code, redacted `error_detail` and
+  `storage_failed` covers exactly the `mkdir`/`mkdtemp`/`realpath`/`isInside`
+  failures of step 3 and the `mkdir`/`realpath`/`isInside`/`rename` failures of
+  step 6. Any failure → `failed` with the code, redacted `error_detail` and
   `finished_at`. Any other unexpected throw (DB error, bug) → `internal`,
   plus a log line `conversion_error { key, code }` (error code/name only, no
   message, no path). Logs: `conversion_started` and `conversion_finished`
@@ -553,7 +616,7 @@ syntax: an id not matching `^[1-9][0-9]{0,15}$`, not a safe integer, or not in
 - **`POST` order:** id (404), then item lookup (404), then
   `deps.conversions` absent (503 `conversion_disabled`), then
   `targetFor(row) === null` or `row.size === 0` (400 `not_convertible`), then
-  `row.playable = 1` (409 `already_playable`: plays directly or has a fresh
+  `row.playable` truthy (409 `already_playable`: plays directly or has a fresh
   copy), then an existing `queued`/`converting` row (200, unchanged).
   Otherwise it upserts `status = 'queued'`, `target`, `storage_key`,
   `source_size`/`source_mtime_ms` from the row and `queued_at = deps.now()`,
@@ -632,16 +695,22 @@ copy.
     `enabled: false` or any error leaves the page untouched. The decorator
     doubles as the role check, so no page has to plumb `me` through.
   - Idempotent: it first removes earlier nodes marked `data-convert-control`.
-    Each host gets one control appended as its last child:
+    Each host gets one control appended to it (`host.append`). Other
+    decorators (P4's progress badges) also append to `.episode-row`, so
+    neither the CSS nor the code relies on the control being the last child
+    (`:last-child`) or on any sibling order; rules select `.convert-control`
+    by class only. The rows are checked top to bottom, first match wins
+    (so a `failed` or `stale` entry whose source has since become zero-byte
+    shows nothing instead of a button that POST would answer with 400):
 
     | Entry | Control |
     |---|---|
-    | `convertible` and `none` or `stale` | button "Konvertieren" |
+    | `convertible` false and status not `queued`/`converting`/`playable` | no control |
+    | `none` or `stale` | button "Konvertieren" |
     | `queued` | status "In Warteschlange · Platz N" |
     | `converting` | "Wird konvertiert …" |
     | `failed` | "Konvertierung fehlgeschlagen: <Grund>" + button "Erneut versuchen" |
     | `playable` | "Konvertiert" + button "Neu laden" (`location.reload()`; see OPEN O1) |
-    | not convertible | no control |
 
   - A button click disables the button, then `requestConversion(id)`. The
     returned entry re-renders the control. Errors: `409 already_playable`
@@ -671,11 +740,16 @@ copy.
   - Usage line "Kopien: 12,3 GB in 8 Dateien · 180 GB frei". `frei` is omitted
     when `freeBytes` is `null`. It uses `formatFileSize` from
     `public/js/lib/library-format.js`.
-  - Groups "Läuft gerade", "Warteschlange", "Fehlgeschlagen" (reason +
-    "Erneut versuchen"), "Veraltet – Quelle geändert" ("Erneut konvertieren")
-    and "Fertig" (the newest 20, with the notes). Each row shows the title
-    (`item.seriesTitle` + episode label for episodes), the category and the
-    extension. The panel's buttons follow the decorator's POST error rules.
+  - Groups "Läuft gerade" (with the elapsed time since `startedAt`, e.g.
+    "seit 12 Min.", refreshed with each poll, so a hanging job is visible),
+    "Warteschlange", "Fehlgeschlagen" (reason + "Erneut versuchen"),
+    "Veraltet – Quelle geändert" ("Erneut konvertieren") and "Fertig" (the
+    newest 20, with the notes). "Erneut versuchen" and "Erneut konvertieren"
+    are shown only when the entry's `convertible` is true (otherwise POST
+    would answer 400 or 409); the row itself stays listed. Each row shows the
+    title (`item.seriesTitle` + episode label for episodes), the category and
+    the extension. The panel's buttons follow the decorator's POST error
+    rules. The elapsed time is not in the design export; the spec wins.
   - Empty: "Keine Konvertierungen."
   - It polls every 5 s while something is active and the tab is visible, and a
     failed request shows "Status konnte nicht geladen werden.".
@@ -686,15 +760,23 @@ copy.
 
 - Server: `src/db/migrations/006-conversions.sql`, `src/db/conversions.js`,
   `src/config-converter.js` (parsers + the moved `isInside`),
-  `src/convert/targets.js`, `src/convert/run-converter.js`,
-  `src/convert/result.js`, `src/convert/verify.js`, `src/convert/queue.js`,
-  `src/api/conversions.js`
-- Pre-authorised splits (each with its mirrored test, only if needed for the
-  300-line limit): `src/db/conversion-queries.js`, `src/convert/job.js`,
-  `src/convert/work-dir.js`; the API test may split into
-  `test/api/conversions.test.js` (must keep this exact name, since
+  `src/convert/targets.js`, `src/convert/jsonl.js`,
+  `src/convert/run-converter.js`, `src/convert/result.js`,
+  `src/convert/verify.js`, `src/convert/queue.js`, `src/api/conversions.js`
+- Pre-authorised splits (each `src/` split with its mirrored test, only if
+  needed for the 300-line limit): `src/db/conversion-queries.js`,
+  `src/convert/job.js`, `src/convert/work-dir.js`, `src/api/conversion-json.js`
+  (entry/envelope JSON building and `ids` parsing),
+  `public/js/lib/convert-poller.js` (the per-root poller); the API test may
+  split into `test/api/conversions.test.js` (must keep this exact name, since
   `test/constitution.test.js` requires the mirror of `src/api/conversions.js`;
-  e.g. the GET cases) and `test/api/conversions-post.test.js`.
+  e.g. the GET cases) and `test/api/conversions-post.test.js`; the lifecycle
+  test into `test/convert/queue-lifecycle.test.js` +
+  `test/convert/queue-lifecycle-stop.test.js`; the runner test into
+  `test/convert/run-converter.test.js` + `test/convert/run-converter-kill.test.js`.
+- `src/api/conversions.js` keeps its own private `parseItemId`, following the
+  existing precedent (`media.js`, `audiobooks.js`, `cover.js`, `music.js`,
+  `progress.js` each have one); `src/api/media.js` exports nothing new.
 - Frontend: `public/js/lib/conversions-api.js`,
   `public/js/lib/conversion-format.js`, `public/js/lib/convert-control.js`,
   `public/js/admin-conversions.js`, `public/css/convert-control.css`,
@@ -705,7 +787,8 @@ copy.
   `test/db/library-repo.test.js` is at 289 lines),
   `test/server-conversions.test.js` (startup recovery; `test/server.test.js`
   is at 254 lines),
-  `test/convert/targets.test.js`, `test/convert/run-converter.test.js`,
+  `test/convert/targets.test.js`, `test/convert/jsonl.test.js`,
+  `test/convert/run-converter.test.js`,
   `test/convert/result.test.js`, `test/convert/verify.test.js`,
   `test/convert/queue.test.js` (claim/FIFO/single-flight/stop with a fake
   `run`), `test/convert/queue-lifecycle.test.js` (real stub: publish, failure
@@ -822,8 +905,9 @@ wins:
   under the H2.
 - Host DOM follows this spec: non-playable hosts are
   `<div class="media-card" data-item-id>` / `<div class="episode-row"
-  data-item-id>` (never links). `.convert-control` is the host's last child.
-  On a 390 px episode, track or file row it drops onto its own line below
+  data-item-id>` (never links). `.convert-control` is appended to the host,
+  but CSS must not rely on `:last-child` or sibling order (progress badges
+  append to `.episode-row` too). On a 390 px episode, track or file row it drops onto its own line below
   the title instead of squeezing it.
 - All conversion buttons (Konvertieren, Erneut versuchen, Neu laden,
   Erneut konvertieren) use the secondary button variant. The primary orange
@@ -857,32 +941,33 @@ QA-only (at the milestone QA gate, not a blocker):
 | Human decision (H4): video goes through the converter's `--to web`; audio through `flac`/`opus` | `--to mp4` keeps HEVC/AC3; `--to webm` re-encodes all h264; `web` copies only browser-safe streams. `flac`/`opus` force a browser codec via the muxer | 2026-09-28 |
 | Human decision (H5): storage usage is displayed only; no limit is enforced in Phase 7 | Enforcement needs deletion, which arrives with cleanup in Phase 8 | 2026-09-28 |
 | **OPEN (O1) — resolved at the spec-acceptance gate:** "Neu laden" on `/music` and `/audiobooks` | `location.reload()` ends the persistent bottom-bar player there. Options: (a) accept `location.reload()` everywhere in Phase 7; (b) the decorator takes an optional `onReload` callback and the two audio views pass a re-render of the current route (touches the audio views and `app.js` beyond one hook line). **Recommendation: (a)** — only the admin sees the button, once per conversion, and the item is playable after any later navigation | 2026-09-28 |
-| **OPEN (O2) — resolved at the spec-acceptance gate:** fresh row whose copy file is gone (deleted by hand, or `CONVERT_DIR` changed without moving the copies) | Today the item stays `playable = 1`, `/media` answers `404 not_found`, and the admin cannot act (a playable item has no control; POST answers 409). Options: (a) accept until the Phase-8 cleanup, which reconciles missing copies, and document in the README "CONVERT_DIR nur zusammen mit den Kopien verschieben", plus a stated exception in `docs/architecture.md` (Boundaries, "`library_items.playable` means streamable via `/media/:id`": not when the copy file of a fresh row is gone); (b) POST treats a fresh row whose `output_rel` does not resolve as stale and re-queues, and the admin panel's "Fertig" group shows "Kopie fehlt" + "Erneut konvertieren" (a file check per listed row); (c) at startup, rows whose copy is missing become `failed` `copy_missing` and their items get `scan_version = 0` for a re-parse. **Recommendation: (a)** — a manual-intervention case in a one-household app, and Phase 8 needs the flag-reset mechanism anyway | 2026-09-28 |
+| **OPEN (O2) — resolved at the spec-acceptance gate:** fresh row whose copy file is gone (deleted by hand, or `CONVERT_DIR` changed without moving the copies) | Today the item stays `playable = 1`, `/media` answers `404 not_found`, and the admin cannot act (a playable item has no control; POST answers 409). Options: (a) accept until the Phase-8 cleanup, which reconciles missing copies, and document in the README "CONVERT_DIR nur zusammen mit den Kopien verschieben", plus a stated exception in `docs/architecture.md` (Boundaries, "`library_items.playable` means streamable via `/media/:id`": not when the copy file of a fresh row is gone); (b) POST treats a fresh row whose `output_rel` does not resolve as stale and re-queues, and the admin panel's "Fertig" group shows "Kopie fehlt" + "Erneut konvertieren" (a file check per listed row); (c) at startup, rows whose copy is missing become `failed` `copy_missing` and their items get `scan_version = 0` for a re-parse. **Recommendation: (a)** — a manual-intervention case in a one-household app, and Phase 8 needs the flag-reset mechanism anyway. The Verification case "a fresh row whose file was removed → `404 not_found`" assumes (a); choosing (b) or (c) changes that test, the POST rules and the `architecture.md` exception before merge | 2026-09-28 |
 | **OPEN (O3) — resolved at the spec-acceptance gate:** `MEDIA_ROOT` temporarily unmounted while jobs are queued | Every queued job fails `source_missing` one after another, with no automatic retry. Options: (a) accept (Unmanic: manual re-queue per item via "Erneut versuchen"); (b) pause the queue: when a source does not resolve and its category root (first `rel_path` segment) is not healthy per `rootHealth(mediaRoot, root)` from `src/library/root-health.js` (`missing`/`unreadable`/`empty`; a plain `fs.realpath(mediaRoot)` check would not fire, because an unmounted mountpoint usually still exists as an empty dir), the job puts its row back to `queued` (`started_at = NULL`), logs `conversion_paused { reason: 'media_root_unavailable' }` and sets an explicit queue flag `paused`. While `paused`, `kick()` claims nothing (otherwise the post-job `kick()` would re-claim the same head row in a busy loop). Only a restart or a `POST /api/conversions/:id` clears `paused`; a `POST` on an already `queued` row then also calls `kick()` (today it answers 200 without one). The `GET` envelope gains `paused`, and the admin panel shows "Warteschlange pausiert – Medienordner nicht erreichbar" with a "Fortsetzen" button that POSTs the first waiting item (the decorator shows no button on a `queued` item). No timer, so still no automatic retry. **Recommendation: (a)** (changed from (b) after review): once (b) is made correct it touches the job, the queue, the API envelope and the admin panel, while in a one-household app the few failed items are re-queued with one "Erneut versuchen" each | 2026-09-28 |
 | `library_items.playable` = source direct-play OR fresh conversion, computed in `upsertItem`'s SQL and set in the publish transaction | About ten readers across P2–P6 filter on the column, and progress `PUT` rejects `playable = 0`. One flag keeps them all correct with no edits. Computing it on upsert (not only on publish) keeps the index rebuildable (vanish/reappear, `SCAN_VERSION` bump) | 2026-09-28 |
 | Conversion rows reference `rel_path`, with no FK and no cascade | Plex AVOID: a vanished source must not delete its copy at once, because root safety expects items to reappear. Cleanup with a grace period is Phase 8 | 2026-09-28 |
 | One queue, one job at a time, FIFO by `queued_at` (ties by `rel_path`), claim in a `BEGIN IMMEDIATE` transaction | Prior art: parallel 1080p encodes gain little on a Pi 4; the Unmanic multi-worker pool is an AVOID. A sequence column for same-millisecond ties is not worth a column | 2026-09-28 |
 | Recovery (`converting` → `failed` `interrupted`; `queued` survives) runs in `src/server.js` at every startup, also with the feature off; graceful stop also ends the running job as `failed` `interrupted` | Tdarr AVOID (stuck non-terminal states) plus Unmanic ADOPT (no automatic retry loop). Re-queueing on restart could loop forever on a job that hangs or crashes the host, and Phase 7 has no cancel. Running it only in `queue.start()` would leave a row stuck once `CONVERTER_CMD` is removed | 2026-09-28 |
-| `stop()` sets `stopping` synchronously at the start of `createStop`, and the job is the single writer of its end state; after `stopping`, any job end is `interrupted` without interpretation | A job finishing during `app.close()` (up to 5 s) would otherwise claim and spawn the next queued row; an unawaited `failConversion` would hit a closed DB. Ctrl+C or systemd `KillMode=control-group` signal the child together with videothek. A residual race (the child's `close` handled before the SIGINT handler) records `converter_interrupted`; both codes read "Abgebrochen" and neither retries | 2026-09-28 |
+| `stop()` sets `stopping` synchronously at the start of `createStop`, and the job is the single writer of its end state; after `stopping`, any job end is `interrupted` without interpretation | A job finishing during `app.close()` (up to 5 s) would otherwise claim and spawn the next queued row; an unawaited `failConversion` would hit a closed DB. Ctrl+C or systemd `KillMode=control-group` signal the child together with videothek. A residual race (the child's `close` handled before the SIGINT handler) records `converter_interrupted`; both codes read "Abgebrochen" and neither retries. In that race the post-job `kick()` can still claim and spawn the next queued job before the SIGINT handler sets `stopping`, so that job also ends `interrupted` (it stays re-queueable with one "Erneut versuchen") | 2026-09-28 |
 | `kick()` is a no-op until `start()` resolved; `server.js` awaits `queue.start()` before `listen()` | Otherwise `start()`'s `.videothek-work` wipe could delete a freshly claimed job's dir | 2026-09-28 |
 | An unusable `CONVERT_DIR` (mkdir fails, or realpath overlap with `MEDIA_ROOT` via a symlink) disables conversions with a log line instead of failing startup | Same principle as a missing converter: conversion problems must never take down the media server. The lexical config check cannot see symlinks, and the dir may not exist at config time | 2026-09-28 |
 | No automatic retry; retry = `POST` again | Unmanic: failed stays failed until the user re-queues | 2026-09-28 |
 | `CONVERTER_CMD` is split on whitespace, with no quoting; the first token must be absolute; there is no existence check; it is validated in every config mode | No shell and no hand-rolled shell grammar. An absolute path avoids `PATH` surprises under systemd. A missing converter must fail jobs, not the media server. Every-mode validation follows the `PORT` precedent | 2026-09-28 |
 | `CONVERT_DIR` defaults to `<DATA_DIR>/converted`, is configurable, and must not overlap `MEDIA_ROOT` in either direction (lexically in config, by realpath in `start()`) | Big copies may belong on the USB disk rather than the SD card. The deletes under `.videothek-work/` must never reach media | 2026-09-28 |
+| A defaulted `CONVERT_DIR` does not add its overlap problem when the `DATA_DIR` overlap problem already fired; an explicit `CONVERT_DIR` is always checked | `loadConfig` collects all problems and throws once; a default derived from a `DATA_DIR` inside `MEDIA_ROOT` would otherwise add a second problem and break the unchanged `test/config.test.js` `deepEqual` assertions (106-160). The root cause is reported once, and nothing is left unchecked: the `DATA_DIR` error stops startup anyway | 2026-09-28 |
 | The converter gets an allowlisted environment (`config.converterEnv`) | `ADMIN_PASSWORD` must not leak into a third-party process; only `src/config.js` reads `process.env`. Windows/Python additions wait for the Phase-8 adapter | 2026-09-28 |
 | One fresh unique work dir per attempt (`mkdtemp` under `CONVERT_DIR/.videothek-work/`, converter writes into its realpath'd `out/`), removed as a whole in `finally`; then an atomic `rename` into `CONVERT_DIR/<key>/<fixed name>` | Converter prior art: two calls into one dir give a silent `SKIPPED`, and an orphan from a crash must not write into a retry's dir. The `out/` level keeps an escaping output inside the removed job dir; the realpath avoids false `..` on a symlinked `DATA_DIR`. Tdarr ADOPT: staging, then publish. Fixed names keep every served path free of user-controlled names | 2026-09-28 |
 | `runConverter` returns `{ result, kill }`, builds the argv itself, settles on `'close'`, and reports `killedBy` (`cap`/`stop`/`null`) | One shape for the real runner and the fake in `queue.test.js`; `interpretRun` can tell a foreign signal from its own cap kill; on Windows `'exit'` can precede stdio EOF | 2026-09-28 |
 | A result counts only after videothek's own check: strict MP4 sniff (unknown = fail, ≥ 1 video track) or FLAC/Ogg-Opus magic (`OpusHead` after the segment table), plus a source re-stat; `--to web` always writes MP4 | Converter v3.1.0 reports HEVC/AC3 remuxes as "converted"; the scanner's lenient "unknown = playable" is wrong for a result we publish. A WebM `web` output would fail the extension rule | 2026-09-28 |
 | Phase 7 parses only `outcome`, `output` (absolute), `error`, `notes` of exactly one per-file record; `skipped` is invalid; notes are truncated (10 × 200), bad types are invalid | Minimal fields, so the Phase-8 converter spec can still shape the rest. A fresh empty dir makes `skipped` impossible | 2026-09-28 |
-| stderr is never logged; only its redacted tail is stored as `error_detail` (root prefixes replaced, ≤ 500 chars) | ffmpeg's stderr carries absolute source paths, and item JSON deliberately never exposes paths; H1 (admin-only) is only the backstop | 2026-09-28 |
-| Failure codes: work-dir `mkdtemp`/`mkdir`/`rm` and publish errors → `storage_failed`; source `stat` ENOENT/EACCES → `source_missing`; any other throw → new code `internal` ("Interner Fehler") + `conversion_error` log | Every job must end in a terminal state with a displayable reason, and the `kick()` chain must never leave an unhandled rejection | 2026-09-28 |
+| stderr is never logged; only its redacted tail is stored as `error_detail` (root prefixes replaced, ≤ 500 chars) | ffmpeg's stderr carries absolute source paths, and item JSON deliberately never exposes paths; H1 (admin-only) is only the backstop. Relative media paths (below `<MEDIA_ROOT>`) stay visible to admins in `error_detail` and notes; that is intended, since admins see titles and the library layout anyway | 2026-09-28 |
+| Failure codes: `storage_failed` covers only step 3 (`mkdir`/`mkdtemp`/`realpath`/`isInside` of the work dir) and step 6 (`mkdir`/`realpath`/`isInside`/`rename` of the publish); the step-7 work-dir removal never changes the recorded end state (see its own row); source `stat` ENOENT/EACCES → `source_missing`; any other throw → new code `internal` ("Interner Fehler") + `conversion_error` log | Every job must end in a terminal state with a displayable reason, and the `kick()` chain must never leave an unhandled rejection | 2026-09-28 |
 | Audio target: `audiobooks` → `opus`; `music` lossless-capable exts → `flac`, other music → `opus`; `mid`/`midi` not convertible; zero-byte sources not convertible | Opus fits speech and keeps multi-hour books small. FLAC avoids a second lossy generation for lossless music. ffmpeg has no MIDI synthesis by default. A zero-byte file can only fail | 2026-09-28 |
 | Gallery videos (`images` category) are not convertible in Phase 7 | The gallery renders tiles lazily in batches, so a one-shot decorator misses later tiles, and `public/js/images.js` is at 298 lines. It needs its own hook design; this is a follow-up (roadmap Phase 9) | 2026-09-28 |
 | UI = a DOM decorator on the four video/audio pages plus an admin panel; no player-panel control | Precedent: P4's `decorateProgressFor` (one import + one call, no edit of other phases' builders or CSS). Not-playable cards do not link to the player, and `player.js` is at 300 lines | 2026-09-28 |
 | The decorator's `403` doubles as the role check | `mountShell` returns `me` on the four non-audio pages, but the audio SPA has no `me` in its view params. Cost: one small `403` per render in a household member's browser console | 2026-09-28 |
 | `POST` on a `queued`/`converting` item → `200` with the current entry; a directly playable or freshly converted item → `409 already_playable`; feature off → `503 conversion_disabled`; the UI turns `409` into "Konvertiert" and removes the control on `400`/`404`/`503` | Idempotent double-clicks; explicit codes for real conflicts; a missing server capability is not a client error | 2026-09-28 |
 | A copy is served whenever it is fresh, even when the queue is disabled | Unsetting `CONVERTER_CMD` stops new work but must not make converted items unplayable | 2026-09-28 |
-| Pre-authorised file splits (`conversion-queries.js`, `job.js`, `work-dir.js`; API test split into `test/api/conversions.test.js` + `test/api/conversions-post.test.js`) | The 300-line limit is enforced by `test/constitution.test.js`, which also requires the exact mirror `test/api/conversions.test.js` for `src/api/conversions.js` | 2026-09-28 |
+| Pre-authorised file splits (`conversion-queries.js`, `job.js`, `work-dir.js`, `src/api/conversion-json.js`, `public/js/lib/convert-poller.js`; API test split into `test/api/conversions.test.js` + `test/api/conversions-post.test.js`; lifecycle and runner tests split into a `-stop`/`-kill` sibling) | The 300-line limit is enforced by `test/constitution.test.js`, which also requires the exact mirror `test/api/conversions.test.js` for `src/api/conversions.js` | 2026-09-28 |
 | `src/config-converter.js` is a required new module holding the converter parsers and the moved, exported `isInside`; it imports nothing from `src/` | `src/config.js` is at 228 lines. The queue's realpath overlap check needs the same `isInside` as the lexical config check; exporting it from a leaf module avoids a second copy and any import cycle | 2026-09-28 |
 | New cases for existing near-limit tests go into new files: `test/db/library-repo-playable.test.js`, `test/server-conversions.test.js`, `test/config-converter.test.js`; `test/db/library-repo.test.js` (289 lines), `test/server.test.js` (254) and `test/config.test.js` (268) are not edited | `test/constitution.test.js` fails any test file over 300 lines; the mirrored files stay in place | 2026-09-28 |
 | `stop()` kills an existing handle at once (SIGTERM, then SIGKILL after `killGraceMs`, timer cleared when `result` settles); a job checks `stopping` synchronously right before spawning and records `interrupted` without calling `run` | Otherwise a `stop()` during the awaits of steps 1–3 kills nothing, the job spawns anyway, and shutdown waits for a whole conversion (hours with a real converter, or until systemd's `TimeoutStopSec`) | 2026-09-28 |
@@ -890,6 +975,11 @@ QA-only (at the milestone QA gate, not a blocker):
 | The work area is `CONVERT_DIR/.videothek-work/`, not `.work/` | `start()` deletes it recursively; a distinctive name keeps an unrelated `.work` folder safe when `CONVERT_DIR` points at an existing shared directory | 2026-09-28 |
 | The runner's wait for `'close'` is bounded (`closeGraceMs` after `'exit'`, then stdio destroyed) | A grandchild that inherited the pipes can keep `'close'` from ever firing, which would block the queue and `stop()` forever | 2026-09-28 |
 | Converter notes pass through `redactDetail` before they are stored; `redactDetail` matches case-insensitively and with both separators on `win32`; the `converterEnv` lookup is case-insensitive on `win32` | Notes are stored, returned and displayed like `error_detail`, so the same path-redaction rationale applies. Windows spells paths and `Path` in varying case and separators | 2026-09-28 |
+| Removing the per-job work dir in `finally` (step 7) never changes the recorded end state; a removal error only logs `conversion_cleanup_failed { key, code }` and is left for the next `start()` wipe | The end state is committed before the removal. Mapping an `rm` error to `storage_failed` after a successful publish would leave `failed` with the flag at 1 and the copy present: `/media` would fall back to the unplayable source, POST would answer 409, and the scanner's unchanged-file skip would never repair it; for a failed job it would overwrite the real reason. `EBUSY`/`EPERM`/`ENOTEMPTY` survive `maxRetries` with an orphan still writing or a lingering Windows handle | 2026-09-28 |
+| The pure JSON Lines reader and record validator live in `src/convert/jsonl.js`; `runConverter` takes `cwd` and `closeGraceMs = 2000`; stdout accumulation stops at a cap and stderr is a 4 KiB ring buffer | The line cap vs the total cap, split multi-byte characters, bad field types, relative `output` and note truncation are unit-testable without a stub mode each; memory stays bounded while a grandchild keeps writing during the `closeGraceMs` wait | 2026-09-28 |
+| The minimum converter contract includes "SRC is only read; files are created or changed only inside OUTDIR"; the child runs with `cwd` = the per-job dir; the README recommends read-only `MEDIA_ROOT` access for the service user | vision.md promises nothing under `MEDIA_ROOT` is written, but the constitution's read-only rule binds only videothek's code. The contract binds the converter (Phase 8 extends it), `cwd` keeps relative writes inside the removed work dir, and OS permissions are the only enforcement that also covers the child | 2026-09-28 |
+| Publishing renames the realpath `verifyOutput` returned (regular-file check on that path), and the realpath of the work dir and of `<storage_key>/` must lie inside the realpath of `CONVERT_DIR` | A symlink reported inside `out/` would otherwise be published and dangle once the work dir is removed; a symlink planted as `.videothek-work` or `<storage_key>` must not redirect writes or the publish outside `CONVERT_DIR` | 2026-09-28 |
+| The decorator checks "not convertible" first (except `queued`/`converting`/`playable`); the admin panel shows "Erneut versuchen"/"Erneut konvertieren" only for `convertible` entries; CSS never relies on `:last-child` for `.convert-control` | A `failed` or `stale` entry whose source later became zero-byte would otherwise offer a button that POST answers with 400 (or 409 for an already playable item); progress badges also append to `.episode-row` | 2026-09-28 |
 | The work area is wiped only by `queue.start()`; with the feature off it is left as it is | A wipe in `runStart` without the queue's realpath overlap check could reach `MEDIA_ROOT` through a symlinked `CONVERT_DIR`; the Outcome was narrowed instead | 2026-09-28 |
 
 ## Tracking
@@ -911,9 +1001,10 @@ Machine checks (`npm run verify`):
       `src/` module has its mirrored test.
 - [ ] `test/constitution.test.js`: `child_process` is still rejected in every
       other `src/` file and in `public/`. `src/convert/run-converter.js`
-      imports only `{ spawn }` from `node:child_process`, `/\bshell\s*:/` does
-      not match, and it has no `exec`, `execFile`, `execSync` or `fork`
-      identifier.
+      imports only `{ spawn }` from `node:child_process` (exactly one
+      `child_process` occurrence), `/\bshell\s*:/` does not match, and the
+      bare-call pattern for `exec`, `execFile`, `execSync`, `execFileSync` and
+      `fork` does not match (a fixture with `re.exec(` passes).
 - [ ] `test/config-converter.test.js` (parsers directly, and `loadConfig`
       for the wiring; `test/config.test.js` stays unchanged and green):
   - `CONVERTER_CMD` unset/empty → `null`
@@ -921,6 +1012,12 @@ Machine checks (`npm run verify`):
     `requireMediaRoot: false`; the problem text never contains the value
   - `CONVERT_DIR` default, and a problem when it is inside `MEDIA_ROOT` or
     `MEDIA_ROOT` is inside it (only under `requireMediaRoot`)
+  - default `CONVERT_DIR` with `DATA_DIR` inside `MEDIA_ROOT` → `problems` is
+    exactly `['DATA_DIR: must not be inside MEDIA_ROOT']`
+  - an explicit `CONVERT_DIR` inside `MEDIA_ROOT` (with a valid `DATA_DIR`) →
+    the `CONVERT_DIR` problem; `MEDIA_ROOT` inside the default
+    `<DATA_DIR>/converted` → the `CONVERT_DIR` problem (the `DATA_DIR` check is
+    one-directional and does not fire)
   - `converterEnv` never contains `ADMIN_PASSWORD`; on `win32` a `Path` key
     is copied
   - `isInside`: itself, a child, a sibling with a shared prefix, `..`
@@ -946,16 +1043,24 @@ Machine checks (`npm run verify`):
     (no shell: a source name with `;`, `$()` and spaces arrives as one
     argument; no NTFS-forbidden characters) and the env is only the given
     object
-  - a 64 KiB line cap and a 1 MiB total cap kill `flood` (`killedBy = 'cap'`,
-    `stdoutInvalid`)
-  - a multi-byte character split across chunks decodes intact
+  - the 1 MiB total cap kills `flood` (`killedBy = 'cap'`, `stdoutInvalid`)
+    and stdout accumulation stops at the cap
   - `kill('SIGTERM')` on `hang` → `killedBy = 'stop'`
+  - the child's `cwd` is the given per-job dir (`echo` records
+    `process.cwd()`)
   - `orphan-pipe` (the stub exits while a grandchild still holds its stdout)
     settles about `closeGraceMs` after `'exit'` (test passes a small value)
   - a missing executable and a synchronous spawn throw → `spawnError`; `result`
     never rejects
-  - bad field types, a relative `output`, and > 10 notes (truncated) behave
-    as specified
+- [ ] `test/convert/jsonl.test.js` (pure, Buffer chunks):
+  - a single line over 64 KiB trips the line cap while the total is under
+    1 MiB; many short lines over 1 MiB trip the total cap; after `'cap'`
+    nothing more is accumulated
+  - a multi-byte character split across two chunks decodes intact; `\r\n`
+    and empty lines
+  - `validateRecord`: bad field types, a relative `output`, `converted`
+    without `output`, > 10 notes and notes over 200 characters (truncated),
+    an object without `outcome` (ignored)
 - [ ] `test/convert/result.test.js`: every interpretation rule and its order
       (exit 2 with valid JSON → `converter_unavailable`; exit 1 + `garbage` →
       `converter_output_invalid`; 0 or 2 records; each outcome; a foreign
@@ -975,9 +1080,11 @@ Machine checks (`npm run verify`):
   - the next job starts after a failure; an unexpected throw → `internal`
   - `stop()` prevents new claims, including a job finishing while `stop()` is
     pending; `stop()` resolves only after the job's DB write and cleanup
-  - `stop()` during a slow step 1–3 (e.g. a delayed work-dir setup) → `run`
-    is never called, the row is `failed` `interrupted`, and `stop()` resolves
-    promptly
+  - `stop()` during steps 1–3 → `run` is never called, the row is `failed`
+    `interrupted`, and `stop()` resolves promptly. No extra seam is needed: a
+    synchronous `stop()` right after `kick()` lands there, because `kick()`
+    claims synchronously and the job's first `await` (source resolution in
+    step 1) comes before the step-4 check
   - `stop()` while a run is in flight calls the handle's `kill('SIGTERM')`
     at once and `kill('SIGKILL')` after `killGraceMs` if `result` is still
     pending; no timer stays armed after `result` settled
@@ -995,13 +1102,30 @@ Machine checks (`npm run verify`):
     line contains a path or stderr text
   - the first job after `start()` (which removed `.videothek-work/`) runs,
     i.e. step 3 re-creates the work area
+  - an injected `removeDir` rejection (`EBUSY`) after a successful `ok`
+    publish leaves the row `playable`, `library_items.playable = 1` and the
+    copy in place, and logs `conversion_cleanup_failed`; the same injection
+    after a `not-browser-safe` run keeps `error = 'not_browser_safe'`
+  - a `start()` whose `.videothek-work/` removal fails resolves `false`
+    (`conversion_dir_unavailable`)
   - nothing outside `convertDir` is created or removed (checked with a
     temp-dir listing)
-- [ ] `test/server-conversions.test.js`: a `converting` row becomes `failed`
-      `interrupted` at startup with `CONVERTER_CMD` unset; `queued` rows stay.
+- [ ] `test/server-conversions.test.js` (`start({ config, log })` with a
+      hand-built config, like `test/server.test.js`):
+  - a `converting` row becomes `failed` `interrupted` at startup with
+    `CONVERTER_CMD` unset; `queued` rows stay
+  - wiring with the feature on: a DB pre-seeded (migrated, one indexed item
+    with its source file under `MEDIA_ROOT`, one `queued` row) and
+    `converterCmd: [process.execPath, stub, '--mode', 'hang']`; once
+    `conversion_started` is logged, `stop()` resolves, and the DB reopened
+    afterwards shows the row `failed` `interrupted` (the job's write happened
+    before `db.close()`, i.e. the queue stopped first) and no running stub
+    process is left
 - [ ] `test/api/conversions.test.js` (+ `test/api/conversions-post.test.js`
       if split; boot with `startTestApp`, then build a stub-backed queue with
-      `{ …config, converterCmd: [process.execPath, stub, …], converterEnv }`,
+      `{ …config, converterCmd: [process.execPath, stub, …], converterEnv:
+      pickConverterEnv(process.env) }` (the harness config has an empty env,
+      and tests may read `process.env`; the constitution rule covers `src/`),
       `await queue.start()`, assign `deps.conversions` on the harness's
       returned `deps`; `await queue.stop()` before `close()`):
   - 401 without a session and 403 for a user, on both routes
@@ -1125,3 +1249,28 @@ exports):
   via `rootHealth`, explicit `paused` flag, POST on a `queued` row kicks) and
   its recommendation changes to (a) because the corrected (b) spans job,
   queue, API and admin panel.
+- 2026-09-28: Review round (head fe514cf) folded in. Blocking: a defaulted
+  `CONVERT_DIR` no longer adds its overlap problem when the `DATA_DIR` problem
+  already fired, so the unchanged `test/config.test.js` `deepEqual`
+  assertions (lines 106-160) stay green; an explicit `CONVERT_DIR` is always
+  checked, with two new `test/config-converter.test.js` cases. The step-7
+  work-dir removal never changes the recorded end state (only
+  `conversion_cleanup_failed` is logged, `removeDir` seam + lifecycle test);
+  `storage_failed` now covers only steps 3 and 6. Non-blocking: converter
+  side-effects clause (SRC read-only, writes only in OUTDIR) in the contract
+  and in constitution.md's child-process Don't, `cwd` = per-job dir, README
+  read-only-`MEDIA_ROOT`, no-`nice` and not-inside-`public/` notes; publish
+  renames `verifyOutput`'s realpath, `isInside(convertDirReal, …)` checks on
+  the work dir and `<storage_key>/`; pure `src/convert/jsonl.js` for the
+  runner's line/record test cases, `closeGraceMs` in the signature, stdout
+  stops accumulating at a cap, 4 KiB stderr ring buffer, `start()` `rm`
+  failure → `conversion_dir_unavailable`; `isConvertible` uses `!row.playable`
+  (TS2367); narrowed constitution-test call pattern; decorator checks
+  "not convertible" first, admin retry buttons only when `convertible`, no
+  `:last-child` reliance; more pre-authorised splits and the `parseItemId`
+  precedent; feature-on server wiring test and `pickConverterEnv` for the API
+  test; KillMode race note; relative paths visible to admins; elapsed time
+  in "Läuft gerade"; architecture Config row and "New config value" line,
+  roadmap Phase-7 row and prior-art `DATA_DIR` wording aligned with
+  `CONVERT_DIR`. O1-O3 stay open; O2 notes which parts change if (b) or (c)
+  is chosen.

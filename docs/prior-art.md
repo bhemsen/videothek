@@ -183,7 +183,7 @@
   resume store.
 - **USP:** one optional button per unplayable item. The household's own external
   converter runs one job at a time in a separate child process, the result lives
-  only under `DATA_DIR`, and it plays under the same item id, so progress and
+  only under `CONVERT_DIR` (default `DATA_DIR/converted`), and it plays under the same item id, so progress and
   "Weiterschauen" keep working. Without converter config the app behaves exactly
   as today.
 - **Differentiation/non-goals:** no live transcoding, no automatic library-wide
@@ -201,7 +201,7 @@
 
 ## On-demand browser-safe copies (Phase 7)
 
-Foundation impact: vision — vision.md:71 moves "Transcoding or remuxing of any kind" from Out to an optional In item (on-demand conversion via an external converter, off without config), vision.md:58-59 narrows "files are never copied, moved or modified" to the sources under MEDIA_ROOT (derived copies live under DATA_DIR), vision.md:62-63 lets not-playable items be converted when a converter is configured, vision.md:36 USP notes the optional external converter process; constitution — constitution.md:20 adds `CONVERTER_CMD` and `CONVERT_DIR` to the config list, constitution.md:26 allows `CONVERT_DIR` as the second containment root, constitution.md:55 becomes "child processes only for the configured converter, argv without shell, one at a time", constitution.md:29 classifies conversion state and files (derivable but expensive vs. non-derivable); architecture — component map gains a conversion queue component and converted-path resolution in the path guard (architecture.md:18 and architecture.md:49), architecture.md:54 data split gains `DATA_DIR/converted/`, architecture.md:61 Stream flow serves the converted variant when present, a new key flow "Convert" (button → queue → spawn → verify via `mp4-codec.js` sniff → playable), architecture.md:76 new config values
+Foundation impact: vision — vision.md:71 moves "Transcoding or remuxing of any kind" from Out to an optional In item (on-demand conversion via an external converter, off without config), vision.md:58-59 narrows "files are never copied, moved or modified" to the sources under MEDIA_ROOT (derived copies live under CONVERT_DIR, default DATA_DIR/converted), vision.md:62-63 lets not-playable items be converted when a converter is configured, vision.md:36 USP notes the optional external converter process; constitution — constitution.md:20 adds `CONVERTER_CMD` and `CONVERT_DIR` to the config list, constitution.md:26 allows `CONVERT_DIR` as the second containment root, constitution.md:55 becomes "child processes only for the configured converter, argv without shell, one at a time", constitution.md:29 classifies conversion state and files (derivable but expensive vs. non-derivable); architecture — component map gains a conversion queue component and converted-path resolution in the path guard (architecture.md:18 and architecture.md:49), architecture.md:54 data split gains `DATA_DIR/converted/`, architecture.md:61 Stream flow serves the converted variant when present, a new key flow "Convert" (button → queue → spawn → verify via `mp4-codec.js` sniff → playable), architecture.md:76 new config values
 
 ### Plex Media Server — Optimized Versions
 
@@ -211,7 +211,7 @@ Foundation impact: vision — vision.md:71 moves "Transcoding or remuxing of any
 - Date: 2026-09-28
 - Notes:
   - ADOPT: the optimized copy is a second version of the same library item, and the player picks it transparently. Plexopedia: the server "will select the best quality video that best meets the selected streaming quality for the client". We take the "same item, different file" model: the converted file is served under the unchanged item id, with no version picker.
-  - AVOID: default storage in a "Plex Versions" folder inside the source's media folder (search-result excerpt of the Plex support page). Under our constitution that is forbidden because MEDIA_ROOT is read-only. Converted files go only under `DATA_DIR`.
+  - AVOID: default storage in a "Plex Versions" folder inside the source's media folder (search-result excerpt of the Plex support page). Under our constitution that is forbidden because MEDIA_ROOT is read-only. Converted files go only under `CONVERT_DIR` (default `DATA_DIR/converted`).
   - AVOID: deleting the original deletes the optimized version at once, even when the user picked "original only" (users report this on the forum, with no staff reply). For videothek, a vanished source must not remove its conversion right away, because root safety and kept progress rows expect that items can reappear. Cleanup happens later with a grace period (Phase 8).
   - Uncertainty: support.plex.tv answers 403 to direct fetches. The storage options come from a search-result excerpt only. Queue semantics (concurrency, reordering) are not verified.
   - Source: https://support.plex.tv/articles/213095317-creating-optimized-versions/ , https://www.plexopedia.com/plex-media-server/general/optimized-versions/ , https://forums.plex.tv/t/deleting-the-original-movie-also-deletes-optimized-version-why/561225
