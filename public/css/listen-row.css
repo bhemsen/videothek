@@ -49,9 +49,12 @@
 }
 
 /* Wraps like .continue-row__meta: on a narrow cover card a single line would
- * cut off the remaining time, the part the user needs most. */
+ * cut off the remaining time, the part the user needs most. overflow-wrap
+ * breaks a space-less file title (e.g. an underscored file name) inside the
+ * card instead of letting it run into the next one. */
 .listen-row__meta {
   margin: var(--space-1) 0 0;
+  overflow-wrap: anywhere;
   color: var(--color-muted);
   font-size: var(--text-sm);
 }

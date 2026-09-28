@@ -65,16 +65,16 @@ test('listenProgressText rounds the percentage', () => {
 test('listenMeta joins artist/file title with the unbreakable remaining time', () => {
   assert.equal(
     listenMeta(musicItem({ artist: 'Die Beispiele', position: 60, duration: 240 })),
-    'Die Beispiele · Noch 3 Min.',
+    'Die Beispiele · Noch\u00A03\u00A0Min.',
   );
   assert.equal(
     listenMeta(musicItem({ artist: null, position: 60, duration: 240 })),
-    'Unbekannter Interpret · Noch 3 Min.',
+    'Unbekannter Interpret · Noch\u00A03\u00A0Min.',
   );
   assert.equal(listenMeta(musicItem({ artist: 'Die Beispiele', duration: null })), 'Die Beispiele');
   assert.equal(
     listenMeta(audiobookItem({ resume: { itemId: 1, position: 0, fileTitle: 'Teil 2' }, remaining: 180 })),
-    'Teil 2 · Noch 3 Min.',
+    'Teil 2 · Noch\u00A03\u00A0Min.',
   );
   assert.equal(
     listenMeta(audiobookItem({ resume: { itemId: 1, position: 0, fileTitle: 'Teil 2' }, remaining: null })),
@@ -82,7 +82,7 @@ test('listenMeta joins artist/file title with the unbreakable remaining time', (
   );
   assert.equal(
     listenMeta(audiobookItem({ resume: { itemId: 1, position: 0, fileTitle: '' }, remaining: 180 })),
-    'Noch 3 Min.',
+    'Noch\u00A03\u00A0Min.',
   );
 });
 

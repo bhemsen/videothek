@@ -16,7 +16,7 @@ import { UNKNOWN_ARTIST, UNTITLED_ALBUM } from '../audio/music-queue.js';
 
 const UNKNOWN_AUTHOR = 'Unbekannter Autor';
 const MIDDLE_DOT = '·';
-const NO_BREAK_SPACE = ' ';
+const NO_BREAK_SPACE = '\u00A0';
 
 /**
  * The link target for a "Weiterhören" card.
