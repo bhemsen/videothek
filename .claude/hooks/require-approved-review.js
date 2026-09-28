@@ -11,7 +11,8 @@ import { execFileSync } from 'node:child_process';
 const DEADLINE_MS = 50000;
 const SEGMENT_OPS = /&&|\|\||[;|&()\n{}]/;
 const NO_VALUE_FLAGS = new Set(['--squash', '-s', '--merge', '-m', '--rebase', '-r',
-  '--delete-branch', '-d', '--auto', '--disable-auto']);
+  '--delete-branch', '-d', '--disable-auto']);
+const REPO_FLAGS = new Set(['-r', '--repo']);
 const SHA_RE = /Reviewed head:\s*\**\s*([0-9a-f]{40})\b/i;
 
 /**
@@ -34,8 +35,32 @@ function segments(text) {
   return text.split(SEGMENT_OPS).map((s) => s.trim().split(/\s+/).filter(Boolean)).filter((t) => t.length);
 }
 
-/** @param {string} token @returns {boolean} Whether the token invokes the GitHub CLI. */
-const isGh = (token) => /(^|[\\/])gh(\.exe)?$/i.test(token);
+/** @param {string} token @returns {boolean} Whether the token invokes the GitHub CLI (also `x=gh`). */
+const isGh = (token) => /(^|[\\/=])gh(\.exe)?$/i.test(token);
+/** @param {string} token @returns {boolean} Whether the token invokes git (also `x=git`). */
+const isGit = (token) => /(^|[\\/=])git(\.exe)?$/i.test(token);
+
+/**
+ * Finds the `gh pr` subcommand of a token list.
+ * @param {string[]} rest Lower-cased tokens after `gh`.
+ * @returns {{ sub: string, at: number, flagged: boolean } | null} Subcommand, its index and whether
+ *   flags appeared between gh, pr and the subcommand; null when this is not a `gh pr` call.
+ */
+function prSubcommand(rest) {
+  let flagged = false;
+  let i = 0;
+  const skipFlags = () => {
+    while (i < rest.length && rest[i].startsWith('-')) {
+      flagged = true;
+      i += REPO_FLAGS.has(rest[i]) ? 2 : 1;
+    }
+  };
+  skipFlags();
+  if (rest[i] !== 'pr') return null;
+  i += 1;
+  skipFlags();
+  return i < rest.length ? { sub: rest[i], at: i, flagged } : null;
+}
 
 /**
  * Parses the arguments after `gh pr merge` (fail closed).
@@ -73,11 +98,9 @@ export function mergeTargets(command) {
   for (const tokens of segments(text)) {
     const g = tokens.findIndex(isGh);
     if (g < 0) continue;
-    const rest = tokens.slice(g + 1).map((t) => t.toLowerCase());
-    const p = rest.indexOf('pr');
-    const m = rest.indexOf('merge');
-    if (p < 0 || m < p) continue;
-    if (p !== 0 || m !== 1) { found.push({ error: 'flags between gh, pr and merge are not allowed' }); continue; }
+    const sub = prSubcommand(tokens.slice(g + 1).map((t) => t.toLowerCase()));
+    if (!sub || sub.sub !== 'merge') continue;
+    if (sub.flagged) { found.push({ error: 'flags between gh, pr and merge are not allowed' }); continue; }
     if (tokens.slice(0, g).some((t) => /^GH_(REPO|HOST)=/i.test(t)) || /\bGH_(REPO|HOST)=/i.test(text)) {
       found.push({ error: 'GH_REPO/GH_HOST overrides are not allowed with a merge' });
       continue;
@@ -99,7 +122,7 @@ export function otherMergeRoute(command) {
     const lower = tokens.map((t) => t.toLowerCase());
     const g = tokens.findIndex(isGh);
     if (g >= 0 && lower[g + 1] === 'api' && mergeApi) return 'merging through `gh api` is not allowed';
-    const git = lower.findIndex((t) => /(^|[\\/])git(\.exe)?$/.test(t));
+    const git = lower.findIndex(isGit);
     const push = lower.indexOf('push');
     if (git >= 0 && push > git && lower.slice(push + 1).some((t) => /^\+?((head|[^:]+):)?(refs\/heads\/)?(main|master)$/.test(t))) {
       return 'pushing to the base branch is not allowed';
@@ -109,13 +132,14 @@ export function otherMergeRoute(command) {
 }
 
 /**
- * Reads the verdict of a review comment (any `VERDICT:` first line is a verdict).
+ * Reads the verdict of a review comment: the first line (anywhere in the body) starting with
+ * `VERDICT:` makes the comment a verdict.
  * @param {string} body Comment body.
  * @returns {string | null} Upper-case verdict word(s) or null when the comment is no verdict.
  */
 export function verdictOf(body) {
-  const first = body.split('\n').map((l) => l.trim()).find(Boolean) ?? '';
-  const m = /^[\W_]*VERDICT:(.*)$/i.exec(first);
+  const line = body.split('\n').map((l) => l.trim()).find((l) => /^[\W_]*VERDICT:/i.test(l));
+  const m = line ? /^[\W_]*VERDICT:(.*)$/i.exec(line) : null;
   return m ? m[1].replace(/^[\s*_`]+|[\s*_`]+$/g, '').toUpperCase() : null;
 }
 

@@ -34,6 +34,20 @@ test('mergeTargets finds every invocation, also in chains and odd spellings', ()
   assert.deepEqual(targets('gh pr merge https://github.com/o/r/pull/99 --squash'), [99]);
 });
 
+test('merges written as assignments are recognised', () => {
+  assert.deepEqual(targets('$r=gh pr merge 167 --squash'), [167]);
+  assert.deepEqual(targets('out=`gh pr merge 167 --squash`'), [167]);
+  assert.ok(otherMergeRoute('$r=gh api -X PUT repos/o/r/pulls/5/merge'));
+  assert.ok(otherMergeRoute('$r=git push origin main'));
+});
+
+test('other gh pr subcommands that merely mention "merge" are not merges', () => {
+  assert.deepEqual(targets('gh pr comment 5 --body "ready to merge"'), []);
+  assert.deepEqual(targets('gh pr create --title "fix: merge gate" --body-file x'), []);
+  assert.deepEqual(targets('gh pr list --search "merge gate"'), []);
+  assert.deepEqual(targets('gh pr view 5 --json mergeable'), []);
+});
+
 test('redirections are read like the shell reads them', () => {
   assert.deepEqual(targets('gh pr merge 169>/dev/null 167'), [167]);
   assert.deepEqual(targets('gh pr merge 12 --squash --delete-branch 2>&1'), [12]);
@@ -44,7 +58,8 @@ test('mergeTargets rejects selectors and flags it cannot verify', () => {
   for (const cmd of ['gh pr merge feat/x', 'gh pr merge $PR', 'gh pr merge "$PR" --squash',
     'for n in 1 2; do gh pr merge $n; done', 'gh pr merge --squash', 'gh pr merge 5 6',
     'gh pr -R o/r merge 5', 'gh pr merge -R o/r 5', 'gh pr merge --repo o/r 5', 'gh pr merge 5 --admin',
-    'gh pr merge 5 -t subject', 'gh pr merge 5 --body-file x', 'GH_REPO=o/r gh pr merge 5']) {
+    'gh pr merge 5 -t subject', 'gh pr merge 5 --body-file x', 'GH_REPO=o/r gh pr merge 5',
+    'gh pr merge 5 --auto', 'gh -R o/r pr merge 5']) {
     assert.deepEqual(targets(cmd), ['error'], cmd);
   }
 });
@@ -78,6 +93,7 @@ test('verdictOf treats any VERDICT line as a verdict', () => {
   assert.equal(verdictOf('## VERDICT: APPROVE'), 'APPROVE');
   assert.equal(verdictOf('VERDICT: REQUEST CHANGES'), 'REQUEST CHANGES');
   assert.equal(verdictOf('VERDICT: REJECT'), 'REJECT');
+  assert.equal(verdictOf('Follow-up review\n\nVERDICT: REQUEST_CHANGES\nReviewed head: x'), 'REQUEST_CHANGES');
   assert.equal(verdictOf('lgtm'), null);
 });
 
