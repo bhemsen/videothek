@@ -41,6 +41,21 @@ test('merges written as assignments are recognised', () => {
   assert.ok(otherMergeRoute('$r=git push origin main'));
 });
 
+test('flags before or between gh, pr and merge deny (gh lets them take values)', () => {
+  for (const cmd of ['gh --subject x pr merge 167 --squash', 'gh -t x pr merge 167', 'gh --body-file f pr merge 167',
+    'gh pr --subject x merge 167', 'gh pr -b x merge 167', 'gh pr -A e merge 167',
+    `gh pr --match-head-commit ${A} merge 167`, 'gh -R o/r pr merge 5']) {
+    assert.deepEqual(targets(cmd), ['error'], cmd);
+  }
+});
+
+test('every gh token in a segment is checked', () => {
+  assert.deepEqual(targets('t=gh gh pr merge 167'), [167]);
+  assert.deepEqual(targets('GH_CONFIG_DIR=C:/x/gh gh pr merge 167'), [167]);
+  assert.ok(otherMergeRoute('gh -X PUT api repos/o/r/pulls/167/merge'));
+  assert.ok(otherMergeRoute('gh --method PUT api repos/o/r/pulls/167/merge'));
+});
+
 test('other gh pr subcommands that merely mention "merge" are not merges', () => {
   assert.deepEqual(targets('gh pr comment 5 --body "ready to merge"'), []);
   assert.deepEqual(targets('gh pr create --title "fix: merge gate" --body-file x'), []);

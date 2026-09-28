@@ -12,7 +12,6 @@ const DEADLINE_MS = 50000;
 const SEGMENT_OPS = /&&|\|\||[;|&()\n{}]/;
 const NO_VALUE_FLAGS = new Set(['--squash', '-s', '--merge', '-m', '--rebase', '-r',
   '--delete-branch', '-d', '--disable-auto']);
-const REPO_FLAGS = new Set(['-r', '--repo']);
 const SHA_RE = /Reviewed head:\s*\**\s*([0-9a-f]{40})\b/i;
 
 /**
@@ -41,25 +40,23 @@ const isGh = (token) => /(^|[\\/=])gh(\.exe)?$/i.test(token);
 const isGit = (token) => /(^|[\\/=])git(\.exe)?$/i.test(token);
 
 /**
- * Finds the `gh pr` subcommand of a token list.
+ * Classifies a `gh …` invocation. Only the exact `gh pr merge` shape is parsed; any flag before or
+ * right after `pr` makes a later `merge` token a denial, because gh lets such flags take values.
  * @param {string[]} rest Lower-cased tokens after `gh`.
- * @returns {{ sub: string, at: number, flagged: boolean } | null} Subcommand, its index and whether
- *   flags appeared between gh, pr and the subcommand; null when this is not a `gh pr` call.
+ * @returns {'merge' | 'flagged-merge' | 'other'} Classification.
  */
-function prSubcommand(rest) {
-  let flagged = false;
-  let i = 0;
-  const skipFlags = () => {
-    while (i < rest.length && rest[i].startsWith('-')) {
-      flagged = true;
-      i += REPO_FLAGS.has(rest[i]) ? 2 : 1;
-    }
-  };
-  skipFlags();
-  if (rest[i] !== 'pr') return null;
-  i += 1;
-  skipFlags();
-  return i < rest.length ? { sub: rest[i], at: i, flagged } : null;
+function classifyGh(rest) {
+  const mergeAfter = (/** @type {number} */ i) => rest.slice(i).includes('merge');
+  if (rest[0] === 'pr') {
+    if (rest[1] === 'merge') return 'merge';
+    if (rest[1] && !rest[1].startsWith('-')) return 'other';
+    return mergeAfter(1) ? 'flagged-merge' : 'other';
+  }
+  if (rest[0]?.startsWith('-')) {
+    const p = rest.indexOf('pr');
+    return p >= 0 && mergeAfter(p + 1) ? 'flagged-merge' : 'other';
+  }
+  return 'other';
 }
 
 /**
@@ -94,18 +91,17 @@ function parseMergeArgs(args) {
  */
 export function mergeTargets(command) {
   const text = normalize(command);
+  /** @type {Array<{ target: number, pin: string | null } | { error: string }>} */
   const found = [];
   for (const tokens of segments(text)) {
-    const g = tokens.findIndex(isGh);
-    if (g < 0) continue;
-    const sub = prSubcommand(tokens.slice(g + 1).map((t) => t.toLowerCase()));
-    if (!sub || sub.sub !== 'merge') continue;
-    if (sub.flagged) { found.push({ error: 'flags between gh, pr and merge are not allowed' }); continue; }
-    if (tokens.slice(0, g).some((t) => /^GH_(REPO|HOST)=/i.test(t)) || /\bGH_(REPO|HOST)=/i.test(text)) {
-      found.push({ error: 'GH_REPO/GH_HOST overrides are not allowed with a merge' });
-      continue;
-    }
-    found.push(parseMergeArgs(tokens.slice(g + 3)));
+    tokens.forEach((token, g) => {
+      if (!isGh(token)) return;
+      const kind = classifyGh(tokens.slice(g + 1).map((t) => t.toLowerCase()));
+      if (kind === 'other') return;
+      if (kind === 'flagged-merge') { found.push({ error: 'flags before or between gh, pr and merge are not allowed' }); return; }
+      if (/\bGH_(REPO|HOST)=/i.test(text)) { found.push({ error: 'GH_REPO/GH_HOST overrides are not allowed with a merge' }); return; }
+      found.push(parseMergeArgs(tokens.slice(g + 3)));
+    });
   }
   return found;
 }
@@ -120,10 +116,9 @@ export function otherMergeRoute(command) {
   const mergeApi = /\/pulls\/\d+\/merge\b|mergepullrequest|\/merges\b/i.test(text);
   for (const tokens of segments(text)) {
     const lower = tokens.map((t) => t.toLowerCase());
-    const g = tokens.findIndex(isGh);
-    if (g >= 0 && lower[g + 1] === 'api' && mergeApi) return 'merging through `gh api` is not allowed';
+    if (mergeApi && tokens.some(isGh) && lower.includes('api')) return 'merging through `gh api` is not allowed';
     const git = lower.findIndex(isGit);
-    const push = lower.indexOf('push');
+    const push = lower.indexOf('push', git + 1);
     if (git >= 0 && push > git && lower.slice(push + 1).some((t) => /^\+?((head|[^:]+):)?(refs\/heads\/)?(main|master)$/.test(t))) {
       return 'pushing to the base branch is not allowed';
     }
