@@ -38,7 +38,7 @@
 - Code, comments, commit messages, docs: English. UI text: German.
 - Every exported function has a JSDoc signature (`@param`, `@returns`).
 - Error responses are JSON `{ "error": "<code>" }` for `/api/*`; HTML pages only for page routes.
-- Config is read once in `src/config.js`; no `process.env` access elsewhere.
+- Config is read once in `src/config.js`; no `process.env` access elsewhere (sole exception: the converter double `test/helpers/converter-stub.js`, which stands in for the external converter process and only reports the environment it received).
 - Commits follow Conventional Commits (`feat:`, `fix:`, `docs:`, `test:`, `chore:`).
 
 ## Quality gates
@@ -52,7 +52,7 @@
 
 - No npm runtime dependency, no bundler, no frontend framework, no CSS framework.
 - No writes, moves or deletes under `MEDIA_ROOT`.
-- No transcoding in the app process. Code under `src/` starts child processes only for the configured external converter (`CONVERTER_CMD`) and only from `src/convert/run-converter.js`: `spawn` with an argv array, never through a shell, one at a time, with `cwd` and `TMPDIR`/`TEMP`/`TMP` set to a per-job directory under `CONVERT_DIR`, and an allowlisted environment that never contains `ADMIN_PASSWORD`. A result counts only after videothek's own format check (MP4 codec sniff; FLAC/Ogg-Opus magic). The converter's own side of the contract is in `docs/architecture.md` (Boundaries).
+- No transcoding in the app process. Code under `src/` starts child processes only for the configured external converter (`CONVERTER_CMD`) and only from `src/convert/run-converter.js`: `spawn` with an argv array, never through a shell, one at a time, with `cwd` and `TMPDIR`/`TEMP`/`TMP` set to a per-job directory under `CONVERT_DIR`, and an environment built from an allowlist (on Windows libuv adds its fixed system set) that never contains `ADMIN_PASSWORD`. A result counts only after videothek's own format check (MP4 codec sniff; FLAC/Ogg-Opus magic). The converter's own side of the contract is in `docs/architecture.md` (Boundaries).
 - No outbound network calls (metadata, telemetry, CDNs) — all assets served locally.
 - No secrets or password hashes in logs; no plaintext passwords stored.
 - No `eval`, `new Function`, or `innerHTML` with unescaped data.
