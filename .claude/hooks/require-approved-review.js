@@ -1,37 +1,57 @@
-// PreToolUse hook (Bash|PowerShell): blocks every merge route unless the PR carries a
-// visible `VERDICT: APPROVE` review comment for its current head. The only accepted drift is a
-// single merge-of-main commit (second parent already in the base branch). Fails closed: any
-// merge invocation it cannot parse or verify is denied.
+// PreToolUse hook (any tool with a string `command`, e.g. Bash, PowerShell, Monitor): blocks merges
+// unless the PR carries a visible `VERDICT: APPROVE` review comment for its current head and the
+// merge pins that head with --match-head-commit. The only accepted drift between review and head is
+// one merge-of-main commit whose second parent is already in the base branch. Fails closed: a merge
+// invocation it cannot parse or verify is denied.
+// Scope: a guard against agents skipping the review step — text scanning cannot stop deliberate
+// evasion (aliases, scripts, direct API clients); pair it with branch protection on the base branch.
 // Dev tooling for the Claude Code harness — not part of the app (not under src/).
 import { execFileSync } from 'node:child_process';
 
-const MERGE_RE = /\bgh(?:\.exe)?\s+pr\s+merge\b/g;
-const OPS = /&&|\|\||[;|&<>()\n`]/;
+const DEADLINE_MS = 50000;
+const SEGMENT_OPS = /&&|\|\||[;|&()\n{}]/;
 const NO_VALUE_FLAGS = new Set(['--squash', '-s', '--merge', '-m', '--rebase', '-r',
   '--delete-branch', '-d', '--auto', '--disable-auto']);
 const SHA_RE = /Reviewed head:\s*\**\s*([0-9a-f]{40})\b/i;
 
 /**
- * Normalises a shell command for matching: joins continued lines, drops quotes.
+ * Normalises a command line the way a shell would read it for our purposes.
  * @param {string} command Raw command line.
- * @returns {string} Normalised text.
+ * @returns {string} Text with continuations joined, quotes and redirections removed.
  */
-function normalize(command) {
-  return command.replace(/\\\r?\n/g, ' ').replace(/["']/g, '');
+export function normalize(command) {
+  return command
+    .replace(/\\\r?\n|`\r?\n/g, ' ')
+    .replace(/["'`]/g, '')
+    .replace(/\d*(>>|>&|<&|>|<)\s*[^\s;&|()]*/g, ' ');
 }
 
 /**
- * Parses the arguments of one `gh pr merge` invocation (fail closed).
- * @param {string[]} tokens Tokens up to the next shell operator.
- * @returns {{ target: number } | { error: string }} PR number or rejection reason.
+ * @param {string} text Normalised command text.
+ * @returns {string[][]} Token lists, one per simple command.
  */
-function parseMergeArgs(tokens) {
+function segments(text) {
+  return text.split(SEGMENT_OPS).map((s) => s.trim().split(/\s+/).filter(Boolean)).filter((t) => t.length);
+}
+
+/** @param {string} token @returns {boolean} Whether the token invokes the GitHub CLI. */
+const isGh = (token) => /(^|[\\/])gh(\.exe)?$/i.test(token);
+
+/**
+ * Parses the arguments after `gh pr merge` (fail closed).
+ * @param {string[]} args Tokens after `merge`.
+ * @returns {{ target: number, pin: string | null } | { error: string }} Selector and pinned head.
+ */
+function parseMergeArgs(args) {
   /** @type {number | null} */
   let target = null;
-  for (let i = 0; i < tokens.length; i += 1) {
-    const t = tokens[i];
-    if (NO_VALUE_FLAGS.has(t) || t.startsWith('--match-head-commit=')) continue;
-    if (t === '--match-head-commit') { i += 1; continue; }
+  /** @type {string | null} */
+  let pin = null;
+  for (let i = 0; i < args.length; i += 1) {
+    const t = args[i];
+    if (NO_VALUE_FLAGS.has(t)) continue;
+    if (t === '--match-head-commit') { pin = args[i + 1] ?? ''; i += 1; continue; }
+    if (t.startsWith('--match-head-commit=')) { pin = t.slice(20); continue; }
     if (t.startsWith('-')) return { error: `unsupported flag ${t}` };
     if (target !== null) return { error: 'more than one PR selector' };
     const url = /^https?:\/\/\S+\/pull\/(\d+)\/?$/.exec(t);
@@ -39,21 +59,30 @@ function parseMergeArgs(tokens) {
     else if (url) target = Number(url[1]);
     else return { error: `PR selector "${t}" is not a literal PR number or /pull/N URL` };
   }
-  return target === null ? { error: '`gh pr merge` needs an explicit PR number' } : { target };
+  return target === null ? { error: '`gh pr merge` needs an explicit PR number' } : { target, pin };
 }
 
 /**
- * Finds every `gh pr merge` invocation in a command.
+ * Finds every PR merge invocation in a command.
  * @param {string} command Full command line.
- * @returns {Array<{ target: number } | { error: string }>} One entry per invocation.
+ * @returns {Array<{ target: number, pin: string | null } | { error: string }>} One entry per invocation.
  */
 export function mergeTargets(command) {
   const text = normalize(command);
   const found = [];
-  for (const m of text.matchAll(MERGE_RE)) {
-    const segment = text.slice((m.index ?? 0) + m[0].length).split(OPS)[0];
-    const parsed = parseMergeArgs(segment.trim().split(/\s+/).filter(Boolean));
-    found.push(/\bGH_(REPO|HOST)=/.test(text) ? { error: 'GH_REPO/GH_HOST overrides are not allowed with a merge' } : parsed);
+  for (const tokens of segments(text)) {
+    const g = tokens.findIndex(isGh);
+    if (g < 0) continue;
+    const rest = tokens.slice(g + 1).map((t) => t.toLowerCase());
+    const p = rest.indexOf('pr');
+    const m = rest.indexOf('merge');
+    if (p < 0 || m < p) continue;
+    if (p !== 0 || m !== 1) { found.push({ error: 'flags between gh, pr and merge are not allowed' }); continue; }
+    if (tokens.slice(0, g).some((t) => /^GH_(REPO|HOST)=/i.test(t)) || /\bGH_(REPO|HOST)=/i.test(text)) {
+      found.push({ error: 'GH_REPO/GH_HOST overrides are not allowed with a merge' });
+      continue;
+    }
+    found.push(parseMergeArgs(tokens.slice(g + 3)));
   }
   return found;
 }
@@ -64,25 +93,30 @@ export function mergeTargets(command) {
  * @returns {string | null} Rejection reason or null.
  */
 export function otherMergeRoute(command) {
-  const t = normalize(command);
-  if (/\bgh(?:\.exe)?\s+api\b/.test(t) && /\/pulls\/\d+\/merge\b|mergePullRequest|\/merges\b/.test(t)) {
-    return 'merging through `gh api` is not allowed';
-  }
-  if (/\bgit\s+push\b/.test(t) && /[\s:+](refs\/heads\/)?(main|master)(\s|$)/.test(t)) {
-    return 'pushing to the base branch is not allowed';
+  const text = normalize(command);
+  const mergeApi = /\/pulls\/\d+\/merge\b|mergepullrequest|\/merges\b/i.test(text);
+  for (const tokens of segments(text)) {
+    const lower = tokens.map((t) => t.toLowerCase());
+    const g = tokens.findIndex(isGh);
+    if (g >= 0 && lower[g + 1] === 'api' && mergeApi) return 'merging through `gh api` is not allowed';
+    const git = lower.findIndex((t) => /(^|[\\/])git(\.exe)?$/.test(t));
+    const push = lower.indexOf('push');
+    if (git >= 0 && push > git && lower.slice(push + 1).some((t) => /^\+?((head|[^:]+):)?(refs\/heads\/)?(main|master)$/.test(t))) {
+      return 'pushing to the base branch is not allowed';
+    }
   }
   return null;
 }
 
 /**
- * Reads the verdict of a review comment (tolerates Markdown decoration).
+ * Reads the verdict of a review comment (any `VERDICT:` first line is a verdict).
  * @param {string} body Comment body.
- * @returns {'APPROVE' | 'REQUEST_CHANGES' | null} Verdict or null.
+ * @returns {string | null} Upper-case verdict word(s) or null when the comment is no verdict.
  */
 export function verdictOf(body) {
   const first = body.split('\n').map((l) => l.trim()).find(Boolean) ?? '';
-  const m = /^[\W_]*VERDICT:[\s*_]*(APPROVE|REQUEST_CHANGES)\b/i.exec(first);
-  return m ? /** @type {'APPROVE' | 'REQUEST_CHANGES'} */ (m[1].toUpperCase()) : null;
+  const m = /^[\W_]*VERDICT:(.*)$/i.exec(first);
+  return m ? m[1].replace(/^[\s*_`]+|[\s*_`]+$/g, '').toUpperCase() : null;
 }
 
 /**
@@ -93,7 +127,7 @@ export function verdictOf(body) {
  * @returns {{ allow: boolean, reason: string, needsCommit?: boolean }} Decision.
  */
 export function decide(pr, headCommit) {
-  const last = pr.comments.filter((c) => verdictOf(c.body)).at(-1);
+  const last = pr.comments.filter((c) => verdictOf(c.body) !== null).at(-1);
   if (!last) return { allow: false, reason: 'no VERDICT review comment on the PR' };
   if (verdictOf(last.body) !== 'APPROVE') return { allow: false, reason: 'the latest VERDICT is not APPROVE' };
   const reviewed = SHA_RE.exec(last.body)?.[1]?.toLowerCase();
@@ -111,49 +145,65 @@ export function decide(pr, headCommit) {
 }
 
 /**
- * @param {string[]} args gh arguments.
- * @returns {any} Parsed JSON output (throws on error or after 20 s).
+ * Checks one parsed merge against the PR state.
+ * @param {{ target: number, pin: string | null }} t Parsed merge.
+ * @param {(n: number) => { head: string, decision: { allow: boolean, reason: string } }} lookup PR lookup.
+ * @returns {string | null} Deny reason or null.
  */
-function gh(args) {
-  return JSON.parse(execFileSync('gh', args, { encoding: 'utf8', timeout: 20000, stdio: ['ignore', 'pipe', 'pipe'] }));
-}
-
-/**
- * Resolves the gate for one PR via the GitHub CLI.
- * @param {number} n PR number.
- * @returns {{ allow: boolean, reason: string }} Decision.
- */
-function checkPr(n) {
-  const pr = gh(['pr', 'view', String(n), '--json', 'headRefOid,baseRefName,comments']);
-  const first = decide(pr, null);
-  if (!first.needsCommit) return first;
-  const c = gh(['api', `repos/{owner}/{repo}/commits/${pr.headRefOid}`]);
-  const parents = c.parents.map((/** @type {{ sha: string }} */ p) => p.sha);
-  let secondParentInBase = false;
-  if (parents.length === 2) {
-    const cmp = gh(['api', `repos/{owner}/{repo}/compare/${parents[1]}...${pr.baseRefName}`]);
-    secondParentInBase = cmp.status === 'identical' || cmp.status === 'ahead';
-  }
-  return decide(pr, { parents, message: c.commit.message, secondParentInBase });
+export function checkMerge(t, lookup) {
+  const { head, decision } = lookup(t.target);
+  if (!decision.allow) return `PR #${t.target}: ${decision.reason}`;
+  if (!t.pin) return `PR #${t.target}: pin the reviewed state with --match-head-commit ${head}`;
+  if (t.pin.toLowerCase() !== head.toLowerCase()) return `PR #${t.target}: --match-head-commit ${t.pin.slice(0, 7)} is not the current head ${head.slice(0, 7)}`;
+  return null;
 }
 
 /**
  * Evaluates one tool payload.
  * @param {any} input PreToolUse payload.
- * @param {(n: number) => { allow: boolean, reason: string }} check PR checker.
+ * @param {(n: number) => { head: string, decision: { allow: boolean, reason: string } }} lookup PR lookup.
  * @returns {string | null} Deny reason or null to let the call proceed.
  */
-export function evaluate(input, check) {
-  if (input.tool_name !== 'Bash' && input.tool_name !== 'PowerShell') return null;
-  const command = String(input.tool_input?.command ?? '');
+export function evaluate(input, lookup) {
+  const command = input?.tool_input?.command;
+  if (typeof command !== 'string') return null;
   const other = otherMergeRoute(command);
   if (other) return other;
   for (const t of mergeTargets(command)) {
     if ('error' in t) return t.error;
-    const result = check(t.target);
-    if (!result.allow) return `PR #${t.target}: ${result.reason}`;
+    const reason = checkMerge(t, lookup);
+    if (reason) return reason;
   }
   return null;
+}
+
+/**
+ * Builds a GitHub lookup that shares one overall deadline across all calls.
+ * @param {number} deadline Epoch ms after which lookups fail.
+ * @returns {(n: number) => { head: string, decision: { allow: boolean, reason: string } }} Lookup.
+ */
+function githubLookup(deadline) {
+  /** @param {string[]} args @returns {any} */
+  const gh = (args) => {
+    const timeout = deadline - Date.now();
+    if (timeout <= 0) throw new Error('verification deadline exceeded');
+    return JSON.parse(execFileSync('gh', args, { encoding: 'utf8', timeout, stdio: ['ignore', 'pipe', 'pipe'] }));
+  };
+  return (n) => {
+    const pr = gh(['pr', 'view', String(n), '--json', 'headRefOid,baseRefName,comments']);
+    let decision = decide(pr, null);
+    if (decision.needsCommit) {
+      const c = gh(['api', `repos/{owner}/{repo}/commits/${pr.headRefOid}`]);
+      const parents = c.parents.map((/** @type {{ sha: string }} */ p) => p.sha);
+      let secondParentInBase = false;
+      if (parents.length === 2) {
+        const cmp = gh(['api', `repos/{owner}/{repo}/compare/${parents[1]}...${pr.baseRefName}`]);
+        secondParentInBase = cmp.status === 'identical' || cmp.status === 'ahead';
+      }
+      decision = decide(pr, { parents, message: c.commit.message, secondParentInBase });
+    }
+    return { head: pr.headRefOid, decision };
+  };
 }
 
 /** @param {string} reason Deny reason shown to the agent. */
@@ -162,7 +212,7 @@ function deny(reason) {
     hookSpecificOutput: {
       hookEventName: 'PreToolUse',
       permissionDecision: 'deny',
-      permissionDecisionReason: `Merge gate: ${reason}. Merges need a fresh-context reviewer's "VERDICT: APPROVE" comment with "Reviewed head: <sha>" for the current PR head, and a plain \`gh pr merge <number> --squash --delete-branch\`. Do not work around this gate.`,
+      permissionDecisionReason: `Merge gate: ${reason}. Merges need a fresh-context reviewer's "VERDICT: APPROVE" comment with "Reviewed head: <sha>" for the current PR head and the plain form \`gh pr merge <number> --squash --delete-branch --match-head-commit <head sha>\`. Do not work around this gate.`,
     },
   }));
 }
@@ -174,7 +224,7 @@ function main() {
   process.stdin.on('data', (d) => { raw += d; });
   process.stdin.on('end', () => {
     try {
-      const reason = evaluate(JSON.parse(raw || '{}'), checkPr);
+      const reason = evaluate(JSON.parse(raw || '{}'), githubLookup(Date.now() + DEADLINE_MS));
       if (reason) deny(reason);
     } catch (err) {
       deny(`could not verify the merge (${err instanceof Error ? err.message.split('\n')[0] : String(err)})`);
@@ -182,4 +232,5 @@ function main() {
   });
 }
 
-if (import.meta.main) main();
+const entry = (process.argv[1] ?? '').replace(/\\/g, '/').toLowerCase();
+if (import.meta.main ?? entry.endsWith('/require-approved-review.js')) main();
