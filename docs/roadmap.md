@@ -19,6 +19,7 @@
 | 6 | Image gallery — folder gallery, EXIF embedded thumbnails, lightbox | [spec-image-gallery](specs/spec-image-gallery.md) | [#6](https://github.com/bhemsen/videothek/milestone/6) |
 | 7 | On-demand conversion (core) — converter config (off when unset), one-at-a-time conversion queue against a stub converter, converted copy under `DATA_DIR` served under the same item id, "Konvertieren" button + status and manual retry | — | — |
 | 8 | Converter adapter & Pi protection — real `bhemsen/converter` adapter (needs a converter release with `--to web`, `--json`, kill-safe output), process-group cancel, playback protection while converting, stale-conversion cleanup | — | — |
+| 9 | Gallery-video conversion — "Konvertieren" for not-playable videos in the `/images` gallery (needs a hook that follows the lazily rendered tile batches; deferred from Phase 7) | — | — |
 
 A phase gets a Spec link once `/plan` drafts it, and a Milestone link once the
 spec is merged. The milestone (open/closed + issue progress) is where status

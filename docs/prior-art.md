@@ -274,7 +274,7 @@ Foundation impact: vision — vision.md:71 moves "Transcoding or remuxing of any
 
 ## External converter contract (Phase 8)
 
-Foundation impact: vision — vision.md:50-51 Pi criterion extended so two concurrent 1080p direct-play streams stay stutter-free while one conversion runs; constitution — constitution.md:55 (as amended in Phase 7) adds the minimum converter contract (JSON Lines fields, exit codes 0/1/2/130) and the rule that the converter runs at lowest CPU/IO priority, constitution.md:25 and constitution.md:54 restated so cleanup deletes only under `CONVERT_DIR`; architecture — the Convert flow gains the adapter, outcome mapping and cancel steps, architecture.md:59 Scan flow hooks stale-conversion cleanup via `onScanComplete` and respects root safety, architecture.md:10 entry-point graceful shutdown stops the converter process group
+Foundation impact: vision — vision.md:52-53 Pi criterion extended so two concurrent 1080p direct-play streams stay stutter-free while one conversion runs; constitution — constitution.md:55 (as amended in Phase 7) adds the minimum converter contract (JSON Lines fields, exit codes 0/1/2/130) and the rule that the converter runs at lowest CPU/IO priority, constitution.md:25 and constitution.md:54 restated so cleanup deletes only under `CONVERT_DIR`; architecture — the Convert flow gains the adapter, outcome mapping and cancel steps, architecture.md:62 Scan flow hooks stale-conversion cleanup via `onScanComplete` and respects root safety, architecture.md:10 entry-point graceful shutdown stops the converter process group
 
 ### bhemsen/converter (v3.1.0)
 
