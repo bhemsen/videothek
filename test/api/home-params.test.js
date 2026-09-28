@@ -14,7 +14,8 @@ function parse(raw) {
 
 test('parseHomeLimit: absent defaults to 10, valid digit strings in range parse', () => {
   // Literals, not the constants under test: this must fail if HOME_LIMIT_DEFAULT or
-  // HOME_LIMIT_MAX ever drifts from the contract's fixed 10/20.
+  // HOME_LIMIT_MAX ever drifts from the documented API values (default 10, range
+  // 1..20; see the handler JSDoc in home-listening.js and home-previews.js).
   assert.equal(parse(null), 10);
   assert.equal(parse('1'), 1);
   assert.equal(parse('20'), 20);
