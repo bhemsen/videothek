@@ -60,14 +60,16 @@ function toArtistSectionJson(section) {
   return { name: section.name, albums: section.albums.map(toAlbumSummaryJson) };
 }
 
+/** @typedef {{ trackId: number, albumId: number, title: string, artist: string | null, albumTitle: string | null, coverId: number, position: number, duration: number | null, updatedAt: string }} MusicResumeJson */
+
 /**
  * Builds the Musik "Weiterhören" card's JSON, or `null` when the user has no
  * offerable music row (`getLatestMusicResume`).
  * @param {import('node:sqlite').DatabaseSync} db
  * @param {number} userId
- * @returns {object | null}
+ * @returns {MusicResumeJson | null}
  */
-function buildResumeJson(db, userId) {
+export function buildResumeJson(db, userId) {
   const resumeRow = getLatestMusicResume(db, { userId, startThreshold: START_THRESHOLD_S });
   if (!resumeRow) return null;
   const track = /** @type {import('../db/audio-meta-repo.js').AudioRow} */ (getAudioRow(db, resumeRow.itemId));

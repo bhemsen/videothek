@@ -1,11 +1,17 @@
 /*
- * Home page layout: the rows slot a later phase (P4) fills stacks any rows
- * with a gap. The "Willkommen" empty state reuses base.css's .empty-state
- * unchanged.
+ * Home page layout (see docs/architecture.md "Start page" and key flow 8):
+ * `.home-rows` holds three fixed slots — "Weiterschauen", "Weiterhören", the
+ * category previews — each stacked with a gap. The "Willkommen" empty state
+ * reuses base.css's .empty-state unchanged.
  */
 
 .home-rows {
   display: flex;
   flex-direction: column;
   gap: var(--space-6);
+}
+
+/* Empty slots (a row not mounted, or removed) take no gap in .home-rows. */
+.home-rows__slot:empty {
+  display: none;
 }

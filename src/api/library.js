@@ -67,7 +67,7 @@ function scanStatusJson(library) {
  * @param {SeriesSummaryRow} row
  * @returns {{ id: number, title: string, year: number | null, seasonCount: number, episodeCount: number, playableCount: number, addedAt: string }}
  */
-function toSeriesSummaryJson(row) {
+export function toSeriesSummaryJson(row) {
   return {
     id: row.id,
     title: row.title,

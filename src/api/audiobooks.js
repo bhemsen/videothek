@@ -37,7 +37,7 @@ function userId(ctx) {
  * @param {number | null} durationMs
  * @returns {number | null}
  */
-function msToSeconds(durationMs) {
+export function msToSeconds(durationMs) {
   return durationMs == null ? null : Math.round(durationMs / 1000);
 }
 
@@ -47,7 +47,7 @@ function msToSeconds(durationMs) {
  * @param {import('../library/audio-groups.js').Book} book
  * @returns {import('./audiobook-resume.js').BookFile[]}
  */
-function toBookFiles(book) {
+export function toBookFiles(book) {
   return book.members.map((member) => ({
     id: member.id,
     playable: Boolean(member.playable),

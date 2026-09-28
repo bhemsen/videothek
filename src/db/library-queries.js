@@ -40,7 +40,8 @@ const LIST_ITEMS_BY_ADDED_SQL = `
   ORDER BY added_at DESC, mtime_ms DESC, id
 `;
 
-const SERIES_SUMMARY_SELECT = `
+/** Shared projection for one series summary row; reused by `src/db/home-queries.js`'s recent-series query. */
+export const SERIES_SUMMARY_SELECT = `
   SELECT
     ls.id AS id,
     ls.title AS title,
