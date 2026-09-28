@@ -10,6 +10,7 @@ import { el, createEmptyState } from './lib/dom.js';
 import { mountShell } from './lib/shell.js';
 import { mountContinueRow } from './lib/continue-row.js';
 import { mountListenRow } from './lib/listen-row.js';
+import { mountCategoryPreviews } from './lib/category-previews.js';
 
 const { main } = mountShell({ active: null });
 
@@ -37,7 +38,11 @@ const observer = new MutationObserver(() => {
 });
 for (const slot of slots) observer.observe(slot, { childList: true });
 
-Promise.allSettled([mountContinueRow(continueSlot), mountListenRow(listenSlot)]).then(() => {
+Promise.allSettled([
+  mountContinueRow(continueSlot),
+  mountListenRow(listenSlot),
+  mountCategoryPreviews(previewsSlot),
+]).then(() => {
   settled = true;
   emptyState.hidden = hasContent();
 });

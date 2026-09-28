@@ -1,6 +1,16 @@
 import { test } from 'node:test';
 import assert from 'node:assert/strict';
-import { listenHref, listenFraction, listenProgressText, listenMeta } from '../../public/js/lib/home-format.js';
+import {
+  listenHref,
+  listenFraction,
+  listenProgressText,
+  listenMeta,
+  PREVIEW_SECTIONS,
+  previewCountLabel,
+  albumCardText,
+  bookCardText,
+} from '../../public/js/lib/home-format.js';
+import { NAV_ENTRIES } from '../../public/js/lib/nav.js';
 
 /** @returns {import('../../public/js/lib/home-api.js').MusicListeningItem} */
 function musicItem(overrides = {}) {
@@ -73,5 +83,52 @@ test('listenMeta joins artist/file title with the remaining time', () => {
   assert.equal(
     listenMeta(audiobookItem({ resume: { itemId: 1, position: 0, fileTitle: '' }, remaining: 180 })),
     'Noch 3 Min.',
+  );
+});
+
+test('PREVIEW_SECTIONS is in nav order with labels matching NAV_ENTRIES and the documented hrefs', () => {
+  assert.deepEqual(
+    PREVIEW_SECTIONS.map((s) => s.category),
+    ['movies', 'series', 'music', 'audiobooks', 'images'],
+  );
+  for (const section of PREVIEW_SECTIONS) {
+    const navEntry = NAV_ENTRIES.find((n) => n.id === section.category);
+    assert.equal(section.label, navEntry?.label, `label for ${section.category}`);
+  }
+  assert.deepEqual(
+    PREVIEW_SECTIONS.map((s) => s.allHref),
+    ['/movies?sort=added', '/series?sort=added', '/music', '/audiobooks', '/images'],
+  );
+});
+
+test('previewCountLabel uses the singular/plural word per category', () => {
+  assert.equal(previewCountLabel('movies', 0), '0 Titel');
+  assert.equal(previewCountLabel('movies', 1), '1 Titel');
+  assert.equal(previewCountLabel('movies', 2), '2 Titel');
+  assert.equal(previewCountLabel('series', 1), '1 Serie');
+  assert.equal(previewCountLabel('series', 2), '2 Serien');
+  assert.equal(previewCountLabel('music', 1), '1 Album');
+  assert.equal(previewCountLabel('music', 2), '2 Alben');
+  assert.equal(previewCountLabel('audiobooks', 1), '1 Hörbuch');
+  assert.equal(previewCountLabel('audiobooks', 2), '2 Hörbücher');
+  assert.equal(previewCountLabel('images', 1), '1 Datei');
+  assert.equal(previewCountLabel('images', 2), '2 Dateien');
+});
+
+test('albumCardText falls back for an untitled album and an unknown artist', () => {
+  assert.deepEqual(
+    albumCardText({ id: 6, title: 'Unterwegs', artist: 'Die Beispiele', year: null, coverId: 6, trackCount: 10 }),
+    { href: '/music?album=6', title: 'Unterwegs', meta: 'Die Beispiele' },
+  );
+  assert.deepEqual(
+    albumCardText({ id: 6, title: null, artist: null, year: null, coverId: 6, trackCount: 1 }),
+    { href: '/music?album=6', title: 'Einzeltitel', meta: 'Unbekannter Interpret' },
+  );
+});
+
+test('bookCardText falls back for an unknown author', () => {
+  assert.deepEqual(
+    bookCardText({ id: 41, title: 'Die Reise', author: null, coverId: 41, fileCount: 3, duration: 3600 }),
+    { href: '/audiobooks?book=41', title: 'Die Reise', meta: 'Unbekannter Autor' },
   );
 });

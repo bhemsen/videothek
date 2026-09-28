@@ -1,16 +1,20 @@
 /**
- * Pure, DOM-free formatting helpers for the start page's "Weiterhören" row.
- * The category-preview helpers join this module in a later commit — see the
- * home overview contract §6.2. No DOM access; unit-tested from
- * test/public/home-format.test.js.
+ * Pure, DOM-free formatting helpers for the start page's "Weiterhören" row
+ * and its category previews: hrefs, progress fractions/text, meta lines, and
+ * the previews' per-category section table. No DOM access; unit-tested from
+ * test/public/home-format.test.js. See the home overview contract §6.2.
  */
 import { formatRemaining } from './progress.js';
-import { UNKNOWN_ARTIST } from '../audio/music-queue.js';
+import { pluralize } from './library-format.js';
+import { UNKNOWN_ARTIST, UNTITLED_ALBUM } from '../audio/music-queue.js';
 
 /** @typedef {import('./home-api.js').ListeningItem} ListeningItem */
 /** @typedef {import('./home-api.js').MusicListeningItem} MusicListeningItem */
 /** @typedef {import('./home-api.js').AudiobookListeningItem} AudiobookListeningItem */
+/** @typedef {import('./home-api.js').AlbumPreview} AlbumPreview */
+/** @typedef {import('./home-api.js').BookPreview} BookPreview */
 
+const UNKNOWN_AUTHOR = 'Unbekannter Autor';
 const MIDDLE_DOT = '·';
 
 /**
@@ -72,4 +76,50 @@ function audiobookMetaParts(item) {
   if (item.resume.fileTitle !== '') parts.push(item.resume.fileTitle);
   if (item.remaining !== null) parts.push(formatRemaining(item.remaining));
   return parts;
+}
+
+/** @typedef {'movies' | 'series' | 'music' | 'audiobooks' | 'images'} PreviewCategory */
+/** @typedef {{ category: PreviewCategory, label: string, allHref: string, singular: string, plural: string }} PreviewSection */
+
+/**
+ * The five category-preview sections, in nav order. Labels are hardcoded
+ * (not looked up via `NAV_ENTRIES.find`, which is `NavEntry | undefined`
+ * under tsc strict) but equal `NAV_ENTRIES`' labels — checked by a test.
+ * @type {readonly PreviewSection[]}
+ */
+export const PREVIEW_SECTIONS = Object.freeze([
+  { category: 'movies', label: 'Filme', allHref: '/movies?sort=added', singular: 'Titel', plural: 'Titel' },
+  { category: 'series', label: 'Serien', allHref: '/series?sort=added', singular: 'Serie', plural: 'Serien' },
+  { category: 'music', label: 'Musik', allHref: '/music', singular: 'Album', plural: 'Alben' },
+  { category: 'audiobooks', label: 'Hörbücher', allHref: '/audiobooks', singular: 'Hörbuch', plural: 'Hörbücher' },
+  { category: 'images', label: 'Bilder', allHref: '/images', singular: 'Datei', plural: 'Dateien' },
+]);
+
+/**
+ * Formats a category's item count with its German singular/plural word.
+ * @param {PreviewCategory} category
+ * @param {number} n
+ * @returns {string}
+ */
+export function previewCountLabel(category, n) {
+  const section = /** @type {PreviewSection} */ (PREVIEW_SECTIONS.find((s) => s.category === category));
+  return pluralize(n, section.singular, section.plural);
+}
+
+/**
+ * The link/title/meta shown on an album preview card.
+ * @param {AlbumPreview} album
+ * @returns {{ href: string, title: string, meta: string }}
+ */
+export function albumCardText(album) {
+  return { href: `/music?album=${album.id}`, title: album.title ?? UNTITLED_ALBUM, meta: album.artist ?? UNKNOWN_ARTIST };
+}
+
+/**
+ * The link/title/meta shown on a book preview card.
+ * @param {BookPreview} book
+ * @returns {{ href: string, title: string, meta: string }}
+ */
+export function bookCardText(book) {
+  return { href: `/audiobooks?book=${book.id}`, title: book.title, meta: book.author ?? UNKNOWN_AUTHOR };
 }
