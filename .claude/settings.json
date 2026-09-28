@@ -20,5 +20,20 @@
       "Bash(gh repo delete*)",
       "Bash(gh release delete*)"
     ]
+  },
+  "hooks": {
+    "PreToolUse": [
+      {
+        "matcher": "Bash|PowerShell|Monitor",
+        "hooks": [
+          {
+            "type": "command",
+            "command": "node \"$CLAUDE_PROJECT_DIR/.claude/hooks/require-approved-review.js\" || exit 2",
+            "timeout": 60,
+            "statusMessage": "Merge gate: checking PR review"
+          }
+        ]
+      }
+    ]
   }
 }
