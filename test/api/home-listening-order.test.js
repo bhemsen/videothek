@@ -93,15 +93,22 @@ test('ties: music before an audiobook at the same instant; two audiobooks tie-br
     const alice = await app.createUser('alice', 'password123');
     const cookie = await app.login('alice', 'password123');
 
+    // The music-first rule cannot be made to fail through this API test: buildListeningItems
+    // always pushes the music item first, so no seed order proves the comparator's role. That
+    // rule is covered structurally instead (see buildListeningItems in home-listening.js).
     seedMusicAt(app.db, alice.id, 5000);
+    // Seed group key 'Zweites' (sorts after 'Erstes') first, so it gets the lower id. The
+    // group-key query then returns 'Erstes' before 'Zweites' (bookA before bookZ), while the
+    // id tie-break requires the opposite (bookZ, the lower id, before bookA). Only a real
+    // `a.id - b.id` comparison produces the expected order below.
+    const bookZ = seedBook(app.db, { groupKey: 'Hörbücher/Zweites' });
+    seedProgress(app.db, { userId: alice.id, relPath: bookZ.path1, position: 60, duration: 180, updatedAt: 5000 });
     const bookA = seedBook(app.db, { groupKey: 'Hörbücher/Erstes' });
     seedProgress(app.db, { userId: alice.id, relPath: bookA.path1, position: 60, duration: 180, updatedAt: 5000 });
-    const bookB = seedBook(app.db, { groupKey: 'Hörbücher/Zweites' });
-    seedProgress(app.db, { userId: alice.id, relPath: bookB.path1, position: 60, duration: 180, updatedAt: 5000 });
-    assert.ok(bookB.file1 > bookA.file1, 'book B must have the higher id for this test to be meaningful');
+    assert.ok(bookZ.file1 < bookA.file1, 'book Z must have the lower id for this test to be meaningful');
 
     const { body } = await get(app.baseUrl, '/api/home/listening', cookie);
-    assert.deepEqual(body.items.map(kindId), ['music', `audiobook:${bookA.file1}`, `audiobook:${bookB.file1}`]);
+    assert.deepEqual(body.items.map(kindId), ['music', `audiobook:${bookZ.file1}`, `audiobook:${bookA.file1}`]);
   } finally {
     await app.close();
   }
