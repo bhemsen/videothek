@@ -113,11 +113,11 @@ export function mergeTargets(command) {
  */
 export function otherMergeRoute(command) {
   const text = normalize(command);
-  const mergeApi = /\/pulls\/.*\/merge(?![\w-])|mergepullrequest|mergebranch|automerge|\/merges\b/is.test(text);
+  const mergeApi = /\/merge(?![\w-])|mergepullrequest|mergebranch|automerge|\/merges\b/i.test(text);
   for (const tokens of segments(text)) {
     const lower = tokens.map((t) => t.toLowerCase());
     const apiCall = tokens.some(isGh) && lower.includes('api');
-    if (apiCall && (mergeApi || lower.some((t) => /\/merge(?![\w-])/.test(t)))) return 'merging through `gh api` is not allowed';
+    if (apiCall && mergeApi) return 'merging through `gh api` is not allowed';
     const git = lower.findIndex(isGit);
     const push = lower.indexOf('push', git + 1);
     if (git >= 0 && push > git && lower.slice(push + 1).some((t) => /^\+?((head|[^:]+):)?(refs\/heads\/)?(main|master)$/.test(t))) {
@@ -160,7 +160,8 @@ export function decide(pr, headCommit) {
   const last = pr.comments.filter((c) => trusted(c) && verdictOf(c.body) !== null).at(-1);
   if (!last) return { allow: false, reason: 'no VERDICT review comment from a repository collaborator on the PR' };
   if (verdictOf(last.body) !== 'APPROVE') return { allow: false, reason: 'the latest VERDICT is not APPROVE' };
-  const reviewed = SHA_RE.exec(last.body)?.[1]?.toLowerCase();
+  const unquoted = last.body.split('\n').filter((l) => !l.trim().startsWith('>')).join('\n');
+  const reviewed = SHA_RE.exec(unquoted)?.[1]?.toLowerCase();
   if (!reviewed) return { allow: false, reason: 'the APPROVE comment names no full "Reviewed head" sha' };
   const head = pr.headRefOid.toLowerCase();
   if (reviewed === head) return { allow: true, reason: 'approved at the current head' };

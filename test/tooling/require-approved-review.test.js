@@ -114,6 +114,10 @@ test('otherMergeRoute catches API merges with a computed PR number', () => {
   assert.ok(otherMergeRoute('u=$(gh api repos/o/r/pulls/167 --jq .url)\ngh api -X PUT "$u/merge"'));
   assert.ok(otherMergeRoute('f(){ gh api -X PUT "$1/merge"; }; f repos/o/r/pulls/167'));
   assert.ok(otherMergeRoute('gh api graphql -f query=mutation{enablePullRequestAutoMerge(input:{})}'));
+  assert.ok(otherMergeRoute('for u in $(gh api repos/o/r/pulls --jq .[].url); do gh api -X PUT "${u}/merge"; done'));
+  assert.ok(otherMergeRoute('f(){ gh api -X PUT "${1}/merge"; }; f repos/o/r/pulls/167'));
+  assert.ok(otherMergeRoute('foreach ($pr in $prs) { gh api -X PUT "$($pr.url)/merge" }'));
+  assert.equal(otherMergeRoute('git checkout feat/merge-gate'), null);
   assert.equal(otherMergeRoute('gh api repos/o/r/pulls/5 --jq .mergeable'), null);
   assert.equal(otherMergeRoute('gh api repos/o/r/pulls/5/commits'), null);
 });
@@ -138,6 +142,12 @@ test('decide: latest verdict wins, only exact APPROVE for the current head passe
   assert.equal(decide({ headRefOid: A, comments: [changes(B), approve(A)] }, null).allow, true);
   assert.equal(decide({ headRefOid: A, comments: [owner('VERDICT: APPROVE')] }, null).allow, false);
   assert.equal(decide({ headRefOid: M, comments: [approve(A)] }, null).needsCommit, true);
+});
+
+test('decide reads the reviewed head only from unquoted lines', () => {
+  const quoted = owner(`> VERDICT: REQUEST_CHANGES\n> Reviewed head: ${A}\n\nVERDICT: APPROVE\nReviewed head: ${B}`);
+  assert.equal(decide({ headRefOid: A, comments: [quoted] }, null).allow, false);
+  assert.equal(decide({ headRefOid: B, comments: [quoted] }, null).allow, true);
 });
 
 test('decide ignores verdicts from authors without write access', () => {
