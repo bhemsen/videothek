@@ -37,7 +37,7 @@ function thumbUrlFor(id, thumb, version) {
  * @param {import('../library/gallery.js').GalleryCoverView | null} cover
  * @returns {{ thumbUrl: string | null, thumbOrientation: number } | null}
  */
-function mapCover(cover) {
+export function mapCover(cover) {
   if (!cover) return null;
   return {
     thumbUrl: thumbUrlFor(cover.id, cover.thumb, cover.version),

@@ -146,7 +146,7 @@ function toItemView(row) {
  * @param {ItemRow | null} row
  * @returns {GalleryCoverView | null}
  */
-function toCoverView(row) {
+export function toCoverView(row) {
   if (!row) return null;
   const thumb = thumbMarkerFor(row);
   return {
