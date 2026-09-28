@@ -3,6 +3,7 @@ import { registerAuthRoutes } from '../api/auth.js';
 import { registerCoverRoutes } from '../api/cover.js';
 import { registerGalleryRoutes } from '../api/gallery.js';
 import { registerHealthRoutes } from '../api/health.js';
+import { registerHomeListeningRoutes } from '../api/home-listening.js';
 import { registerLibraryRoutes } from '../api/library.js';
 import { registerMediaRoutes } from '../api/media.js';
 import { registerMusicRoutes } from '../api/music.js';
@@ -20,6 +21,7 @@ import { registerUserRoutes } from '../api/users.js';
  */
 export function registerRoutes(router, deps) {
   registerHealthRoutes(router, deps);
+  registerHomeListeningRoutes(router, deps);
   registerAuthRoutes(router, deps);
   registerAudiobookRoutes(router, deps);
   registerCoverRoutes(router, deps);
