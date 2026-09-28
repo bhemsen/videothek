@@ -1103,3 +1103,37 @@ Chromium and Firefox, mobile ≤ 767 px and desktop ≥ 1024 px viewport):
   viewport-independent (262 px, measured live), which is under the max-width
   ceiling at both 390 px (358 px) and 1280 px (1248 px), so neither breakpoint
   triggers the ellipsis fallback or a horizontal overflow.
+- 2026-09-28 (#199): Fixed the desktop category nav overlapping the account
+  menu between 768 px and ~900 px (post-merge audit of #167, the #164 entry-
+  spacing fix, found against origin/main at 0c712a4). Root cause: `.wordmark`,
+  `.app-nav` and `.account-menu` are `.app-header`'s three flex children and
+  all keep the default `flex-shrink: 1`, while `.app-nav`'s own children
+  (`.nav-link`) are `flex: none`. Once the combined natural width stopped
+  fitting, the browser shrank the wordmark, `.app-nav`'s own box and the
+  account menu instead of wrapping — but the `.nav-link`s inside the shrunk
+  nav box stayed full width and overflowed it, painting over the account
+  menu, while the wordmark icon and the avatar were visually squeezed below
+  their token sizes. This is not new: at 768 px it already overlapped by
+  13 px before #167. #167's `gap: var(--space-8)` widened the nav's natural
+  content (439 px -> 567 px), which only pushed the point where the same
+  flex-shrink issue kicks in from 768 px up to ~900 px. Fixed by giving
+  `.wordmark`, `.app-nav` and `.account-menu` `flex-shrink: 0` from 768 px
+  (nothing is squeezed below its token size again) and, in the same range,
+  shrinking `.app-nav`'s `gap`/`margin-left` from `--space-8` to `--space-1`
+  and `.nav-link`'s horizontal padding from `0 var(--space-1)` to `0` —
+  freeing just enough width for the longest tested username
+  (`qateamleiter`, 12 chars) to fit without any shrink or overlap. A new
+  `@media (min-width: 1024px)` block restores the `--space-8` gap/margin and
+  the `0 var(--space-1)` padding, keeping #164's ~32 px entry spacing
+  unchanged from 1024 px up (there is enough room there for both usernames
+  without shrinking anything). Verified live in headless Edge 154 via CDP
+  (`test/fixtures/media`, a fresh `DATA_DIR`) at 768/900/1024/1280 px with
+  both `anna` and `qateamleiter`: wordmark icon stays 24x24 px and the
+  avatar stays 32x32 px at every width (no squeeze), the last nav entry
+  never overlaps the account button (768 px gap 18.9 px for `qateamleiter`/
+  64.1 px for `anna`, both positive), no horizontal scroll at 768 px
+  (`scrollWidth === innerWidth`, 768/768, for both usernames — before the
+  fix `qateamleiter` measured 769/768), entries are spaced 4 px apart
+  between 768 and 1023 px and the full 32 px from 1024 px on (unchanged from
+  #164), and the active underline (`border-bottom-color` on
+  `[aria-current='page']`) still sits only under its own `.nav-link` box.

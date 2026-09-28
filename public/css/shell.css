@@ -213,18 +213,23 @@
 
   .app-nav {
     position: static;
-    gap: var(--space-8);
+    flex-shrink: 0;
+    gap: var(--space-1);
     padding-bottom: 0;
-    margin-left: var(--space-8);
+    margin-left: var(--space-1);
     background: none;
     border-top: 0;
+  }
+
+  .wordmark {
+    flex-shrink: 0;
   }
 
   .nav-link {
     flex: none;
     flex-direction: row;
     gap: var(--space-2);
-    padding: 0 var(--space-1);
+    padding: 0;
     font-size: var(--text-md);
     border-bottom: var(--focus-width) solid transparent;
   }
@@ -234,6 +239,7 @@
   }
 
   .account-menu {
+    flex-shrink: 0;
     margin-left: auto;
   }
 
@@ -247,5 +253,19 @@
 
   .shell-title {
     font-size: var(--text-2xl);
+  }
+}
+
+/* From 1024 px there is room for the full issue 164 entry spacing again;
+   below this the narrower rules above keep the wordmark, nav and account
+   menu from overlapping (issue 199). */
+@media (min-width: 1024px) {
+  .app-nav {
+    gap: var(--space-8);
+    margin-left: var(--space-8);
+  }
+
+  .nav-link {
+    padding: 0 var(--space-1);
   }
 }
