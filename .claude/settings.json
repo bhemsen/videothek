@@ -1,7 +1,12 @@
 {
   "permissions": {
     "defaultMode": "bypassPermissions",
-    "allow": ["Bash", "WebFetch", "WebSearch", "Bash(gh pr merge:*)"],
+    "allow": [
+      "Bash",
+      "WebFetch",
+      "WebSearch",
+      "Bash(gh pr merge:*)"
+    ],
     "deny": [
       "Bash(rm -rf *)",
       "Bash(git push --force)",
@@ -19,6 +24,21 @@
       "Bash(npm add *)",
       "Bash(gh repo delete*)",
       "Bash(gh release delete*)"
+    ]
+  },
+  "hooks": {
+    "PreToolUse": [
+      {
+        "matcher": "Bash",
+        "hooks": [
+          {
+            "type": "command",
+            "command": "node \"$CLAUDE_PROJECT_DIR/.claude/hooks/require-approved-review.js\"",
+            "timeout": 30,
+            "statusMessage": "Merge gate: checking PR review"
+          }
+        ]
+      }
     ]
   }
 }
