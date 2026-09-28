@@ -87,9 +87,13 @@ export function listStartedBookGroupKeys(db, { userId, startThreshold }) {
 }
 
 /**
- * Per-category item counts for the start page's previews — see the module
- * doc's "Count semantics" for what each key matches on its own category
- * page. One statement, five scalar subqueries.
+ * Per-category item counts for the start page's previews. One statement,
+ * five scalar subqueries. What each key matches on its own category page:
+ * movies — every item, playable or not (`/movies` list length); series —
+ * distinct `series_id` (`/api/library/series` length); music/audiobooks —
+ * distinct `group_key` of items with an `audio_meta` row (album count /
+ * `/api/audiobooks` length); images — `image_meta` rows, including
+ * root-level loose files (gallery file count).
  * @param {import('node:sqlite').DatabaseSync} db
  * @returns {{ movies: number, series: number, music: number, audiobooks: number, images: number }}
  */
