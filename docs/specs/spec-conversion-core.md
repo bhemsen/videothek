@@ -1741,3 +1741,21 @@ exports):
   this file and `test/constitution.test.js` requires the exact mirror name
   `test/db/conversions.test.js`. No behavioural coverage was dropped, only
   test-scaffolding overhead. `npm run verify` green (1468 tests, 0 failures).
+- 2026-09-29: Issue #210 (`src/db/conversion-queries.js`) implemented as
+  specified. The `queue_position` CTE (`ROW_NUMBER() OVER (ORDER BY
+  queued_at, rel_path)` over `conversions JOIN library_items`, `WHERE status =
+  'queued'`) is inlined as a `WITH` prefix in both statements rather than
+  shared as a view, since each is its own prepared statement; both join it
+  with a `LEFT JOIN … ON rel_path` after the base `FROM`, so a row absent from
+  the CTE (non-queued, or the running job) gets `position IS NULL` for free.
+  `listConversionRows` starts `FROM conversions c JOIN library_items li`
+  (only rows present in both); `listConversionRowsForIds` starts `FROM
+  library_items li LEFT JOIN conversions c`, filtered by `li.id IN (SELECT
+  value FROM json_each(?))`, so an id with no conversion row still comes back
+  with every `c_*` column and `position` `NULL`, and an id absent from
+  `library_items` is never in the result to begin with — no special case is
+  needed for an empty `ids` array, since `json_each('[]')` itself yields no
+  rows. All 14 `conversions` columns are aliased `c_*` (including `c_rel_path`
+  and `c_storage_key`, not just the ones the spec names as examples), per
+  "every `conversions` column is aliased". `npm run verify` green (1573
+  tests, 0 failures).
