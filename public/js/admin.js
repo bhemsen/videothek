@@ -12,6 +12,7 @@ import { accountCountLabel } from './admin-format.js';
 import { createUserForm } from './admin-form.js';
 import { createDeleteDialog, createResetDialog } from './admin-dialogs.js';
 import { errorMessage } from './admin-errors.js';
+import { mountConversionPanel } from './admin-conversions.js';
 
 /** @typedef {{ id: number, username: string, role: 'admin' | 'user', createdAt: string }} AdminUser */
 
@@ -45,6 +46,7 @@ main.append(
   deleteDialog.element,
   resetDialog.element,
 );
+mountConversionPanel(main);
 
 init();
 

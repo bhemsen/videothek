@@ -1,0 +1,160 @@
+/*
+ * Admin "Konvertierung" panel (`admin-conversions.js`,
+ * `admin-conversions-rows.js`) — its own stylesheet, injected only once the
+ * panel mounts; `admin.css` is never edited (owned by P1, at 291 lines). See
+ * docs/specs/spec-conversion-core.md "UI behaviour" and "Design".
+ *
+ * Mobile default: each row stacks title / meta / status. >= 768 px: a row
+ * becomes a horizontal card (title+meta left, status/actions right), same
+ * layout the desktop design export uses.
+ */
+
+.conversion-panel h2 {
+  margin-top: var(--space-12);
+  font-size: var(--text-xl);
+  font-weight: var(--weight-semibold);
+}
+
+.conversion-usage,
+.conversion-disabled,
+.conversion-empty {
+  margin-top: var(--space-2);
+  color: var(--color-muted);
+  font-size: var(--text-sm);
+}
+
+.conversion-error {
+  margin-top: var(--space-2);
+  color: var(--color-destructive);
+  font-size: var(--text-sm);
+}
+
+.conversion-group {
+  margin-top: var(--space-6);
+}
+
+.conversion-group__heading {
+  margin-bottom: var(--space-2);
+  color: var(--color-muted);
+  font-size: var(--text-xs);
+  font-weight: var(--weight-semibold);
+  text-transform: uppercase;
+}
+
+.conversion-group__list {
+  background: var(--color-secondary);
+  border: var(--border-width) solid var(--color-border);
+  border-radius: var(--radius-md);
+  overflow: hidden;
+}
+
+.conversion-row {
+  display: flex;
+  flex-direction: column;
+  gap: var(--space-2);
+  padding: var(--space-3) var(--space-4);
+  border-bottom: var(--border-width) solid var(--color-border);
+  min-height: var(--row-min);
+}
+
+.conversion-row:last-child {
+  border-bottom: 0;
+}
+
+.conversion-row__main {
+  min-width: 0;
+}
+
+.conversion-row__title {
+  font-size: var(--text-md);
+  font-weight: var(--weight-semibold);
+  overflow-wrap: anywhere;
+}
+
+.conversion-row__meta,
+.conversion-row__note {
+  margin-top: var(--space-1);
+  color: var(--color-muted);
+  font-size: var(--text-sm);
+}
+
+.conversion-row__note {
+  font-size: var(--text-xs);
+}
+
+.conversion-status-text {
+  display: block;
+  color: var(--color-muted);
+  font-size: var(--text-sm);
+}
+
+.conversion-status-text--running,
+.conversion-status-text--done {
+  display: flex;
+  align-items: center;
+  gap: var(--space-2);
+  color: var(--color-foreground);
+}
+
+.conversion-status-text--done svg {
+  width: var(--space-4);
+  flex-shrink: 0;
+}
+
+.conversion-dot {
+  width: var(--space-2);
+  height: var(--space-2);
+  border-radius: var(--radius-full);
+  background: var(--color-primary);
+  flex-shrink: 0;
+}
+
+.conversion-fail {
+  display: flex;
+  flex-direction: column;
+  gap: var(--space-2);
+}
+
+.conversion-fail__reason {
+  color: var(--color-destructive);
+  font-size: var(--text-sm);
+}
+
+.conversion-fail .btn {
+  width: 100%;
+}
+
+.conversion-panel .btn-inline {
+  padding: 0 var(--space-3);
+  font-size: var(--text-xs);
+}
+
+@media (min-width: 768px) {
+  .conversion-row {
+    flex-direction: row;
+    align-items: center;
+    justify-content: space-between;
+    gap: var(--space-4);
+  }
+
+  .conversion-row__status {
+    flex-shrink: 0;
+  }
+
+  .conversion-status-text {
+    text-align: right;
+    white-space: nowrap;
+  }
+
+  .conversion-fail {
+    align-items: flex-end;
+  }
+
+  .conversion-fail__reason {
+    text-align: right;
+  }
+
+  .conversion-fail .btn {
+    width: auto;
+  }
+}
