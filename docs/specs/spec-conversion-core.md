@@ -1667,6 +1667,66 @@ exports):
   architecture.md; notes keep their first 200 characters, and the no-split
   claim is limited to spellings inside the first 2000; the dangling-junction
   case may skip on `win32` `EPERM`/`ENOENT`.
+- 2026-09-29: Issue #213 (`src/convert/jsonl.js`) implemented. `invalid` is a
+  sticky boolean (never reset once a line fails JSON.parse or
+  `validateRecord`), not a list — the runner only needs one bit for
+  `stdoutInvalid`. Both caps trip on strictly-`>` (a line/run at exactly the
+  configured size is not capped); line-byte accounting counts a line's
+  content only (the `\n` delimiter itself counts toward the total cap, not
+  the line cap). Newline splitting scans raw bytes for `0x0A` before any
+  decoding (UTF-8 continuation bytes never contain `0x0A`), so a multi-byte
+  character split across `push()` calls is handled by feeding each raw
+  segment through one persistent `StringDecoder`, never by decoding a chunk
+  before its line boundary is known.
+- 2026-09-29: Issue #212 (`test/helpers/converter-stub.js`) implemented. Two
+  stub-only decisions, neither touching the app-side contract: (1) the
+  `orphan-pipe` mode spawns its grandchild with `detached: true` (in addition
+  to the spec's inherited stdio) — verified on the dev machine that without it
+  Node ties an undetached child's lifetime to its spawning process on
+  `win32`, so the grandchild died the instant the stub exited instead of
+  outliving it as the mode requires; `detached` is scoped to this test double
+  and does not apply to `src/convert/run-converter.js`, whose "no detached"
+  constraint (Constraints) is unchanged. (2) every mode signals its exit via
+  `process.exitCode` and lets the event loop drain instead of calling
+  `process.exit()`, because a forced exit can truncate stdout still being
+  flushed to a pipe on `win32`, which would corrupt the very JSON Lines
+  records `src/convert/jsonl.js` needs to read intact. The grandchild keeps
+  the spec's bounded 30-s sleep, so a detached orphan a failed test never
+  kills still ends on its own. `--hold` and `--delay-ms` apply only to the
+  modes that print JSON Lines (header JSDoc lists them); the delay runs after
+  the output is written, right before the first line. The stub gets its own
+  `test/helpers/converter-stub.test.js`, so a drifting mode fails there
+  instead of inside the runner/queue suites.
+- 2026-09-29: Issue #216 (`verifyOutput`) implemented. `VerifyResult` is
+  `{ ok: true, path }` (the resolved realpath step 6 publishes) or
+  `{ ok: false, error }` with `converter_output_invalid` (containment/type/
+  extension) or `not_browser_safe` (format check) — no shape was fixed in the
+  spec text, so this mirrors `interpretRun`'s `{ ok, ... }` style. The `web`
+  check independently rejects a null sniff and a zero-video-track result
+  before calling `resolvePlayable` (which alone would treat "unknown" as
+  playable by extension, per the scanner's looser rule) — matching "unknown
+  fails here, unlike the scanner".
+- 2026-09-29: Issue #215 (`interpretRun` / `redactDetail`) implemented.
+  `Interpretation` is `{ ok: true, output, notes }` or
+  `{ ok: false, error, detail }`, mirroring `verifyOutput`'s `{ ok, ... }`
+  style; `detail` is the errno code (rule 1), the stderr tail (rule 3), or
+  the record's own non-empty `error` else the stderr tail (rule 5, reused for
+  rule 7's `failed` outcome, since the spec gives one formula for both
+  `converter_failed` sites) — every other rule (2, 4, 6, 7's `unsupported`/
+  `skipped`, 8) has no stated diagnostic text and returns `detail: null`
+  (the DB's `error_detail` column is nullable). Rule 5's "any other non-zero
+  exit" excludes `exitCode === null` (a signal-only termination), so it
+  cannot misfire on a run `killedBy = 'stop'`, though the queue never calls
+  `interpretRun` for one anyway. `redactDetail`'s `roots` parameter is fixed
+  as `{ mediaRoot: string[], convertDir: string[], converterDir: string |
+  null }` — one entry per configured spelling, `converterDir` singular since
+  config is read once — because no caller signature existed yet for later
+  issues to match; `redactDetail` itself applies the `<CONVERTER>`
+  filesystem-root skip (`path.parse(d).root === d`) rather than requiring the
+  caller to pre-filter. Both the skip check and the case/separator-insensitive
+  win32 matching use the passed `platform` option (`path.win32` vs
+  `path.posix`), never the host OS, so both branches are unit-testable from
+  either dev machine (same pattern as `parseConverterCmd`/`pickConverterEnv`).
 - 2026-09-29: Issue #208 (`006-conversions.sql` + `src/db/conversions.js`)
   implemented as specified, with one line-budget fix: `test/db/conversions.test.js`
   was at 352 lines (over the constitution's 300-line limit). Fixed by merging

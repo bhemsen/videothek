@@ -154,7 +154,11 @@ test('src/ never calls console.*', () => {
   assert.deepEqual(offenders, []);
 });
 
-test('src/ and public/ never use child_process, eval() or new Function()', () => {
+// The one src/ file allowed to import node:child_process
+// (spec-conversion-core.md, "Constraints" / "Constitution-test change").
+const CHILD_PROCESS_EXEMPT_FILE = 'src/convert/run-converter.js';
+
+test('src/ and public/ never use child_process (except the converter runner), eval() or new Function()', () => {
   const forbidden = [
     { name: 'child_process', re: /child_process/ },
     { name: 'eval(', re: /\beval\s*\(/ },
@@ -163,12 +167,30 @@ test('src/ and public/ never use child_process, eval() or new Function()', () =>
   const offenders = [];
   const files = [...listFiles(srcDir), ...listFiles(publicDir)].filter((f) => f.endsWith('.js'));
   for (const file of files) {
+    const rel = path.relative(rootDir, file).split(path.sep).join('/');
     const content = readSourceForScan(file);
     for (const { name, re } of forbidden) {
-      if (re.test(content)) offenders.push(`${path.relative(rootDir, file)}: ${name}`);
+      if (name === 'child_process' && rel === CHILD_PROCESS_EXEMPT_FILE) continue;
+      if (re.test(content)) offenders.push(`${rel}: ${name}`);
     }
   }
   assert.deepEqual(offenders, []);
+});
+
+test('src/convert/run-converter.js imports only spawn from node:child_process, uses no shell and calls no bare exec/fork', () => {
+  const file = path.join(rootDir, ...CHILD_PROCESS_EXEMPT_FILE.split('/'));
+  const content = readSourceForScan(file);
+  const bareCallRe = /(?<![.\w$])(?:exec|execFile|execSync|execFileSync|fork)\s*\(/;
+
+  const occurrences = content.match(/child_process/g) ?? [];
+  assert.equal(occurrences.length, 1, 'child_process must occur exactly once (no second or dynamic import)');
+  assert.match(content, /import\s*\{\s*spawn\s*\}\s*from\s*['"]node:child_process['"]/, 'the only import must be { spawn } from node:child_process');
+  assert.equal(/\bshell\b/.test(content), false, 'the word "shell" must not appear (the file never needs it)');
+  assert.equal(bareCallRe.test(content), false, 'no bare exec/execFile/execSync/execFileSync/fork call');
+
+  // The bare-call pattern itself: a member call must never trip it, a bare call always must.
+  assert.equal(bareCallRe.test('re.exec(pattern)'), false, 'a member call like re.exec( must be allowed');
+  assert.equal(bareCallRe.test('exec(cmd)'), true, 'a genuine bare exec( call must be caught');
 });
 
 test('src/ and public/ never import from one another', () => {
