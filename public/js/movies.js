@@ -9,6 +9,7 @@ import { getCategory } from './lib/library-api.js';
 import { createMovieCard } from './lib/media-card.js';
 import { pluralize } from './lib/library-format.js';
 import { decorateProgressFor } from './lib/progress-badges.js';
+import { decorateConversionsFor } from './lib/convert-control.js';
 
 /** @typedef {import('./lib/library-api.js').CategoryItemsResponse} CategoryItemsResponse */
 
@@ -84,6 +85,7 @@ function renderResult(response) {
     const grid = el('div', { class: 'library-grid' }, ...response.items.map(createMovieCard));
     setContent(grid);
     decorateProgressFor(grid, 'movies');
+    decorateConversionsFor(grid);
     return;
   }
   if (response.scan.running) {

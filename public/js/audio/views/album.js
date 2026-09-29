@@ -13,6 +13,7 @@ import { audioIcon } from '../icons.js';
 import { formatDuration, formatTotal } from '../format.js';
 import { buildAlbumQueue, activeTrackId, trackListEntries, MIDDLE_DOT, UNKNOWN_ARTIST, UNTITLED_ALBUM } from '../music-queue.js';
 import { buildLoadErrorState } from './load-error.js';
+import { decorateConversionsFor } from '../../lib/convert-control.js';
 
 /** @typedef {import('../app.js').ViewParams} ViewParams */
 /** @typedef {import('../audio-api.js').AlbumDetail} AlbumDetail */
@@ -63,6 +64,7 @@ export async function render({ container, id, player }) {
     body.replaceChildren(header, list);
     applyHighlight(player.state());
     unsubscribe = player.onChange(() => applyHighlight(player.state()));
+    decorateConversionsFor(container);
   }
 
   await load();
@@ -166,7 +168,7 @@ function buildTrackRow(track, index, album, player) {
   if (!track.playable) {
     const row = el(
       'div',
-      { class: 'track-row track-row--unplayable', title: UNPLAYABLE_TITLE },
+      { class: 'track-row track-row--unplayable', title: UNPLAYABLE_TITLE, dataset: { itemId: String(track.id) } },
       numberSpan,
       titleSpan,
       createUnplayableBadge(),
