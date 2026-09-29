@@ -40,7 +40,15 @@ const UPSERT_ITEM_SQL = `
     series_id, series_title, season, episode, episode_end,
     video_codec, audio_codec, playable, size, mtime_ms, scan_version,
     added_at, scanned_at
-  ) VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)
+  ) VALUES (
+    ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?,
+    (? OR EXISTS (
+      SELECT 1 FROM conversions c
+      WHERE c.rel_path = ? AND c.status = 'playable'
+        AND c.source_size = ? AND c.source_mtime_ms = ?
+    )),
+    ?, ?, ?, ?, ?
+  )
   ON CONFLICT(rel_path) DO UPDATE SET
     dir = excluded.dir, category = excluded.category, kind = excluded.kind,
     ext = excluded.ext, title = excluded.title, sort_title = excluded.sort_title,
@@ -67,6 +75,13 @@ const UPSERT_SERIES_SQL = `
  * REPLACE`, which would assign a new id and fire `ON DELETE CASCADE` on
  * later phases' tables). `id` and `added_at` are preserved across updates;
  * every other column, including `scanned_at`, is refreshed.
+ *
+ * The stored `playable` is the *effective* flag: `item.playable` (direct
+ * play) OR a fresh `conversions` row exists for `item.rel_path` (`status =
+ * 'playable'` and its recorded `source_size`/`source_mtime_ms` still match
+ * this upsert's `size`/`mtime_ms`). `ON CONFLICT` keeps `playable =
+ * excluded.playable`, i.e. this same computed value, so a rescan of an
+ * unchanged file recomputes it rather than preserving a stale one.
  * @param {import('node:sqlite').DatabaseSync} db
  * @param {LibraryItemInput} item
  * @param {number} now - epoch ms; becomes `added_at` on first insert, and is
@@ -94,6 +109,9 @@ export function upsertItem(db, item, now) {
         item.video_codec ?? null,
         item.audio_codec ?? null,
         item.playable ? 1 : 0,
+        item.rel_path,
+        item.size,
+        item.mtime_ms,
         item.size,
         item.mtime_ms,
         item.scan_version,
