@@ -50,6 +50,9 @@ function fakeConfig(mediaRoot, rescanIntervalMin = 15) {
     rescanIntervalMin,
     adminUser: null,
     adminPassword: null,
+    converterCmd: null,
+    convertDir: '',
+    converterEnv: {},
   });
 }
 

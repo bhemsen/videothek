@@ -1,5 +1,6 @@
 import { accessSync, constants as fsConstants, statSync } from 'node:fs';
-import { isAbsolute, relative, resolve, sep } from 'node:path';
+import { isAbsolute, resolve } from 'node:path';
+import { APP_PUBLIC_DIR, isInside, parseConverterCmd, pickConverterEnv } from './config-converter.js';
 
 /**
  * @typedef {object} Config
@@ -18,6 +19,12 @@ import { isAbsolute, relative, resolve, sep } from 'node:path';
  *   minutes, 1-1440.
  * @property {string|null} adminUser - Initial admin username, or `null`.
  * @property {string|null} adminPassword - Initial admin password, or `null`.
+ * @property {readonly string[]|null} converterCmd - Parsed `CONVERTER_CMD`
+ *   argv tokens (frozen), or `null` when the conversion feature is off.
+ * @property {string} convertDir - Absolute path for verified conversion
+ *   copies (default `<dataDir>/converted`); not created here.
+ * @property {Readonly<Record<string, string>>} converterEnv - Allowlisted
+ *   environment for the converter child process.
  */
 
 /**
@@ -110,20 +117,6 @@ function resolveMediaRoot(env, problems, requireMediaRoot) {
 }
 
 /**
- * Containment via `path.relative` rather than a string-prefix test, so it
- * cannot be fooled by an unnormalized path (trailing `.`/`..` segments) or,
- * on win32, by a differently-cased path (`path.relative` is case-insensitive
- * there) — see `resolveMediaPath`'s decision in the video-streaming spec.
- * @param {string} parent - Resolved absolute path.
- * @param {string} child - Resolved absolute path.
- * @returns {boolean} whether `child` is `parent` itself or lies inside it.
- */
-function isInside(parent, child) {
-  const rel = relative(parent, child);
-  return rel === '' || (!rel.startsWith(`..${sep}`) && rel !== '..' && !isAbsolute(rel));
-}
-
-/**
  * Resolves `DATA_DIR` against the current working directory and, unless
  * `requireMediaRoot` is `false` (this containment check is itself one of
  * the "MEDIA_ROOT checks" that mode skips), checks it does not lie inside
@@ -142,6 +135,56 @@ function resolveDataDir(env, mediaRoot, problems, requireMediaRoot) {
     problems.push('DATA_DIR: must not be inside MEDIA_ROOT');
   }
   return dataDir;
+}
+
+/**
+ * Resolves `CONVERTER_CMD` via {@link parseConverterCmd}, validated in every
+ * mode (also under `requireMediaRoot: false`), same precedent as `PORT`.
+ * @param {NodeJS.ProcessEnv} env
+ * @param {string[]} problems
+ * @returns {readonly string[]|null}
+ */
+function resolveConverterCmd(env, problems) {
+  const { cmd, problem } = parseConverterCmd(readVar(env, 'CONVERTER_CMD'));
+  if (problem !== null) problems.push(problem);
+  return cmd;
+}
+
+/**
+ * Resolves `CONVERT_DIR`, defaulting to `<dataDir>/converted`, and checks it
+ * does not lexically overlap `mediaRoot` (either direction) or lie inside
+ * the app's own `public/` directory (`APP_PUBLIC_DIR`). The `mediaRoot`
+ * overlap check runs only under `requireMediaRoot` and only when `mediaRoot`
+ * is a valid, non-empty value (same guard as {@link resolveDataDir}); a
+ * defaulted `CONVERT_DIR` skips its own overlap problem when `DATA_DIR`
+ * already reported one, so a bad `DATA_DIR` still yields exactly one
+ * problem. An explicit `CONVERT_DIR` is always checked in both directions.
+ * The `public/` check runs unconditionally. Realpath re-checks against a
+ * symlinked `MEDIA_ROOT`/`public/` follow later, in the conversion queue's
+ * `start()`.
+ * @param {NodeJS.ProcessEnv} env
+ * @param {string} mediaRoot - `''` means no valid value; the overlap check
+ *   is skipped for it (see {@link resolveMediaRoot}).
+ * @param {string} dataDir - Already-resolved `DATA_DIR`, for the default.
+ * @param {string[]} problems
+ * @param {boolean} requireMediaRoot
+ * @returns {string}
+ */
+function resolveConvertDir(env, mediaRoot, dataDir, problems, requireMediaRoot) {
+  const raw = readVar(env, 'CONVERT_DIR');
+  const isDefault = raw === undefined;
+  const convertDir = isDefault ? resolve(dataDir, 'converted') : resolve(process.cwd(), raw);
+  if (requireMediaRoot && mediaRoot !== '') {
+    const overlaps = isInside(mediaRoot, convertDir) || isInside(convertDir, mediaRoot);
+    const dataDirFlagged = isDefault && problems.includes('DATA_DIR: must not be inside MEDIA_ROOT');
+    if (overlaps && !dataDirFlagged) {
+      problems.push('CONVERT_DIR: must not overlap MEDIA_ROOT');
+    }
+  }
+  if (isInside(APP_PUBLIC_DIR, convertDir)) {
+    problems.push('CONVERT_DIR: must not be inside the public directory');
+  }
+  return convertDir;
 }
 
 /**
@@ -209,6 +252,9 @@ export function loadConfig(env = process.env, { requireMediaRoot = true } = {}) 
   const problems = [];
   const mediaRoot = resolveMediaRoot(env, problems, requireMediaRoot);
   const dataDir = resolveDataDir(env, mediaRoot, problems, requireMediaRoot);
+  const convertDir = resolveConvertDir(env, mediaRoot, dataDir, problems, requireMediaRoot);
+  const converterCmd = resolveConverterCmd(env, problems);
+  const converterEnv = pickConverterEnv(env);
   const host = readVar(env, 'HOST') ?? '0.0.0.0';
   const port = resolvePort(env, problems);
   const rescanIntervalMin = resolveRescanIntervalMin(env, problems);
@@ -224,5 +270,8 @@ export function loadConfig(env = process.env, { requireMediaRoot = true } = {}) 
     rescanIntervalMin,
     adminUser,
     adminPassword,
+    converterCmd,
+    convertDir,
+    converterEnv,
   });
 }

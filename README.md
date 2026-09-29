@@ -32,6 +32,8 @@ startup from environment variables only:
 | `RESCAN_INTERVAL_MIN` | `15` | Integer, 1–1440. How often (in minutes) the library is fully rescanned as a backstop, in addition to picking up changes as they happen. |
 | `ADMIN_USER` | *(unset)* | Username for the initial admin account. Must be set together with `ADMIN_PASSWORD` — setting only one is a config error (`config_invalid`, exit 1 before the database opens). 1–32 characters: letters, digits, `.`, `-`, `_` (normalized: trimmed, NFC, lower-cased). Used only while no account exists yet; ignored (logged as `admin_env_ignored` if still set) after the first admin has been created. |
 | `ADMIN_PASSWORD` | *(unset)* | Password for the initial admin account (8–256 characters). Must be set together with `ADMIN_USER` — same rules apply. |
+| `CONVERTER_CMD` | *(unset)* | Command to run for on-demand conversion of not-playable items, e.g. `/usr/bin/node /opt/converter/cli.js`. Unset or empty disables the whole conversion feature — no control is shown, `POST` answers `503 conversion_disabled`, no child process is ever started. Split on whitespace (no quoting/escaping); the first token must be an absolute path (on Windows, a drive letter or UNC prefix — see "Conversion" below); 1–32 tokens. Not checked for existence: a missing converter fails jobs, never startup. |
+| `CONVERT_DIR` | `<DATA_DIR>/converted` | Directory for verified conversion copies. Must not overlap `MEDIA_ROOT` in either direction, and must not lie inside this app's `public/` directory. Created automatically when the feature is used. |
 
 An empty value is treated the same as an unset variable. If the configuration
 is invalid or incomplete, the process exits with code `1` before it starts
@@ -40,6 +42,50 @@ caused it. On an empty database, a missing or invalid `ADMIN_USER`/
 `ADMIN_PASSWORD` pair additionally prevents the admin account from being
 created: the process logs `admin_missing` with guidance to set both and
 exits with code `1`.
+
+## Conversion (on-demand)
+
+Setting `CONVERTER_CMD` lets an admin convert a not-playable movie, episode,
+music track or audiobook file into a browser-safe copy, stored under
+`CONVERT_DIR` — `MEDIA_ROOT` itself is never touched. A few operational notes:
+
+- **No spaces in `CONVERTER_CMD`.** Tokens are split on whitespace with no
+  quoting. On Windows, point at a path without spaces, or use the 8.3 short
+  name (e.g. `C:\PROGRA~1\nodejs\node.exe`); the same applies to any argument
+  you add, such as `--sample-dir`.
+- **On Windows, the first token must be an `.exe` with a drive letter or UNC
+  prefix** (`X:\...`, `X:/...` or `\\server\...`) — since Node's `spawn`
+  refuses `.bat`/`.cmd` shims without a shell (`EINVAL`), which would fail
+  every job as `converter_unavailable`.
+- **Keep copies fresh with `mv`/`rsync -t`, not `cp`.** A copy is considered
+  fresh only while the source's size and modification time still match what
+  was recorded when it was converted. Plain `cp` gives the source a new
+  mtime and makes its copy stale (still on disk, just not served); `mv` or
+  `rsync -t` preserve the timestamp.
+- **Deleting the database orphans copies.** Removing the database file under
+  `DATA_DIR` (see "Medienordner" above) forgets all conversion state; the
+  copies already written under `CONVERT_DIR` are no longer served and can be
+  deleted by hand.
+- **CONVERT_DIR nur zusammen mit den Kopien verschieben.** Changing
+  `CONVERT_DIR` without moving the existing copies along with it makes them
+  unreachable (their database rows stay `playable`, but `/media/:id` then
+  answers `404` until the item is converted again).
+- **Run the service as a user with read-only access to `MEDIA_ROOT`.** This
+  is the only enforcement that also covers the converter child process — the
+  converter is trusted code: it runs as the same OS user as videothek and can
+  read everything that user can.
+- **No CPU/IO priority yet.** Conversions run without `nice`/`ionice`, so on
+  weak hardware a running conversion can make concurrent streams stutter.
+  This, plus protecting playback while converting, is planned for a later
+  phase.
+- **`CONVERT_DIR` must not lie inside `public/`**, since static files there
+  are served without a session; the config rejects this, and the conversion
+  queue additionally rejects a symlink into `public/` by realpath.
+- **Graceful shutdown only stops the converter through videothek's own
+  shutdown handling.** Under Docker, run with `--init` (or tini) when
+  videothek is PID 1; under systemd, keep the default
+  `KillMode=control-group`. Either way, a converter that outlives videothek
+  (a second signal, or a crash) is still reaped instead of orphaned.
 
 ## Medienordner
 
