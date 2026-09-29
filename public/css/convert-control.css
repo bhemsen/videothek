@@ -1,0 +1,85 @@
+/*
+ * Conversion control appended by `convert-control.js` as the last child of a
+ * not-playable host (`.media-card`, `.episode-row`, `.track-row--unplayable`,
+ * `.file-row--unplayable`) — never relies on `:last-child` or sibling order,
+ * since P4's progress badges also append to `.episode-row`. Buttons reuse the
+ * global `.btn`/`.btn-secondary` (base.css); this file only lays the control
+ * out and styles its status text. See docs/specs/spec-conversion-core.md
+ * "UI behaviour" and "Design".
+ */
+
+/* Default (block-parent hosts — `.media-card`, and `.file-row--unplayable`,
+   whose only existing child is `.file-row__main`): a stacked column below
+   the host's existing content, left-aligned, buttons full width. A block
+   `display: flex` element already fills its parent's width, so on
+   `.file-row--unplayable` this reaches the row's full width on its own —
+   overridden to right-align below. */
+.convert-control {
+  display: flex;
+  flex-direction: column;
+  align-items: flex-start;
+  gap: var(--space-2);
+  margin-top: var(--space-3);
+}
+
+.convert-control .btn {
+  width: 100%;
+}
+
+.status-text {
+  margin: 0;
+  color: var(--color-muted);
+  font-size: var(--text-sm);
+  line-height: var(--leading-body);
+}
+
+.status-text.is-error {
+  color: var(--color-destructive);
+}
+
+/* Row-flex hosts (`.episode-row`, `.track-row--unplayable`: the host itself
+   is `display: flex` and the control is one more of its direct children) —
+   an auto-sized item at the row's end; `margin-top: 0` since the row's own
+   `gap` already spaces it from its siblings. */
+.episode-row .convert-control,
+.track-row--unplayable .convert-control {
+  flex: 0 0 auto;
+  margin-top: 0;
+}
+
+/* Right-aligned contents in every row context, incl. `.file-row--unplayable`
+   (block host — see above; no `flex`/`margin-top` change needed there). */
+.episode-row .convert-control,
+.track-row--unplayable .convert-control,
+.file-row--unplayable .convert-control {
+  align-items: flex-end;
+}
+
+.episode-row .convert-control .btn,
+.track-row--unplayable .convert-control .btn,
+.file-row--unplayable .convert-control .btn {
+  width: auto;
+}
+
+.episode-row .status-text,
+.track-row--unplayable .status-text,
+.file-row--unplayable .status-text {
+  text-align: right;
+}
+
+/* Below 768 px the two row-flex hosts wrap so the control drops onto its own
+   line instead of squeezing the title (spec "Design" notes); its own
+   `align-items: flex-end` keeps it right-aligned on that full-width line.
+   `.file-row--unplayable` needs no such rule — its block host already gives
+   the control the full row width at every viewport. */
+@media not (min-width: 768px) {
+  .episode-row,
+  .track-row--unplayable {
+    flex-wrap: wrap;
+  }
+
+  .episode-row .convert-control,
+  .track-row--unplayable .convert-control {
+    flex-basis: 100%;
+  }
+}
