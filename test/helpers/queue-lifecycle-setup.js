@@ -39,6 +39,7 @@ const CONVERT_NAME = 'converted';
  * @property {string} convertDirReal - not yet created; `queue.start()` creates it.
  * @property {import('../../src/log.js').Logger} log
  * @property {{ level: string, event: string, fields?: Record<string, unknown> }[]} logCalls
+ * @property {(() => Promise<void>)[]} stops - queue `stop()`s run first in teardown.
  */
 
 /**
@@ -61,12 +62,20 @@ export async function makeTempDir(t, prefix) {
 export async function lifecycleFixture(t) {
   const db = new DatabaseSync(':memory:');
   migrate(db);
-  t.after(() => { if (db.isOpen) db.close(); });
-  const base = await makeTempDir(t, 'vt-lifecycle-');
+  const base = await fs.realpath(await fs.mkdtemp(path.join(os.tmpdir(), 'vt-lifecycle-')));
+  /** @type {(() => Promise<void>)[]} */
+  const stops = [];
+  // One hook, in this order: node:test runs `t.after` hooks in registration
+  // order, so separate hooks would remove the dir before a live stub is stopped.
+  t.after(async () => {
+    for (const stop of stops) await stop();
+    if (db.isOpen) db.close();
+    await fs.rm(base, { recursive: true, force: true, maxRetries: 3 });
+  });
   const mediaRoot = path.join(base, MEDIA_NAME);
   await fs.mkdir(mediaRoot);
   const { log, calls: logCalls } = fakeLogger();
-  return { db, base, mediaRoot, convertDirReal: path.join(base, CONVERT_NAME), log, logCalls };
+  return { db, base, mediaRoot, convertDirReal: path.join(base, CONVERT_NAME), log, logCalls, stops };
 }
 
 /**
@@ -124,17 +133,16 @@ export function fakeConfig(f, converterCmd) {
 }
 
 /**
- * Creates a queue against `converterCmd`, registers its `stop()` as a test
- * teardown, starts it (asserting success) and kicks it once.
- * @param {import('node:test').TestContext} t
+ * Creates a queue against `converterCmd`, registers its `stop()` to run
+ * first in the fixture's teardown, starts it (asserting success) and kicks it once.
  * @param {LifecycleFixture} f
  * @param {readonly string[]} converterCmd
  * @param {Partial<Parameters<typeof createConversionQueue>[0]>} [extra]
  * @returns {Promise<ReturnType<typeof createConversionQueue>>}
  */
-export async function startQueue(t, f, converterCmd, extra = {}) {
+export async function startQueue(f, converterCmd, extra = {}) {
   const queue = createConversionQueue({ db: f.db, config: fakeConfig(f, converterCmd), log: f.log, now: () => 1, ...extra });
-  t.after(() => queue.stop());
+  f.stops.push(() => queue.stop());
   assert.equal(await queue.start(), true, 'queue.start() must succeed against a real temp CONVERT_DIR');
   queue.kick();
   return queue;
@@ -193,6 +201,8 @@ export async function enqueueSource(f, {
 /**
  * A recursive listing of the fixture's base dir - `MEDIA_ROOT` and anything
  * beside `CONVERT_DIR` - leaving out `converted/` and everything under it.
+ * Scope: only this base dir (the spec's "nothing outside `convertDir`" temp-dir
+ * listing); siblings elsewhere in the system temp dir are not listed.
  * Files carry size, mtime and a content hash unless `namesOnly` (for a case
  * that rewrites the source file itself).
  * @param {LifecycleFixture} f
@@ -238,13 +248,32 @@ export function assertNoLeakedPaths(f, row, extra = []) {
   const texts = [
     ['error_detail', row?.error_detail ?? ''],
     ...JSON.parse(row?.notes ?? '[]').map((/** @type {string} */ note) => ['a stored note', note]),
-    ...f.logCalls.map((call) => [`a ${call.event} log line`, JSON.stringify(call.fields ?? {})]),
+    ...f.logCalls.map((call) => [`a ${call.event} log line`, logLineText(call)]),
   ];
   for (const [where, text] of texts) {
     for (const needle of needles) {
       assert.ok(!containsPath(text, needle), `${where} leaked a path: ${text}`);
     }
   }
+}
+
+/**
+ * The raw text of one log call - its event name plus every leaf field value,
+ * unescaped (not `JSON.stringify`, which doubles win32 backslashes so a
+ * path would never match), one per line.
+ * @param {{ event: string, fields?: Record<string, unknown> }} call
+ * @returns {string}
+ */
+export function logLineText(call) {
+  /** @type {string[]} */
+  const parts = [call.event];
+  const walk = (/** @type {unknown} */ value) => {
+    if (value instanceof Error) parts.push(value.message, String(value.stack));
+    if (value !== null && typeof value === 'object') Object.values(value).forEach(walk);
+    else parts.push(String(value));
+  };
+  walk(call.fields ?? {});
+  return parts.join('\n');
 }
 
 /**

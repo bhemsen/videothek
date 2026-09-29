@@ -41,7 +41,7 @@ test('an EBUSY removeDir rejection after a successful ok publish leaves the row 
   const { key } = await enqueueSource(f);
   const before = await snapshotOutsideConvertDir(f);
 
-  await startQueue(t, f, stubCmd('ok'), { removeDir: busyForJobDir(key) });
+  await startQueue(f, stubCmd('ok'), { removeDir: busyForJobDir(key) });
   await waitUntil(() => countEvent(f.logCalls, 'conversion_finished') === 1);
 
   const row = getConversion(f.db, REL_PATH);
@@ -63,7 +63,7 @@ test('the same EBUSY removeDir rejection after a not-browser-safe run keeps erro
   const { key } = await enqueueSource(f);
   const before = await snapshotOutsideConvertDir(f);
 
-  await startQueue(t, f, stubCmd('not-browser-safe'), { removeDir: busyForJobDir(key) });
+  await startQueue(f, stubCmd('not-browser-safe'), { removeDir: busyForJobDir(key) });
   await waitUntil(() => countEvent(f.logCalls, 'conversion_finished') === 1);
 
   const row = getConversion(f.db, REL_PATH);

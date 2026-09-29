@@ -10,7 +10,7 @@ import { WORK_AREA_NAME } from '../../src/convert/work-dir.js';
 import { TARGETS } from '../../src/convert/targets.js';
 import {
   REL_PATH, lifecycleFixture, makeTempDir, startQueue, stubCmd, missingExecutablePath, enqueueSource,
-  waitUntil, countEvent, snapshotOutsideConvertDir, assertNothingOutsideConvertDir, assertNoLeakedPaths,
+  waitUntil, countEvent, snapshotOutsideConvertDir, assertNothingOutsideConvertDir, assertNoLeakedPaths, logLineText,
 } from '../helpers/queue-lifecycle-setup.js';
 
 /**
@@ -23,12 +23,11 @@ import {
 /**
  * Starts a queue against `converterCmd` and waits for the single enqueued
  * job to finish.
- * @param {import('node:test').TestContext} t
  * @param {import('../helpers/queue-lifecycle-setup.js').LifecycleFixture} f
  * @param {readonly string[]} converterCmd
  */
-async function runOneJob(t, f, converterCmd) {
-  await startQueue(t, f, converterCmd);
+async function runOneJob(f, converterCmd) {
+  await startQueue(f, converterCmd);
   await waitUntil(() => countEvent(f.logCalls, 'conversion_finished') === 1);
 }
 
@@ -61,7 +60,7 @@ test('ok publishes <key>/web.mp4 with the flag and output_size, and removes the 
   const { key } = await enqueueSource(f);
   const before = await snapshotOutsideConvertDir(f);
 
-  await runOneJob(t, f, stubCmd('ok'));
+  await runOneJob(f, stubCmd('ok'));
 
   const row = getConversion(f.db, REL_PATH);
   assert.equal(row?.status, 'playable');
@@ -81,7 +80,7 @@ test('not-browser-safe ends failed not_browser_safe, the flag stays 0, and no fi
   const { key } = await enqueueSource(f);
   const before = await snapshotOutsideConvertDir(f);
 
-  await runOneJob(t, f, stubCmd('not-browser-safe'));
+  await runOneJob(f, stubCmd('not-browser-safe'));
 
   const row = await assertFailedClean(f, before, 'not_browser_safe');
   assert.equal(row?.output_rel, null);
@@ -93,7 +92,7 @@ test('crash ends converter_failed and leaves the work area empty', async (t) => 
   await enqueueSource(f);
   const before = await snapshotOutsideConvertDir(f);
 
-  await runOneJob(t, f, stubCmd('crash'));
+  await runOneJob(f, stubCmd('crash'));
 
   await assertFailedClean(f, before, 'converter_failed');
 });
@@ -103,13 +102,13 @@ test('usage (exit 2, unrecognized arguments) ends converter_unavailable and leav
   await enqueueSource(f);
   const before = await snapshotOutsideConvertDir(f);
 
-  await runOneJob(t, f, stubCmd('usage'));
+  await runOneJob(f, stubCmd('usage'));
 
   await assertFailedClean(f, before, 'converter_unavailable');
   // error_detail may keep the (redacted) stderr tail; log lines never may.
   for (const call of f.logCalls) {
-    const serialized = JSON.stringify(call.fields ?? {});
-    assert.ok(!serialized.includes('unrecognized arguments'), `stderr text must never be logged: ${serialized}`);
+    const text = logLineText(call);
+    assert.ok(!text.includes('unrecognized arguments'), `stderr text must never be logged: ${text}`);
   }
 });
 
@@ -118,7 +117,7 @@ test('escape (reported output outside out/) ends converter_output_invalid and le
   await enqueueSource(f);
   const before = await snapshotOutsideConvertDir(f);
 
-  await runOneJob(t, f, stubCmd('escape'));
+  await runOneJob(f, stubCmd('escape'));
 
   await assertFailedClean(f, before, 'converter_output_invalid');
 });
@@ -129,7 +128,7 @@ test('hang, killed by stop(), ends failed interrupted, leaves no stub process be
   await enqueueSource(f);
   const before = await snapshotOutsideConvertDir(f);
 
-  const queue = await startQueue(t, f, stubCmd('hang', ['--hold', holdDir]));
+  const queue = await startQueue(f, stubCmd('hang', ['--hold', holdDir]));
   await waitUntil(() => existsSync(path.join(holdDir, 'pid')));
   const pid = Number(await fs.readFile(path.join(holdDir, 'pid'), 'utf8'));
 
@@ -145,7 +144,7 @@ test('a source modified between --hold started and go ends source_changed', asyn
   const { abs } = await enqueueSource(f);
   const before = await snapshotOutsideConvertDir(f, { namesOnly: true });
 
-  await startQueue(t, f, stubCmd('ok', ['--hold', holdDir]));
+  await startQueue(f, stubCmd('ok', ['--hold', holdDir]));
   await waitUntil(() => existsSync(path.join(holdDir, 'started')));
   await fs.writeFile(abs, 'source bytes changed while converting, different length');
   await fs.writeFile(path.join(holdDir, 'go'), '');
@@ -167,9 +166,27 @@ test('a converterCmd whose absolute executable does not exist ends converter_una
   const before = await snapshotOutsideConvertDir(f);
   const missing = missingExecutablePath();
 
-  await runOneJob(t, f, Object.freeze([missing]));
+  await runOneJob(f, Object.freeze([missing]));
 
   const row = await assertFailedClean(f, before, 'converter_unavailable');
   assert.equal(row?.error_detail, 'ENOENT');
   assertNoLeakedPaths(f, row, [missing, path.basename(missing)]);
+});
+
+test('assertNoLeakedPaths fails on a raw (unescaped) root path in a log field, nested or as the event name', async (t) => {
+  const f = await lifecycleFixture(t);
+  const leak = path.join(f.mediaRoot, REL_PATH);
+  for (const call of [
+    { level: 'warn', event: 'conversion_failed', fields: { detail: leak } },
+    { level: 'warn', event: 'conversion_failed', fields: { nested: { list: ['x', leak] } } },
+    { level: 'error', event: 'conversion_error', fields: { err: new Error(`open ${leak}`) } },
+    { level: 'warn', event: leak },
+  ]) {
+    f.logCalls.length = 0;
+    f.logCalls.push(call);
+    assert.throws(() => assertNoLeakedPaths(f, undefined), /leaked a path/);
+  }
+  f.logCalls.length = 0;
+  f.logCalls.push({ level: 'info', event: 'conversion_finished', fields: { key: 'abc', code: 'ENOENT' } });
+  assert.doesNotThrow(() => assertNoLeakedPaths(f, undefined));
 });

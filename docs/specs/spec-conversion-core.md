@@ -1937,7 +1937,11 @@ exports):
   minimal `converterEnv` (no `process.env` read), `stubCmd(mode, extraArgs)`
   building the real `[process.execPath, stubPath, '--mode', …]`
   `converterCmd`, an `assertNoLeakedPaths` helper for the redaction
-  requirement, and a `snapshotOutsideConvertDir`/
+  requirement (it searches each log line's event name and raw leaf field
+  values via `logLineText`, never `JSON.stringify` output, whose doubled
+  win32 backslashes would hide a path; a guard test proves it fails on a
+  leaked path), one teardown hook that stops the queue before closing the
+  DB and removing the temp dir, and a `snapshotOutsideConvertDir`/
   `assertNothingOutsideConvertDir` pair comparing a recursive listing of the
   base dir without `converted/` - names, sizes, mtimes and content hashes,
   names only for the source-changed case - before and after each job: the
@@ -1950,5 +1954,5 @@ exports):
   `removeDir` `EBUSY` rejection (scoped to the job dir's `<storage_key>-`
   prefix) after a successful `ok` publish and after a `not-browser-safe` run,
   both leaving the already-recorded end state untouched and only logging
-  `conversion_cleanup_failed { key, code }`. `npm run verify` green (1718
-  tests, 1716 pass, 2 skipped, 0 failures); `npm ls --omit=dev --all` empty.
+  `conversion_cleanup_failed { key, code }`. `npm run verify` green (1719
+  tests, 1717 pass, 2 skipped, 0 failures); `npm ls --omit=dev --all` empty.
