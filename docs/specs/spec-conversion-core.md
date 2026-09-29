@@ -2092,3 +2092,30 @@ exports):
   `convert-control.test.js`, `convert-control-poller.test.js`,
   `convert-control-css.test.js` + `test/helpers/convert-control-fakes.js`
   (300-line cap).
+- 2026-09-29 (#228): Hook lines only, per File ownership. `movies.js` and
+  `series-detail.js` call `decorateConversionsFor` on the same root
+  `decorateProgressFor` already uses (`grid` and the persistent `main`),
+  right after it. `album.js` calls it on the view's `container` at the end
+  of `mountAlbum` (covers a retry re-mount); `audiobook-detail.js` calls it
+  on `container` at the end of `load`'s success path only (not the
+  error/retry branch). Both audio views' unplayable row gained
+  `dataset: { itemId: String(track.id) }` / `String(file.id)`, matching the
+  decorator's `[data-item-id]` host contract. Manual smoke check: app
+  started from the worktree (`PORT=8428`, temp `DATA_DIR`, fixture
+  `MEDIA_ROOT`, stub `CONVERTER_CMD`); as admin, `/movies` (MKV/AVI cards),
+  `/series-detail` (Dark S01E04 MKV) and the Flac-Album view (the WMA track)
+  each show "Konvertieren" on their not-playable host and match
+  `control-video-desktop.png`/`control-audio-desktop.png`; a click ran a
+  real conversion through the stub end to end (`conversion_started` →
+  `conversion_finished` in the server log) and the item played normally
+  after reload; the audiobook fixtures have no unplayable file, so only a
+  clean, error-free load was checked there. As a non-admin user, `/movies`
+  keeps the "Nicht abspielbar" badges but no control renders, and the
+  network tab shows `GET /api/conversions` answering `403`. No console
+  errors on any of the four pages. `npm run verify` green (1766 tests, 1764
+  pass, 2 pre-existing platform skips, 0 failures). The mobile (390 px)
+  screenshot comparison could not be completed this session (the browser
+  tool's window-resize call did not take effect against this Windows Chrome
+  instance); left for the milestone's human QA pass, which also covers the
+  queue-position, resume, failure/retry, restart-recovery and
+  keyboard/screen-reader scenarios this issue's Files list does not touch.

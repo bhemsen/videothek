@@ -11,6 +11,7 @@ import { getAudiobook } from '../audio-api.js';
 import { coverImg } from '../cover-img.js';
 import { audioIcon } from '../icons.js';
 import { formatDuration, formatTotal, formatPercent } from '../format.js';
+import { decorateConversionsFor } from '../../lib/convert-control.js';
 
 /** @typedef {import('../app.js').ViewParams} ViewParams */
 /** @typedef {import('../audio-api.js').AudiobookDetail} AudiobookDetail */
@@ -63,6 +64,7 @@ async function load(container, id, player, state) {
   const update = () => applyCurrentRow(rows, player.state(), book.id);
   state.dispose = player.onChange(update);
   update();
+  decorateConversionsFor(container);
   return { title: book.title };
 }
 
@@ -179,7 +181,9 @@ function buildFileRow(file, index, book, items, player, rows) {
     el('span', { class: 'file-row__title' }, file.title),
     file.playable ? buildFileStatus(file) : buildUnplayableBadge(),
   );
-  if (!file.playable) return el('div', { class: 'file-row file-row--unplayable' }, main);
+  if (!file.playable) {
+    return el('div', { class: 'file-row file-row--unplayable', dataset: { itemId: String(file.id) } }, main);
+  }
   const progress = file.progress;
   const bar = progress !== null && !progress.finished ? buildFileBar(file.duration, progress) : null;
   const row = /** @type {HTMLButtonElement} */ (el('button', { type: 'button', class: 'file-row' }, main, bar));
