@@ -2,120 +2,14 @@
 import { test } from 'node:test';
 import assert from 'node:assert/strict';
 import fs from 'node:fs/promises';
-import os from 'node:os';
 import path from 'node:path';
-import { DatabaseSync } from 'node:sqlite';
-import { migrate } from '../../src/db/migrate.js';
 import { upsertItem, getItemByRelPath } from '../../src/db/library-repo.js';
-import { enqueueConversion, claimNextConversion, getConversion } from '../../src/db/conversions.js';
-import { storageKey, TARGETS } from '../../src/convert/targets.js';
+import { getConversion } from '../../src/db/conversions.js';
+import { TARGETS } from '../../src/convert/targets.js';
 import { runConversionJob } from '../../src/convert/job.js';
-
-const REL_PATH = 'Hoerbuecher/Buch/kapitel1.mp3';
-const FLAC_BYTES = Buffer.concat([Buffer.from('fLaC', 'ascii'), Buffer.alloc(4)]);
-
-/** @param {string} mediaRoot @param {string} convertDir @returns {import('../../src/config.js').Config} */
-function fakeConfig(mediaRoot, convertDir) {
-  return Object.freeze({
-    mediaRoot,
-    dataDir: '',
-    host: '0.0.0.0',
-    port: 0,
-    rescanIntervalMin: 15,
-    adminUser: null,
-    adminPassword: null,
-    converterCmd: Object.freeze(['/usr/bin/fake-converter']),
-    convertDir,
-    converterEnv: Object.freeze({ PATH: '/usr/bin' }),
-  });
-}
-
-/** @returns {import('node:sqlite').DatabaseSync} an in-memory DB with every migration applied */
-function makeDb() {
-  const db = new DatabaseSync(':memory:');
-  migrate(db);
-  return db;
-}
-
-/** @param {import('node:test').TestContext} t @param {string} prefix */
-async function makeTempDir(t, prefix) {
-  const dir = await fs.realpath(await fs.mkdtemp(path.join(os.tmpdir(), prefix)));
-  t.after(() => fs.rm(dir, { recursive: true, force: true, maxRetries: 3 }));
-  return dir;
-}
-
-/** A fake `Logger` recording every call in order. */
-function fakeLogger() {
-  const calls = /** @type {{ level: string, event: string, fields?: Record<string, unknown> }[]} */ ([]);
-  const record = (/** @type {string} */ level) => (/** @type {string} */ event, /** @type {any} */ fields) =>
-    calls.push({ level, event, fields });
-  return { calls, log: { info: record('info'), warn: record('warn'), error: record('error') } };
-}
-
-/**
- * A fake `run` (`runConverter`'s shape) built from an async result builder,
- * itself synchronous like the real runner.
- * @param {(args: any) => Promise<any>} buildResult
- */
-function fakeRun(buildResult) {
-  const calls = /** @type {any[]} */ ([]);
-  const run = (/** @type {any} */ args) => {
-    calls.push(args);
-    return { result: buildResult(args), kill: () => {} };
-  };
-  return { run, calls };
-}
-
-/** A settled `converted` record writing a valid `audio.flac` into `outDir`. */
-async function convertedFlac(/** @type {{ outDir: string }} */ { outDir }, notes = /** @type {string[]} */ ([])) {
-  const output = path.join(outDir, TARGETS.flac.file);
-  await fs.writeFile(output, FLAC_BYTES);
-  return {
-    spawnError: null, exitCode: 0, signal: null, killedBy: null,
-    records: [{ outcome: 'converted', output, error: null, notes }],
-    stdoutInvalid: false, stdioTimedOut: false, stderrTail: '',
-  };
-}
-
-/** @param {import('node:sqlite').DatabaseSync} db @param {Partial<Parameters<typeof enqueueConversion>[1]>} overrides */
-function claim(db, overrides = {}) {
-  enqueueConversion(db, {
-    relPath: REL_PATH, storageKey: storageKey(REL_PATH), target: 'flac', sourceSize: 1, sourceMtimeMs: 1, now: 1,
-    ...overrides,
-  });
-  const row = claimNextConversion(db, 10);
-  assert.ok(row, 'expected a claimable row');
-  return row;
-}
-
-/** Writes a real source file under `mediaRoot` and the matching `library_items` row. */
-async function makeSource(/** @type {import('node:sqlite').DatabaseSync} */ db, /** @type {string} */ mediaRoot) {
-  const abs = path.join(mediaRoot, REL_PATH);
-  await fs.mkdir(path.dirname(abs), { recursive: true });
-  await fs.writeFile(abs, 'source bytes');
-  const stat = await fs.stat(abs);
-  upsertItem(
-    db,
-    {
-      rel_path: REL_PATH, dir: path.dirname(REL_PATH), category: 'audiobooks', kind: 'audio', ext: 'mp3',
-      title: 'Kapitel 1', sort_title: 'kapitel 1', playable: false, size: stat.size,
-      mtime_ms: Math.trunc(stat.mtimeMs), scan_version: 1,
-    },
-    1000
-  );
-  return { abs, size: stat.size, mtimeMs: Math.trunc(stat.mtimeMs) };
-}
-
-/** A ready `{ db, convertDirReal, mediaRoot, row }` fixture with a real, indexed source and a claimed row. */
-async function setup(/** @type {import('node:test').TestContext} */ t) {
-  const db = makeDb();
-  t.after(() => db.close());
-  const convertDirReal = await makeTempDir(t, 'vt-job-convert-');
-  const mediaRoot = await makeTempDir(t, 'vt-job-media-');
-  const source = await makeSource(db, mediaRoot);
-  const row = claim(db, { sourceSize: source.size, sourceMtimeMs: source.mtimeMs });
-  return { db, convertDirReal, mediaRoot, row, source };
-}
+import {
+  REL_PATH, FLAC_BYTES, fakeConfig, makeDb, makeTempDir, fakeLogger, fakeRun, convertedFlac, claim, setup,
+} from '../helpers/conversion-job-fixtures.js';
 
 test('steps 1-2: no library_items row, or an unresolvable source, end source_missing without spawning', async (t) => {
   const db = makeDb();
@@ -177,15 +71,18 @@ test('full success: records the source stat, spawns with the right env/cwd, reda
   const storedNotes = JSON.parse(stored?.notes ?? '[]');
   assert.equal(storedNotes.length, 2);
   assert.ok(storedNotes[0].includes('<MEDIA_ROOT>') && !storedNotes[0].includes(mediaRoot));
-  assert.ok(storedNotes[0].length <= 200);
+  assert.equal(storedNotes[0].length, 200, 'a redacted note longer than 200 chars keeps exactly its first 200');
   assert.equal(storedNotes[1], 'short note');
   assert.equal(getItemByRelPath(db, REL_PATH)?.playable, 1);
   await assert.rejects(fs.stat(args.cwd), 'the per-job work dir was removed');
   assert.deepEqual(logCalls.map((c) => c.event), ['conversion_started', 'conversion_finished']);
+  assert.deepEqual(logCalls[0].fields, { key: row.storage_key, target: 'flac', status: 'converting', error: null, ms: 0 });
   const finished = logCalls[1].fields ?? {};
   assert.equal(finished.status, 'playable');
   assert.equal(finished.error, null);
   assert.equal(typeof finished.ms, 'number');
+  const logged = JSON.stringify(logCalls);
+  for (const secret of [mediaRoot, convertDirReal, 'fake-converter']) assert.ok(!logged.includes(JSON.stringify(secret).slice(1, -1)));
 });
 
 test('step 4: stopping before spawn ends interrupted without calling run, work dir still cleaned up', async (t) => {
@@ -290,4 +187,5 @@ test('an unexpected throw ends the row failed internal and logs conversion_error
   assert.equal(stored?.error_detail, 'TypeError');
   const errLog = logCalls.find((c) => c.event === 'conversion_error');
   assert.equal(errLog?.fields?.code, 'TypeError');
+  assert.deepEqual(await fs.readdir(path.join(convertDirReal, '.videothek-work')), [], 'the job dir is still removed');
 });

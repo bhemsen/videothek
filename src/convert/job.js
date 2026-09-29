@@ -1,13 +1,9 @@
 // @ts-check
 
 /**
- * One claimed conversion's full pipeline
- * (`docs/specs/spec-conversion-core.md`, "Queue" > "Job", steps 1-7). Pure
- * per-job orchestration: no queue claim and no kill-escalation timers (both
- * are `src/convert/queue.js`'s job) - this module only runs one
- * already-`converting` row through source check, work dir, spawn,
- * interpretation, verification, publish and cleanup, and is the single
- * writer of that row's end state.
+ * One claimed conversion's full pipeline (`docs/specs/spec-conversion-core.md`,
+ * "Queue" > "Job", steps 1-7) and the single writer of that row's end state.
+ * No queue claim and no kill-escalation timers - both are `queue.js`'s job.
  */
 
 import path from 'node:path';
@@ -53,33 +49,31 @@ const defaultRemoveDir = (/** @type {string} */ target) => rm(target, { recursiv
 
 /**
  * Runs one claimed conversion through steps 1-7 and records its end state.
- * Never throws: any unexpected error ends the row `failed` `internal`, and a
- * step-7 cleanup failure only logs (the end state is already committed).
+ * Never rejects: any unexpected error ends the row `failed` `internal`; if
+ * even that fallback DB write fails (e.g. `stop()`'s deadline passed and the
+ * DB is closed) it only logs. Step 7's cleanup runs in `finally` either way,
+ * and its failure only logs (the end state is already committed).
+ * `conversion_started` carries the same `{ key, target, status, error, ms }`
+ * shape as `conversion_finished` (status `converting`, `error: null`, `ms: 0`).
  * @param {RunJobOptions} options
  * @returns {Promise<void>}
  */
 export async function runConversionJob(options) {
   const opts = { run: runConverter, removeDir: defaultRemoveDir, ...options };
-  const { db, log, now, row } = opts;
+  const { log, now, row } = opts;
   const startedAt = now();
-  log.info('conversion_started', { key: row.storage_key, target: row.target });
+  log.info('conversion_started', { key: row.storage_key, target: row.target, status: 'converting', error: null, ms: 0 });
   /** @type {{ jobDir: string | null }} */
   const ctx = { jobDir: null };
 
   /** @type {JobOutcome} */
-  const outcome = await runPipeline(opts, ctx).catch((err) => {
-    const code = errorCode(err);
-    recordFailure(db, row, now, 'internal', code);
-    log.error('conversion_error', { key: row.storage_key, code });
-    return { status: 'failed', error: 'internal' };
-  });
-
-  if (ctx.jobDir !== null) {
-    try {
-      await opts.removeDir(ctx.jobDir);
-    } catch (err) {
-      log.error('conversion_cleanup_failed', { key: row.storage_key, code: errorCode(err) });
-    }
+  let outcome;
+  try {
+    outcome = await runPipeline(opts, ctx);
+  } catch (err) {
+    outcome = recordInternal(opts, err);
+  } finally {
+    await removeJobDir(opts, ctx.jobDir);
   }
   log.info('conversion_finished', {
     key: row.storage_key,
@@ -88,6 +82,40 @@ export async function runConversionJob(options) {
     error: outcome.status === 'failed' ? outcome.error : null,
     ms: now() - startedAt,
   });
+}
+
+/**
+ * The `internal` fallback: logs `conversion_error { key, code }`, then tries
+ * to record `failed` `internal`; a failure of that write only logs too.
+ * @param {NormalizedOptions} opts
+ * @param {unknown} err
+ * @returns {JobOutcome}
+ */
+function recordInternal({ db, log, now, row }, err) {
+  const code = errorCode(err);
+  log.error('conversion_error', { key: row.storage_key, code });
+  try {
+    recordFailure(db, row, now, 'internal', code);
+  } catch (writeErr) {
+    log.error('conversion_error', { key: row.storage_key, code: errorCode(writeErr) });
+  }
+  return { status: 'failed', error: 'internal' };
+}
+
+/**
+ * Step 7: removes the `mkdtemp` job dir, if one was created; a removal
+ * error only logs `conversion_cleanup_failed { key, code }`.
+ * @param {NormalizedOptions} opts
+ * @param {string | null} jobDir
+ * @returns {Promise<void>}
+ */
+async function removeJobDir({ log, row, removeDir }, jobDir) {
+  if (jobDir === null) return;
+  try {
+    await removeDir(jobDir);
+  } catch (err) {
+    log.error('conversion_cleanup_failed', { key: row.storage_key, code: errorCode(err) });
+  }
 }
 
 /**
@@ -164,7 +192,7 @@ async function interpretAndPublish(opts, { outDir, result, source }) {
   const verified = await verifyOutput({ output: interpreted.output, outDir, target: row.target });
   if (!verified.ok) return recordFailure(db, row, now, verified.error, null);
 
-  const reStat = await restatSource(source.path);
+  const reStat = await restatSource(opts, source.path);
   if (!reStat.ok) return recordFailure(db, row, now, reStat.error, reStat.detail);
   if (reStat.size !== source.size || reStat.mtimeMs !== source.mtimeMs) {
     return recordFailure(db, row, now, 'source_changed', null);
@@ -174,13 +202,20 @@ async function interpretAndPublish(opts, { outDir, result, source }) {
 }
 
 /**
- * Re-stats the source after verification (step 5's last check).
- * @param {string} sourcePath
- * @returns {Promise<{ ok: true, size: number, mtimeMs: number } | { ok: false, error: 'source_missing', detail: string }>}
+ * Step 5's source re-check: re-resolves `rel_path` via `resolveMediaPath`
+ * (catching a mid-run removal or symlink swap) and stats it; a path that now
+ * resolves elsewhere counts as `source_changed`.
+ * @param {NormalizedOptions} opts
+ * @param {string} sourcePath - the step-1 resolved path.
+ * @returns {Promise<{ ok: true, size: number, mtimeMs: number }
+ *   | { ok: false, error: 'source_missing' | 'source_changed', detail: string | null }>}
  */
-async function restatSource(sourcePath) {
+async function restatSource({ config, row }, sourcePath) {
+  const resolved = await resolveMediaPath(config.mediaRoot, row.rel_path);
+  if (resolved === null) return { ok: false, error: 'source_missing', detail: null };
+  if (resolved !== sourcePath) return { ok: false, error: 'source_changed', detail: null };
   try {
-    const stat = await fsStat(sourcePath);
+    const stat = await fsStat(resolved);
     return { ok: true, size: stat.size, mtimeMs: Math.trunc(stat.mtimeMs) };
   } catch (err) {
     return { ok: false, error: 'source_missing', detail: errorCode(err) };
