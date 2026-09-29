@@ -1927,6 +1927,35 @@ exports):
   to `false`. The `queue-stop.test.js` sibling is kept: merging it back would
   put `queue.test.js` near the 300-line limit. `npm run verify` green
   (1708 tests, 0 failures).
+- 2026-09-29 (#220): the real queue/job/runner/verify chain against
+  `test/helpers/converter-stub.js` (no fake `run`, unlike `queue.test.js`/
+  `queue-stop.test.js`) exposed no defect in `src/` — every case already
+  behaves as the spec's Queue/Job/Interpretation sections require, so this
+  issue is test-only. New shared fixtures in
+  `test/helpers/queue-lifecycle-setup.js` (one base temp dir holding
+  `media/` as `MEDIA_ROOT` and `converted/` as `CONVERT_DIR`, a fixed
+  minimal `converterEnv` (no `process.env` read), `stubCmd(mode, extraArgs)`
+  building the real `[process.execPath, stubPath, '--mode', …]`
+  `converterCmd`, an `assertNoLeakedPaths` helper for the redaction
+  requirement (it searches each log line's event name and raw leaf field
+  values via `logLineText`, never `JSON.stringify` output, whose doubled
+  win32 backslashes would hide a path; a guard test proves it fails on a
+  leaked path), one teardown hook that stops the queue before closing the
+  DB and removing the temp dir, and a `snapshotOutsideConvertDir`/
+  `assertNothingOutsideConvertDir` pair comparing a recursive listing of the
+  base dir without `converted/` - names, sizes, mtimes and content hashes,
+  names only for the source-changed case - before and after each job: the
+  "nothing outside `CONVERT_DIR`" check).
+  `test/convert/queue-lifecycle.test.js` covers one job outcome per test (`ok`
+  publish, `not-browser-safe`, `crash`, `usage`, `escape`, `hang` killed by
+  `stop()`, a source changed between `--hold` `started`/`go`, and a missing
+  `converterCmd[0]` -> `converter_unavailable` with `error_detail` exactly
+  `ENOENT`); `test/convert/queue-lifecycle-cleanup.test.js` covers an injected
+  `removeDir` `EBUSY` rejection (scoped to the job dir's `<storage_key>-`
+  prefix) after a successful `ok` publish and after a `not-browser-safe` run,
+  both leaving the already-recorded end state untouched and only logging
+  `conversion_cleanup_failed { key, code }`. `npm run verify` green (1719
+  tests, 1717 pass, 2 skipped, 0 failures); `npm ls --omit=dev --all` empty.
 - 2026-09-29 (#222): startup recovery and queue lifecycle wired into
   `src/server.js`/`src/app.js`. The private `startConversions({ db, config,
   log })` also owns the `conversion_enabled {}`/`conversion_disabled {}` log
