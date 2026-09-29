@@ -1690,4 +1690,10 @@ exports):
   `process.exitCode` and lets the event loop drain instead of calling
   `process.exit()`, because a forced exit can truncate stdout still being
   flushed to a pipe on `win32`, which would corrupt the very JSON Lines
-  records `src/convert/jsonl.js` needs to read intact.
+  records `src/convert/jsonl.js` needs to read intact. The grandchild keeps
+  the spec's bounded 30-s sleep, so a detached orphan a failed test never
+  kills still ends on its own. `--hold` and `--delay-ms` apply only to the
+  modes that print JSON Lines (header JSDoc lists them); the delay runs after
+  the output is written, right before the first line. The stub gets its own
+  `test/helpers/converter-stub.test.js`, so a drifting mode fails there
+  instead of inside the runner/queue suites.
