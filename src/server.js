@@ -10,6 +10,8 @@ import { fileURLToPath } from 'node:url';
 import { createApp } from './app.js';
 import { BootstrapError, ensureAdmin } from './auth/bootstrap.js';
 import { ConfigError, loadConfig } from './config.js';
+import { createConversionQueue } from './convert/queue.js';
+import { failInterruptedConversions } from './db/conversions.js';
 import { migrate, openDatabase } from './db/index.js';
 import { createAudioMetaPass } from './library/audio-meta.js';
 import { createImageMetaSync } from './library/image-meta.js';
@@ -51,23 +53,27 @@ function listen(server, host, port) {
 }
 
 /**
- * Builds the idempotent, memoised `stop()`: clears the purge timer, stops accepting
- * new connections and drops idle ones immediately, force-closes any
- * still-open connections after 5 s (long-lived media streams), then closes
- * the database.
+ * Builds the idempotent, memoised `stop()`: starts the conversion queue's own
+ * `stop()` at once (so no new job is claimed while the rest of shutdown is in
+ * flight), clears the purge timer, stops accepting new connections and drops
+ * idle ones immediately, force-closes any still-open connections after 5 s
+ * (long-lived media streams), then awaits the queue, stops the library and
+ * closes the database.
  * @param {{
  *   app: ReturnType<typeof createApp>,
  *   db: import('node:sqlite').DatabaseSync,
  *   log: import('./log.js').Logger,
  *   purgeTimer: NodeJS.Timeout,
  *   library: import('./library/index.js').LibraryService,
+ *   queue: import('./convert/queue.js').ConversionQueue | null,
  * }} options
  * @returns {() => Promise<void>}
  */
-function createStop({ app, db, log, purgeTimer, library }) {
+function createStop({ app, db, log, purgeTimer, library, queue }) {
   /** @type {Promise<void> | null} */
   let stopping = null;
   const run = async () => {
+    const queueStopped = queue?.stop();
     clearInterval(purgeTimer);
     app.server.closeIdleConnections();
     const forceTimer = setTimeout(() => app.server.closeAllConnections(), 5000);
@@ -78,6 +84,7 @@ function createStop({ app, db, log, purgeTimer, library }) {
       // locked on Windows) and the shutdown must be on record.
       clearTimeout(forceTimer);
       try {
+        await queueStopped;
         await library.stop();
       } finally {
         db.close();
@@ -121,6 +128,38 @@ function installSignalHandlers(stop, log) {
 }
 
 /**
+ * Startup recovery and queue bring-up for the on-demand conversion feature
+ * (`docs/specs/spec-conversion-core.md`, "Server wiring"). Its first
+ * statement, always — feature on or off — is {@link failInterruptedConversions},
+ * so a row a crash or a prior restart left `converting` never stays stuck;
+ * `queued` rows are left for the next `kick()`. Only when `config.converterCmd`
+ * is set does it create the queue and await its own `start()` (`CONVERT_DIR`
+ * setup and the crash work-area wipe); it never kicks itself, so nothing
+ * spawns before `runStart`'s `listen()` resolves. Logs `conversion_enabled {}`
+ * or `conversion_disabled {}` — never the command — so the feature's
+ * effective state is always on record, whether it is off, unavailable
+ * (an unusable `CONVERT_DIR`) or ready.
+ * @param {{
+ *   db: import('node:sqlite').DatabaseSync,
+ *   config: import('./config.js').Config,
+ *   log: import('./log.js').Logger,
+ * }} options
+ * @returns {Promise<import('./convert/queue.js').ConversionQueue | null>}
+ */
+async function startConversions({ db, config, log }) {
+  const recovered = failInterruptedConversions(db, Date.now());
+  if (recovered > 0) log.info('conversions_recovered', { count: recovered });
+  if (!config.converterCmd) {
+    log.info('conversion_disabled', {});
+    return null;
+  }
+  const queue = createConversionQueue({ db, config, log, now: Date.now });
+  const ready = await queue.start();
+  log.info(ready ? 'conversion_enabled' : 'conversion_disabled', {});
+  return ready ? queue : null;
+}
+
+/**
  * The real startup sequence, letting every failure (`ConfigError`,
  * `MigrationError`, `BootstrapError`, a listen error) propagate to the
  * single handler in {@link start}. Logs `startup` first, before config is
@@ -140,30 +179,36 @@ async function runStart(providedConfig, log) {
   const db = openDatabase(config.dataDir);
   /** @type {import('./library/index.js').LibraryService | null} */
   let library = null;
+  /** @type {import('./convert/queue.js').ConversionQueue | null} */
+  let queue = null;
   try {
     migrate(db, { log });
     await ensureAdmin({ db, adminUser: config.adminUser, adminPassword: config.adminPassword, log });
+    queue = await startConversions({ db, config, log });
 
     library = startLibrary({ db, config, log });
     library.onScanComplete(createAudioMetaPass({ db, mediaRoot: config.mediaRoot, log }).refreshAudioMeta);
     library.onScanComplete(createImageMetaSync({ db, mediaRoot: config.mediaRoot, log }).syncImageMeta);
-    const app = createApp({ config, db, log, library });
+    const app = createApp({ config, db, log, library, conversions: queue ?? undefined });
     await listen(app.server, config.host, config.port);
     log.info('listening', { host: config.host, port: config.port });
+    queue?.kick();
 
     app.deps.sessions.purgeExpired();
     const purgeTimer = setInterval(() => app.deps.sessions.purgeExpired(), PURGE_INTERVAL_MS);
     purgeTimer.unref();
 
-    return { app, db, config, stop: createStop({ app, db, log, purgeTimer, library }) };
+    return { app, db, config, stop: createStop({ app, db, log, purgeTimer, library, queue }) };
   } catch (err) {
     // Nothing past `openDatabase` succeeded (or `listen` itself failed): the
     // process is about to exit, but the DB connection must not leak — on
     // Windows in particular, an open `DatabaseSync` keeps `videothek.db*`
-    // locked, which would otherwise fail a caller's own cleanup. A library
-    // already started (createApp/listen failed after it) is stopped first,
-    // so no scan or watch outlives the DB it writes to.
+    // locked, which would otherwise fail a caller's own cleanup. A started
+    // queue is stopped first (so no converter child outlives the DB it
+    // writes to), then a started library, so no scan or watch outlives it
+    // either.
     try {
+      await queue?.stop();
       await library?.stop();
     } finally {
       db.close();
