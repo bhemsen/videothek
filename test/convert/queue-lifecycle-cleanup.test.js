@@ -5,11 +5,10 @@ import fs from 'node:fs/promises';
 import path from 'node:path';
 import { getConversion } from '../../src/db/conversions.js';
 import { getItemByRelPath } from '../../src/db/library-repo.js';
-import { createConversionQueue } from '../../src/convert/queue.js';
 import { TARGETS } from '../../src/convert/targets.js';
 import {
-  REL_PATH, makeDb, makeTempDir, fakeConfig, fakeLogger, stubCmd,
-  enqueueSource, waitUntil, countEvent, makeSentinel, assertSentinelUnchanged,
+  REL_PATH, lifecycleFixture, startQueue, stubCmd, enqueueSource, waitUntil, countEvent,
+  snapshotOutsideConvertDir, assertNothingOutsideConvertDir, assertNoLeakedPaths,
 } from '../helpers/queue-lifecycle-setup.js';
 
 /**
@@ -37,29 +36,12 @@ function busyForJobDir(key) {
   };
 }
 
-/**
- * @param {import('node:test').TestContext} t
- */
-async function fixture(t) {
-  const db = makeDb();
-  t.after(() => { if (db.isOpen) db.close(); });
-  const mediaRoot = await makeTempDir(t, 'vt-lifecycle-media-');
-  const convertDirReal = await makeTempDir(t, 'vt-lifecycle-convert-');
-  const sentinel = await makeSentinel(t);
-  const { log, calls: logCalls } = fakeLogger();
-  return { db, mediaRoot, convertDirReal, sentinel, log, logCalls };
-}
-
 test('an EBUSY removeDir rejection after a successful ok publish leaves the row playable, the flag set and the copy in place, and logs conversion_cleanup_failed', async (t) => {
-  const f = await fixture(t);
-  const { key } = await enqueueSource(f.db, f.mediaRoot, {});
+  const f = await lifecycleFixture(t);
+  const { key } = await enqueueSource(f);
+  const before = await snapshotOutsideConvertDir(f);
 
-  const queue = createConversionQueue({
-    db: f.db, config: fakeConfig(f.mediaRoot, f.convertDirReal, stubCmd('ok')), log: f.log, now: () => 1,
-    removeDir: busyForJobDir(key),
-  });
-  assert.equal(await queue.start(), true);
-  queue.kick();
+  await startQueue(t, f, stubCmd('ok'), { removeDir: busyForJobDir(key) });
   await waitUntil(() => countEvent(f.logCalls, 'conversion_finished') === 1);
 
   const row = getConversion(f.db, REL_PATH);
@@ -72,19 +54,16 @@ test('an EBUSY removeDir rejection after a successful ok publish leaves the row 
   const cleanup = f.logCalls.find((c) => c.event === 'conversion_cleanup_failed');
   assert.ok(cleanup, 'conversion_cleanup_failed was logged');
   assert.deepEqual(cleanup?.fields, { key, code: 'EBUSY' }, 'no path is logged, only the key and errno code');
-  await assertSentinelUnchanged(f.sentinel);
+  assertNoLeakedPaths(f, row);
+  await assertNothingOutsideConvertDir(f, before);
 });
 
 test('the same EBUSY removeDir rejection after a not-browser-safe run keeps error not_browser_safe and logs conversion_cleanup_failed', async (t) => {
-  const f = await fixture(t);
-  const { key } = await enqueueSource(f.db, f.mediaRoot, {});
+  const f = await lifecycleFixture(t);
+  const { key } = await enqueueSource(f);
+  const before = await snapshotOutsideConvertDir(f);
 
-  const queue = createConversionQueue({
-    db: f.db, config: fakeConfig(f.mediaRoot, f.convertDirReal, stubCmd('not-browser-safe')), log: f.log, now: () => 1,
-    removeDir: busyForJobDir(key),
-  });
-  assert.equal(await queue.start(), true);
-  queue.kick();
+  await startQueue(t, f, stubCmd('not-browser-safe'), { removeDir: busyForJobDir(key) });
   await waitUntil(() => countEvent(f.logCalls, 'conversion_finished') === 1);
 
   const row = getConversion(f.db, REL_PATH);
@@ -96,5 +75,6 @@ test('the same EBUSY removeDir rejection after a not-browser-safe run keeps erro
   const cleanup = f.logCalls.find((c) => c.event === 'conversion_cleanup_failed');
   assert.ok(cleanup, 'conversion_cleanup_failed was logged');
   assert.deepEqual(cleanup?.fields, { key, code: 'EBUSY' });
-  await assertSentinelUnchanged(f.sentinel);
+  assertNoLeakedPaths(f, row);
+  await assertNothingOutsideConvertDir(f, before);
 });

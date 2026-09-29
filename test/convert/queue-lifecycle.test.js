@@ -6,12 +6,11 @@ import fs from 'node:fs/promises';
 import path from 'node:path';
 import { getConversion } from '../../src/db/conversions.js';
 import { getItemByRelPath } from '../../src/db/library-repo.js';
-import { createConversionQueue } from '../../src/convert/queue.js';
 import { WORK_AREA_NAME } from '../../src/convert/work-dir.js';
 import { TARGETS } from '../../src/convert/targets.js';
 import {
-  REL_PATH, makeDb, makeTempDir, fakeConfig, fakeLogger, stubCmd, missingExecutablePath,
-  enqueueSource, waitUntil, countEvent, makeSentinel, assertSentinelUnchanged, assertNoLeakedPaths,
+  REL_PATH, lifecycleFixture, makeTempDir, startQueue, stubCmd, missingExecutablePath, enqueueSource,
+  waitUntil, countEvent, snapshotOutsideConvertDir, assertNothingOutsideConvertDir, assertNoLeakedPaths,
 } from '../helpers/queue-lifecycle-setup.js';
 
 /**
@@ -22,35 +21,15 @@ import {
  */
 
 /**
- * A fresh temp `MEDIA_ROOT`/`CONVERT_DIR` plus DB, logger and sentinel dir
- * for one job outcome case.
+ * Starts a queue against `converterCmd` and waits for the single enqueued
+ * job to finish.
  * @param {import('node:test').TestContext} t
- */
-async function fixture(t) {
-  const db = makeDb();
-  t.after(() => { if (db.isOpen) db.close(); });
-  const mediaRoot = await makeTempDir(t, 'vt-lifecycle-media-');
-  const convertDirReal = await makeTempDir(t, 'vt-lifecycle-convert-');
-  const sentinel = await makeSentinel(t);
-  const { log, calls: logCalls } = fakeLogger();
-  return { db, mediaRoot, convertDirReal, sentinel, log, logCalls };
-}
-
-/**
- * Starts a queue against `converterCmd`, kicks it once, and waits for the
- * single enqueued job to finish.
- * @param {{ db: import('node:sqlite').DatabaseSync, mediaRoot: string, convertDirReal: string, log: any, logCalls: any[] }} f
+ * @param {import('../helpers/queue-lifecycle-setup.js').LifecycleFixture} f
  * @param {readonly string[]} converterCmd
- * @param {Partial<Parameters<typeof createConversionQueue>[0]>} [extra]
  */
-async function runOneJob(f, converterCmd, extra = {}) {
-  const queue = createConversionQueue({
-    db: f.db, config: fakeConfig(f.mediaRoot, f.convertDirReal, converterCmd), log: f.log, now: () => 1, ...extra,
-  });
-  assert.equal(await queue.start(), true, 'queue.start() must succeed against a real temp CONVERT_DIR');
-  queue.kick();
+async function runOneJob(t, f, converterCmd) {
+  await startQueue(t, f, converterCmd);
   await waitUntil(() => countEvent(f.logCalls, 'conversion_finished') === 1);
-  return queue;
 }
 
 /** @param {string} convertDirReal */
@@ -58,11 +37,31 @@ async function workAreaEntries(convertDirReal) {
   return fs.readdir(path.join(convertDirReal, WORK_AREA_NAME));
 }
 
-test('ok publishes <key>/web.mp4 with the flag and output_size, and removes the work dir', async (t) => {
-  const f = await fixture(t);
-  const { key } = await enqueueSource(f.db, f.mediaRoot, {});
+/**
+ * The common failure-case checks: `failed` with `error`, the flag still 0,
+ * an empty work area, no leaked path, and nothing touched outside
+ * `CONVERT_DIR`.
+ * @param {import('../helpers/queue-lifecycle-setup.js').LifecycleFixture} f
+ * @param {string[]} before
+ * @param {string} error
+ */
+async function assertFailedClean(f, before, error) {
+  const row = getConversion(f.db, REL_PATH);
+  assert.equal(row?.status, 'failed');
+  assert.equal(row?.error, error);
+  assert.equal(getItemByRelPath(f.db, REL_PATH)?.playable, 0);
+  assert.deepEqual(await workAreaEntries(f.convertDirReal), [], 'the per-job dir was removed');
+  assertNoLeakedPaths(f, row);
+  await assertNothingOutsideConvertDir(f, before);
+  return row;
+}
 
-  await runOneJob(f, stubCmd('ok'));
+test('ok publishes <key>/web.mp4 with the flag and output_size, and removes the work dir', async (t) => {
+  const f = await lifecycleFixture(t);
+  const { key } = await enqueueSource(f);
+  const before = await snapshotOutsideConvertDir(f);
+
+  await runOneJob(t, f, stubCmd('ok'));
 
   const row = getConversion(f.db, REL_PATH);
   assert.equal(row?.status, 'playable');
@@ -73,107 +72,81 @@ test('ok publishes <key>/web.mp4 with the flag and output_size, and removes the 
   assert.equal((await fs.stat(outFile)).size, row?.output_size);
   assert.equal(getItemByRelPath(f.db, REL_PATH)?.playable, 1);
   assert.deepEqual(await workAreaEntries(f.convertDirReal), [], 'the per-job dir was removed');
-  await assertSentinelUnchanged(f.sentinel);
+  assertNoLeakedPaths(f, row);
+  await assertNothingOutsideConvertDir(f, before);
 });
 
 test('not-browser-safe ends failed not_browser_safe, the flag stays 0, and no file exists under <key>/', async (t) => {
-  const f = await fixture(t);
-  await enqueueSource(f.db, f.mediaRoot, {});
+  const f = await lifecycleFixture(t);
+  const { key } = await enqueueSource(f);
+  const before = await snapshotOutsideConvertDir(f);
 
-  await runOneJob(f, stubCmd('not-browser-safe'));
+  await runOneJob(t, f, stubCmd('not-browser-safe'));
 
-  const row = getConversion(f.db, REL_PATH);
-  assert.equal(row?.status, 'failed');
-  assert.equal(row?.error, 'not_browser_safe');
+  const row = await assertFailedClean(f, before, 'not_browser_safe');
   assert.equal(row?.output_rel, null);
-  assert.equal(getItemByRelPath(f.db, REL_PATH)?.playable, 0);
-  const key = row?.storage_key ?? '';
   await assert.rejects(fs.access(path.join(f.convertDirReal, key)), 'no <key>/ directory was published');
-  assert.deepEqual(await workAreaEntries(f.convertDirReal), []);
-  assertNoLeakedPaths({ row, logCalls: f.logCalls, mediaRoot: f.mediaRoot, convertDirReal: f.convertDirReal });
-  await assertSentinelUnchanged(f.sentinel);
 });
 
 test('crash ends converter_failed and leaves the work area empty', async (t) => {
-  const f = await fixture(t);
-  await enqueueSource(f.db, f.mediaRoot, {});
+  const f = await lifecycleFixture(t);
+  await enqueueSource(f);
+  const before = await snapshotOutsideConvertDir(f);
 
-  await runOneJob(f, stubCmd('crash'));
+  await runOneJob(t, f, stubCmd('crash'));
 
-  const row = getConversion(f.db, REL_PATH);
-  assert.equal(row?.status, 'failed');
-  assert.equal(row?.error, 'converter_failed');
-  assert.deepEqual(await workAreaEntries(f.convertDirReal), []);
-  assertNoLeakedPaths({ row, logCalls: f.logCalls, mediaRoot: f.mediaRoot, convertDirReal: f.convertDirReal });
-  await assertSentinelUnchanged(f.sentinel);
+  await assertFailedClean(f, before, 'converter_failed');
 });
 
 test('usage (exit 2, unrecognized arguments) ends converter_unavailable and leaves the work area empty; stderr text is never logged', async (t) => {
-  const f = await fixture(t);
-  await enqueueSource(f.db, f.mediaRoot, {});
+  const f = await lifecycleFixture(t);
+  await enqueueSource(f);
+  const before = await snapshotOutsideConvertDir(f);
 
-  await runOneJob(f, stubCmd('usage'));
+  await runOneJob(t, f, stubCmd('usage'));
 
-  const row = getConversion(f.db, REL_PATH);
-  assert.equal(row?.status, 'failed');
-  assert.equal(row?.error, 'converter_unavailable');
-  assert.deepEqual(await workAreaEntries(f.convertDirReal), []);
-  assertNoLeakedPaths({ row, logCalls: f.logCalls, mediaRoot: f.mediaRoot, convertDirReal: f.convertDirReal });
+  await assertFailedClean(f, before, 'converter_unavailable');
+  // error_detail may keep the (redacted) stderr tail; log lines never may.
   for (const call of f.logCalls) {
-    assert.ok(!JSON.stringify(call.fields ?? {}).includes('unrecognized arguments'), 'stderr text must never be logged');
+    const serialized = JSON.stringify(call.fields ?? {});
+    assert.ok(!serialized.includes('unrecognized arguments'), `stderr text must never be logged: ${serialized}`);
   }
-  await assertSentinelUnchanged(f.sentinel);
 });
 
 test('escape (reported output outside out/) ends converter_output_invalid and leaves the work area empty', async (t) => {
-  const f = await fixture(t);
-  await enqueueSource(f.db, f.mediaRoot, {});
+  const f = await lifecycleFixture(t);
+  await enqueueSource(f);
+  const before = await snapshotOutsideConvertDir(f);
 
-  await runOneJob(f, stubCmd('escape'));
+  await runOneJob(t, f, stubCmd('escape'));
 
-  const row = getConversion(f.db, REL_PATH);
-  assert.equal(row?.status, 'failed');
-  assert.equal(row?.error, 'converter_output_invalid');
-  assert.deepEqual(await workAreaEntries(f.convertDirReal), [], 'the escaped file was inside the removed job dir');
-  assertNoLeakedPaths({ row, logCalls: f.logCalls, mediaRoot: f.mediaRoot, convertDirReal: f.convertDirReal });
-  await assertSentinelUnchanged(f.sentinel);
+  await assertFailedClean(f, before, 'converter_output_invalid');
 });
 
 test('hang, killed by stop(), ends failed interrupted, leaves no stub process behind, and leaves the work area empty', async (t) => {
-  const f = await fixture(t);
+  const f = await lifecycleFixture(t);
   const holdDir = await makeTempDir(t, 'vt-lifecycle-hold-');
-  await enqueueSource(f.db, f.mediaRoot, {});
+  await enqueueSource(f);
+  const before = await snapshotOutsideConvertDir(f);
 
-  const queue = createConversionQueue({
-    db: f.db, config: fakeConfig(f.mediaRoot, f.convertDirReal, stubCmd('hang', ['--hold', holdDir])), log: f.log, now: () => 1,
-  });
-  assert.equal(await queue.start(), true);
-  queue.kick();
+  const queue = await startQueue(t, f, stubCmd('hang', ['--hold', holdDir]));
   await waitUntil(() => existsSync(path.join(holdDir, 'pid')));
   const pid = Number(await fs.readFile(path.join(holdDir, 'pid'), 'utf8'));
 
   await queue.stop();
 
   assert.throws(() => process.kill(pid, 0), 'the stub process no longer exists');
-  const row = getConversion(f.db, REL_PATH);
-  assert.equal(row?.status, 'failed');
-  assert.equal(row?.error, 'interrupted');
-  assert.deepEqual(await workAreaEntries(f.convertDirReal), []);
-  await assertSentinelUnchanged(f.sentinel);
+  await assertFailedClean(f, before, 'interrupted');
 });
 
 test('a source modified between --hold started and go ends source_changed', async (t) => {
-  const f = await fixture(t);
+  const f = await lifecycleFixture(t);
   const holdDir = await makeTempDir(t, 'vt-lifecycle-hold-');
-  const { abs } = await enqueueSource(f.db, f.mediaRoot, {});
+  const { abs } = await enqueueSource(f);
+  const before = await snapshotOutsideConvertDir(f, { namesOnly: true });
 
-  const queue = createConversionQueue({
-    db: f.db, config: fakeConfig(f.mediaRoot, f.convertDirReal, stubCmd('ok', ['--hold', holdDir])), log: f.log, now: () => 1,
-  });
-  assert.equal(await queue.start(), true);
-  queue.kick();
+  await startQueue(t, f, stubCmd('ok', ['--hold', holdDir]));
   await waitUntil(() => existsSync(path.join(holdDir, 'started')));
-
   await fs.writeFile(abs, 'source bytes changed while converting, different length');
   await fs.writeFile(path.join(holdDir, 'go'), '');
   await waitUntil(() => countEvent(f.logCalls, 'conversion_finished') === 1);
@@ -183,19 +156,20 @@ test('a source modified between --hold started and go ends source_changed', asyn
   assert.equal(row?.error, 'source_changed');
   assert.equal(getItemByRelPath(f.db, REL_PATH)?.playable, 0);
   assert.deepEqual(await workAreaEntries(f.convertDirReal), []);
-  await assertSentinelUnchanged(f.sentinel);
+  assertNoLeakedPaths(f, row);
+  // Names only: the test itself rewrote the source file.
+  await assertNothingOutsideConvertDir(f, before, { namesOnly: true });
 });
 
 test('a converterCmd whose absolute executable does not exist ends converter_unavailable with error_detail exactly ENOENT, no path', async (t) => {
-  const f = await fixture(t);
-  await enqueueSource(f.db, f.mediaRoot, {});
+  const f = await lifecycleFixture(t);
+  await enqueueSource(f);
+  const before = await snapshotOutsideConvertDir(f);
+  const missing = missingExecutablePath();
 
-  await runOneJob(f, Object.freeze([missingExecutablePath()]));
+  await runOneJob(t, f, Object.freeze([missing]));
 
-  const row = getConversion(f.db, REL_PATH);
-  assert.equal(row?.status, 'failed');
-  assert.equal(row?.error, 'converter_unavailable');
+  const row = await assertFailedClean(f, before, 'converter_unavailable');
   assert.equal(row?.error_detail, 'ENOENT');
-  assertNoLeakedPaths({ row, logCalls: f.logCalls, mediaRoot: f.mediaRoot, convertDirReal: f.convertDirReal });
-  await assertSentinelUnchanged(f.sentinel);
+  assertNoLeakedPaths(f, row, [missing, path.basename(missing)]);
 });

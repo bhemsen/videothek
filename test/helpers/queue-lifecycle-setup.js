@@ -1,5 +1,6 @@
 // @ts-check
 import assert from 'node:assert/strict';
+import { createHash } from 'node:crypto';
 import fs from 'node:fs/promises';
 import os from 'node:os';
 import path from 'node:path';
@@ -9,21 +10,36 @@ import { migrate } from '../../src/db/migrate.js';
 import { upsertItem } from '../../src/db/library-repo.js';
 import { enqueueConversion } from '../../src/db/conversions.js';
 import { storageKey } from '../../src/convert/targets.js';
+import { createConversionQueue } from '../../src/convert/queue.js';
 
 /**
  * Shared setup for the real-stub queue lifecycle tests
  * (`test/convert/queue-lifecycle.test.js`, `test/convert/queue-lifecycle-cleanup.test.js`):
- * a real temp `MEDIA_ROOT`/`CONVERT_DIR`, an in-memory migrated DB, a
- * `Config` pointed at `test/helpers/converter-stub.js` run as a real child
- * process (no fake `run`, unlike `test/convert/queue*.test.js`), and small
- * assertion helpers for the path-redaction and no-side-effects-outside
- * `CONVERT_DIR` requirements every case checks.
+ * one base temp dir holding `media/` (`MEDIA_ROOT`) and `converted/`
+ * (`CONVERT_DIR`, created by `queue.start()` itself), an in-memory migrated
+ * DB, a `Config` pointed at `test/helpers/converter-stub.js` run as a real
+ * child process (no fake `run`, unlike `test/convert/queue*.test.js`), and
+ * assertion helpers for the path-redaction and nothing-outside-`CONVERT_DIR`
+ * requirements.
  */
 
 export const stubPath = path.join(path.dirname(fileURLToPath(import.meta.url)), 'converter-stub.js');
 
 /** The one library item every test enqueues a conversion for, unless overridden. */
 export const REL_PATH = 'Filme/Beispiel/film.mkv';
+
+const MEDIA_NAME = 'media';
+const CONVERT_NAME = 'converted';
+
+/**
+ * @typedef {object} LifecycleFixture
+ * @property {import('node:sqlite').DatabaseSync} db
+ * @property {string} base - realpath'd parent of `mediaRoot` and `convertDirReal`.
+ * @property {string} mediaRoot
+ * @property {string} convertDirReal - not yet created; `queue.start()` creates it.
+ * @property {import('../../src/log.js').Logger} log
+ * @property {{ level: string, event: string, fields?: Record<string, unknown> }[]} logCalls
+ */
 
 /**
  * @param {import('node:test').TestContext} t
@@ -36,18 +52,28 @@ export async function makeTempDir(t, prefix) {
   return dir;
 }
 
-/** @returns {import('node:sqlite').DatabaseSync} an in-memory DB with every migration applied */
-export function makeDb() {
+/**
+ * A fresh base temp dir with `media/` created and `converted/` left for
+ * `queue.start()` to create, plus a DB and a recording logger.
+ * @param {import('node:test').TestContext} t
+ * @returns {Promise<LifecycleFixture>}
+ */
+export async function lifecycleFixture(t) {
   const db = new DatabaseSync(':memory:');
   migrate(db);
-  return db;
+  t.after(() => { if (db.isOpen) db.close(); });
+  const base = await makeTempDir(t, 'vt-lifecycle-');
+  const mediaRoot = path.join(base, MEDIA_NAME);
+  await fs.mkdir(mediaRoot);
+  const { log, calls: logCalls } = fakeLogger();
+  return { db, base, mediaRoot, convertDirReal: path.join(base, CONVERT_NAME), log, logCalls };
 }
 
 /**
  * @returns {{ calls: { level: string, event: string, fields?: Record<string, unknown> }[], log: import('../../src/log.js').Logger }}
  *   a fake `Logger` recording every call in order
  */
-export function fakeLogger() {
+function fakeLogger() {
   const calls = /** @type {{ level: string, event: string, fields?: Record<string, unknown> }[]} */ ([]);
   const record = (/** @type {string} */ level) => (/** @type {string} */ event, /** @type {any} */ fields) =>
     calls.push({ level, event, fields });
@@ -80,21 +106,38 @@ export async function waitUntil(predicate, { timeoutMs = 5000, intervalMs = 10 }
 }
 
 /**
- * A `Config` pointed at real temp roots, with `converterCmd` frozen as given
- * (the real stub, or a deliberately missing executable).
- * @param {string} mediaRoot
- * @param {string} convertDir
+ * A `Config` pointed at the fixture's roots, with `converterCmd` frozen as
+ * given (the real stub, or a deliberately missing executable) and a fixed
+ * minimal `converterEnv` (the stub runs via absolute `process.execPath`).
+ * @param {LifecycleFixture} f
  * @param {readonly string[]} converterCmd
  * @returns {import('../../src/config.js').Config}
  */
-export function fakeConfig(mediaRoot, convertDir, converterCmd) {
+export function fakeConfig(f, converterCmd) {
   return Object.freeze({
-    mediaRoot, dataDir: '', host: '0.0.0.0', port: 0, rescanIntervalMin: 15,
+    mediaRoot: f.mediaRoot, dataDir: '', host: '0.0.0.0', port: 0, rescanIntervalMin: 15,
     adminUser: null, adminPassword: null,
     converterCmd: Object.freeze([...converterCmd]),
-    convertDir,
-    converterEnv: Object.freeze({ PATH: process.env.PATH ?? '' }),
+    convertDir: f.convertDirReal,
+    converterEnv: Object.freeze({ PATH: '/usr/bin' }),
   });
+}
+
+/**
+ * Creates a queue against `converterCmd`, registers its `stop()` as a test
+ * teardown, starts it (asserting success) and kicks it once.
+ * @param {import('node:test').TestContext} t
+ * @param {LifecycleFixture} f
+ * @param {readonly string[]} converterCmd
+ * @param {Partial<Parameters<typeof createConversionQueue>[0]>} [extra]
+ * @returns {Promise<ReturnType<typeof createConversionQueue>>}
+ */
+export async function startQueue(t, f, converterCmd, extra = {}) {
+  const queue = createConversionQueue({ db: f.db, config: fakeConfig(f, converterCmd), log: f.log, now: () => 1, ...extra });
+  t.after(() => queue.stop());
+  assert.equal(await queue.start(), true, 'queue.start() must succeed against a real temp CONVERT_DIR');
+  queue.kick();
+  return queue;
 }
 
 /**
@@ -121,22 +164,21 @@ export function missingExecutablePath() {
  * Writes a real source file plus its matching `library_items` row, and
  * enqueues a `queued` conversion row for it (not claimed - the queue under
  * test claims it itself).
- * @param {import('node:sqlite').DatabaseSync} db
- * @param {string} mediaRoot
+ * @param {LifecycleFixture} f
  * @param {{ relPath?: string, target?: 'web' | 'flac' | 'opus', category?: 'movies' | 'series' | 'music' | 'audiobooks', kind?: 'video' | 'audio', ext?: string, queuedAt?: number }} [options]
  * @returns {Promise<{ abs: string, size: number, mtimeMs: number, key: string }>}
  */
-export async function enqueueSource(db, mediaRoot, {
+export async function enqueueSource(f, {
   relPath = REL_PATH, target = 'web', category = 'movies', kind = 'video', ext = 'mkv', queuedAt = 1,
 } = {}) {
-  const abs = path.join(mediaRoot, relPath);
+  const abs = path.join(f.mediaRoot, relPath);
   await fs.mkdir(path.dirname(abs), { recursive: true });
   await fs.writeFile(abs, 'original source bytes');
   const stat = await fs.stat(abs);
   const size = stat.size;
   const mtimeMs = Math.trunc(stat.mtimeMs);
   upsertItem(
-    db,
+    f.db,
     {
       rel_path: relPath, dir: path.dirname(relPath), category, kind, ext,
       title: relPath, sort_title: relPath, playable: false, size, mtime_ms: mtimeMs, scan_version: 1,
@@ -144,58 +186,63 @@ export async function enqueueSource(db, mediaRoot, {
     1000
   );
   const key = storageKey(relPath);
-  enqueueConversion(db, { relPath, storageKey: key, target, sourceSize: size, sourceMtimeMs: mtimeMs, now: queuedAt });
+  enqueueConversion(f.db, { relPath, storageKey: key, target, sourceSize: size, sourceMtimeMs: mtimeMs, now: queuedAt });
   return { abs, size, mtimeMs, key };
 }
 
 /**
- * Creates an unrelated temp dir with one known file, for the "nothing
- * outside `CONVERT_DIR` is created or removed" requirement: every case that
- * touches the queue/job pipeline calls {@link assertSentinelUnchanged} on it
- * afterwards.
- * @param {import('node:test').TestContext} t
- * @returns {Promise<string>}
+ * A recursive listing of the fixture's base dir - `MEDIA_ROOT` and anything
+ * beside `CONVERT_DIR` - leaving out `converted/` and everything under it.
+ * Files carry size, mtime and a content hash unless `namesOnly` (for a case
+ * that rewrites the source file itself).
+ * @param {LifecycleFixture} f
+ * @param {{ namesOnly?: boolean }} [options]
+ * @returns {Promise<string[]>}
  */
-export async function makeSentinel(t) {
-  const dir = await makeTempDir(t, 'vt-lifecycle-sentinel-');
-  await fs.writeFile(path.join(dir, 'untouched.txt'), 'sentinel');
-  return dir;
+export async function snapshotOutsideConvertDir(f, { namesOnly = false } = {}) {
+  const entries = /** @type {string[]} */ (await fs.readdir(f.base, { recursive: true }));
+  const outside = entries.filter((rel) => rel !== CONVERT_NAME && !rel.startsWith(CONVERT_NAME + path.sep)).sort();
+  return Promise.all(outside.map(async (rel) => {
+    const abs = path.join(f.base, rel);
+    const stat = await fs.lstat(abs);
+    if (!stat.isFile()) return `${stat.isDirectory() ? 'dir' : 'other'} ${rel}`;
+    if (namesOnly) return `file ${rel}`;
+    const hash = createHash('sha256').update(await fs.readFile(abs)).digest('hex');
+    return `file ${rel} ${stat.size} ${stat.mtimeMs} ${hash}`;
+  }));
 }
 
 /**
- * Asserts a sentinel dir from {@link makeSentinel} was not touched.
- * @param {string} dir
+ * Asserts nothing inside `MEDIA_ROOT` or beside `CONVERT_DIR` was created,
+ * removed or (unless `namesOnly`) modified since `before` was taken.
+ * @param {LifecycleFixture} f
+ * @param {string[]} before - from {@link snapshotOutsideConvertDir}.
+ * @param {{ namesOnly?: boolean }} [options]
+ * @returns {Promise<void>}
  */
-export async function assertSentinelUnchanged(dir) {
-  assert.deepEqual(await fs.readdir(dir), ['untouched.txt'], 'nothing was created or removed outside CONVERT_DIR');
-  assert.equal(await fs.readFile(path.join(dir, 'untouched.txt'), 'utf8'), 'sentinel', 'the sentinel file itself was not touched');
+export async function assertNothingOutsideConvertDir(f, before, options = {}) {
+  const after = await snapshotOutsideConvertDir(f, options);
+  assert.deepEqual(after, before, 'nothing outside CONVERT_DIR was created, removed or modified');
 }
 
 /**
  * Asserts that a conversion row's `error_detail`/`notes` and every logged
- * field never carry an absolute `mediaRoot`/`convertDirReal` path (the
- * redaction requirement every failure case must satisfy).
- * @param {object} params
- * @param {import('../../src/db/conversions.js').ConversionRow | undefined} params.row
- * @param {{ event: string, fields?: Record<string, unknown> }[]} params.logCalls
- * @param {string} params.mediaRoot
- * @param {string} params.convertDirReal
+ * field never carry the fixture's base, `mediaRoot` or `convertDirReal`
+ * path, nor any string in `extra` (the redaction requirement).
+ * @param {LifecycleFixture} f
+ * @param {import('../../src/db/conversions.js').ConversionRow | undefined} row
+ * @param {string[]} [extra] - further paths/names no row field or log line may contain.
  */
-export function assertNoLeakedPaths({ row, logCalls, mediaRoot, convertDirReal }) {
-  const roots = [mediaRoot, convertDirReal];
-  const detail = row?.error_detail ?? '';
-  for (const root of roots) {
-    assert.ok(!containsPath(detail, root), `error_detail leaked a root path: ${detail}`);
-  }
-  for (const note of JSON.parse(row?.notes ?? '[]')) {
-    for (const root of roots) {
-      assert.ok(!containsPath(note, root), `a stored note leaked a root path: ${note}`);
-    }
-  }
-  for (const call of logCalls) {
-    const serialized = JSON.stringify(call.fields ?? {});
-    for (const root of roots) {
-      assert.ok(!containsPath(serialized, root), `a ${call.event} log line leaked a root path: ${serialized}`);
+export function assertNoLeakedPaths(f, row, extra = []) {
+  const needles = [f.base, f.mediaRoot, f.convertDirReal, ...extra];
+  const texts = [
+    ['error_detail', row?.error_detail ?? ''],
+    ...JSON.parse(row?.notes ?? '[]').map((/** @type {string} */ note) => ['a stored note', note]),
+    ...f.logCalls.map((call) => [`a ${call.event} log line`, JSON.stringify(call.fields ?? {})]),
+  ];
+  for (const [where, text] of texts) {
+    for (const needle of needles) {
+      assert.ok(!containsPath(text, needle), `${where} leaked a path: ${text}`);
     }
   }
 }
@@ -204,12 +251,12 @@ export function assertNoLeakedPaths({ row, logCalls, mediaRoot, convertDirReal }
  * Case-insensitive on `win32` (matching `redactDetail`'s own matching),
  * byte-exact elsewhere.
  * @param {string} text
- * @param {string} root
+ * @param {string} needle
  * @returns {boolean}
  */
-function containsPath(text, root) {
-  if (root.length === 0) return false;
+function containsPath(text, needle) {
+  if (needle.length === 0) return false;
   return process.platform === 'win32'
-    ? text.toLowerCase().includes(root.toLowerCase())
-    : text.includes(root);
+    ? text.toLowerCase().includes(needle.toLowerCase())
+    : text.includes(needle);
 }

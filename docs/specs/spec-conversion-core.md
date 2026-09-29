@@ -1932,12 +1932,16 @@ exports):
   `queue-stop.test.js`) exposed no defect in `src/` — every case already
   behaves as the spec's Queue/Job/Interpretation sections require, so this
   issue is test-only. New shared fixtures in
-  `test/helpers/queue-lifecycle-setup.js` (a real temp `MEDIA_ROOT`/
-  `CONVERT_DIR`, `stubCmd(mode, extraArgs)` building the real
-  `[process.execPath, stubPath, '--mode', …]` `converterCmd`, an
-  `assertNoLeakedPaths` helper for the redaction requirement, and a
-  `makeSentinel`/`assertSentinelUnchanged` pair asserting an unrelated temp
-  dir's listing is unchanged - the "nothing outside `CONVERT_DIR`" check).
+  `test/helpers/queue-lifecycle-setup.js` (one base temp dir holding
+  `media/` as `MEDIA_ROOT` and `converted/` as `CONVERT_DIR`, a fixed
+  minimal `converterEnv` (no `process.env` read), `stubCmd(mode, extraArgs)`
+  building the real `[process.execPath, stubPath, '--mode', …]`
+  `converterCmd`, an `assertNoLeakedPaths` helper for the redaction
+  requirement, and a `snapshotOutsideConvertDir`/
+  `assertNothingOutsideConvertDir` pair comparing a recursive listing of the
+  base dir without `converted/` - names, sizes, mtimes and content hashes,
+  names only for the source-changed case - before and after each job: the
+  "nothing outside `CONVERT_DIR`" check).
   `test/convert/queue-lifecycle.test.js` covers one job outcome per test (`ok`
   publish, `not-browser-safe`, `crash`, `usage`, `escape`, `hang` killed by
   `stop()`, a source changed between `--hold` `started`/`go`, and a missing
