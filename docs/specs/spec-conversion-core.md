@@ -1810,3 +1810,43 @@ exports):
   `resolveMediaPath`'s existing containment), byte-identical source
   after streaming, and `PUT /api/progress/:id` resuming a converted item.
   `npm run verify` green (1623 tests, 0 failures).
+- 2026-09-29: Issue #217 (`src/convert/work-dir.js`) implemented. No exact API
+  was fixed by the spec text (only the split's existence and responsibility),
+  so this issue settles it: four functions, each `{ ok: true, ... } | { ok:
+  false, code }`, with no logging and no DB access (the queue interprets
+  `code` into `conversion_dir_unavailable`/`storage_failed`) — `setupConvertDir`
+  (`start()` steps 1-6, incl. the work-area wipe), `wipeWorkArea` (exported
+  separately, since `setupConvertDir` calls it too), `createJobDir` (step 3)
+  and `preparePublishDir` (step 6). The step-3/6 "realpath must equal the
+  composed path" check is a dedicated `isExactly` helper using
+  `path.win32.relative`/`path.posix.relative` on an injectable `platform`
+  option (pattern of `redactDetail`/`resolveMediaPath`), not `isInside`
+  (containment would wrongly accept a `<storage_key>` link into
+  `.videothek-work/<job>`) and not a host-OS-bound `path.relative` (untestable
+  cross-platform from one dev machine). `JobDirResult`'s failure branch
+  carries `jobDir` once `mkdtemp` itself succeeded, so a caller whose
+  subdirectory creation then fails still knows what its own `finally` must
+  pass to `removeDir`. Three platform behaviours were checked empirically on
+  the win32 dev machine rather than assumed: `lstat`/`isDirectory()` on a
+  Windows junction reports `isSymbolicLink: true`/`isDirectory: false` (so the
+  work-area wipe's directory/non-directory dispatch already routes a junction
+  to `unlink`, matching the spec, with no extra type check needed);
+  `fs.mkdir(p, { recursive: true })` on a path whose leaf is a junction to an
+  existing directory is a silent no-op (the mechanism the containment check
+  must catch, since a bare `mkdir` gives no error to react to); and `lstat`
+  through an intermediate junction or a dangling symlink reports `ENOENT`
+  (not `ELOOP` or a distinct code), while an intermediate plain **file**
+  reports `ENOENT` from `lstat` but `ENOTDIR` from `mkdir` — so the ancestor
+  walk-up's "non-`ENOENT` lstat error stops the walk" branch is real (an
+  `EACCES`-style permission error) but not covered by
+  `test/convert/work-dir.test.js`, which — like the rest of this test suite —
+  avoids OS-specific permission tricks; every other branch (both overlap
+  directions, the public-dir check, a dangling/escaping/decoy ancestor, an
+  `ENOTDIR`-blocked mkdir, both containment checks against an escaping and an
+  inside-`CONVERT_DIR` junction including the spec's `.videothek-work/<job>`
+  case, both `removeDir` seams, and both win32 case-insensitivity checks) is
+  exercised directly. The test file was consolidated (paired scenarios sharing
+  one `test()`, e.g. a happy path immediately re-run for idempotency, or a
+  success case followed by a `removeDir` rejection in the same test) to fit
+  the 300-line limit without dropping any of these branches. `npm run verify`
+  green (1620 tests, 0 failures, 2 pre-existing skips).
