@@ -1979,6 +1979,35 @@ exports):
   asserts the reopened DB (after `stop()` has closed it) and
   `process.kill(pid, 0)` throwing `ESRCH`. `npm run verify` green (1710
   tests, 0 failures); `npm ls --omit=dev --all` empty.
+- 2026-09-29 (#221): the `start()`-check and planted-link cases the Queue
+  section's Verification bullets describe (leftover `.videothek-work/x`
+  wiped, an `ENOTDIR`-blocked or overlapping `convertDir`, a symlinked
+  ancestor into `MEDIA_ROOT` or an injected `publicDir`, a dangling ancestor,
+  an injected work-area-wipe `removeDir` rejection, and the four planted-link
+  scenarios against a running job) exposed no defect in `src/` — every case
+  already behaves as `work-dir.js`/`queue.js` (#217, #219) require, so this
+  issue is test-only, split from #220's `queue-lifecycle.test.js` by the
+  spec's own file split. New files `test/convert/queue-lifecycle-start.test.js`
+  (`start()` alone, via `createConversionQueue` directly so a failing
+  `start()` can be asserted without `queue-lifecycle-setup.js`'s
+  `startQueue()`, which requires success) and
+  `test/convert/queue-lifecycle-links.test.js` (planted `.videothek-work`/
+  `<storage_key>` links and the `out/evil`/`tmp/evil` case, each link's
+  target a guarded outside temp dir with one file, asserted unchanged) reuse
+  the shared fixtures as they stand; `LINK_TYPE`
+  (`process.platform === 'win32' ? 'junction' : 'dir'`) and the dangling-link
+  `EPERM`/`ENOENT` skip are duplicated locally in both files rather than
+  added to the shared setup module, matching `work-dir.test.js`'s own local
+  copy and avoiding a shared-file edit while sibling issues run in parallel
+  worktrees. The `out/evil`/`tmp/evil` links are planted once `<hold>/started`
+  exists (the stub's `--hold` contract writes its output, i.e. finishes
+  step 3, before signalling), found via the single job-dir entry under
+  `.videothek-work/` rather than a predicted `mkdtemp` name; the job's own
+  `finally` cleanup (recursive `removeDir` on the job dir) unlinks the
+  planted links without following them into their target, which the outside
+  temp dir's unchanged listing proves. `npm run verify` green (1731 tests,
+  1729 pass, 2 pre-existing POSIX-only skips, 0 failures); `npm ls --omit=dev
+  --all` empty.
 - 2026-09-29 (#225): `src/api/conversions.js` added as thin orchestration
   only — `deps.db`/`deps.config`/`deps.now` are read solely inside the two
   handlers, never at `registerConversionRoutes` call time, so
