@@ -126,7 +126,7 @@ milestone. A completed spec is moved to `docs/specs/archive/`.
   JSDoc on every export, ≤ 60 lines per function, ≤ 300 lines per file (JS, CSS,
   tests), a mirrored `test/` file for every new `src/` module, German UI copy,
   no `innerHTML` with unescaped data, and `process.env` only in
-  `src/config.js`. Also binding, from other sources: raw values only in
+  `src/config.js` (`src/`; stub exception: constitution.md Conventions). Also binding, from other sources: raw values only in
   `public/css/tokens.css` (`docs/design.md`) and no `console.*` in `src/`
   (`test/constitution.test.js`, "src/ never calls console.*").
 - Child processes: only `src/convert/run-converter.js` imports
@@ -216,7 +216,8 @@ Windows use a Node path without spaces or its 8.3 short name
 Tests are unaffected (they pass arrays). Startup logs `conversion_enabled {}`
 or `conversion_disabled {}` and never logs the command. The README also notes
 that deleting the database file under `DATA_DIR` orphans the copies under
-`CONVERT_DIR` (they are no longer served and can be deleted by hand). Further
+`CONVERT_DIR` (they are no longer served and can be deleted by hand), and
+"CONVERT_DIR nur zusammen mit den Kopien verschieben" (O2). Further
 README notes from the config issue:
 
 - Run the service as a user with read-only access to `MEDIA_ROOT`. This is the
@@ -418,8 +419,9 @@ a multi-byte character split across chunks, bad field types, a relative
   JSON, `outcome` not in the set, `output` not a string or not
   `path.isAbsolute`, `error` not string/null, `notes` not an array or a
   non-string entry. `notes` keeps the first 10 entries, each cut to 2000
-  characters (the job redacts, then cuts to 200, so a root spelling is never
-  split by the cut before redaction).
+  characters (the job redacts, then keeps its first 200 characters, so a root
+  spelling inside the first 2000 characters is never split by the cut before
+  redaction).
 - `stderrTail`: the last 4 KiB (ring buffer) as bytes, leading UTF-8 continuation bytes
   (`0x80`–`0xBF`) dropped, then decoded; once the buffer has wrapped,
   everything up to and including the first `\n` is dropped too (a partial
@@ -454,7 +456,7 @@ rewrite every separator; then
 the text is cut to its last 500
 characters. On `win32` the match is case-insensitive and accepts both `\` and
 `/` as separators. The job applies it to `interpretRun`'s detail and to each
-note before persisting (a note is then cut to 200 characters), with `roots`
+note before persisting (a note then keeps its first 200 characters), with `roots`
 = configured and realpath'd `mediaRoot` and `convertDir` (the realpaths kept
 by `start()`) plus `path.dirname(converterCmd[0])`, because notes are
 stored, returned by the API and shown in the admin panel just like
@@ -573,10 +575,10 @@ remove) in `src/convert/work-dir.js`, each with its mirrored test.
   From here on every path the queue composes starts from `convertDirReal`.
 - **`kick()`:** no-op before `start()` resolved `true`, while a job runs, and
   once `stop()` was called. Otherwise it claims the next row in one
-  transaction (`status = 'queued'` with a present `library_items` row, the
-  same visible set `position` numbers, ordered by `queued_at, rel_path` →
-  `converting`, `started_at = now()`; an invisible `queued` row waits until
-  its path reappears) synchronously and runs it
+  transaction (`status = 'queued'` regardless of a present `library_items`
+  row, ordered by `queued_at, rel_path` → `converting`, `started_at = now()`;
+  a row whose item is gone ends `failed` `source_missing` in step 1)
+  synchronously and runs it
   asynchronously. After each job it calls `kick()` again. Exactly one job
   runs at a time. The whole chain catches everything: no unhandled rejection,
   even when the final DB write itself fails (then only a log line).
@@ -610,7 +612,7 @@ remove) in `src/convert/work-dir.js`, each with its mirrored test.
   5. If `stop()` was called by now → `interrupted` (skip the rest). Else
      `interpretRun`, then `verifyOutput`, then re-check the source. The
      detail and each converter note pass through `redactDetail` (then a
-     note is cut to 200 characters) before they are stored.
+     note keeps its first 200 characters) before they are stored.
   6. Publish: `mkdir` `convertDirReal/<storage_key>` (recursive), `realpath`
      it and require it to **equal** `path.join(convertDirReal, storage_key)`
      (case-insensitive on `win32`). A pre-planted symlink or junction →
@@ -764,7 +766,8 @@ syntax: an id not matching `^[1-9][0-9]{0,15}$`, not a safe integer, or not in
   `stale`, `playable`. `queued` rows are ascending by position; every other
   group is newest first (`finished_at`, else `queued_at`). A `queued` row
   whose item is currently absent from `library_items` is neither listed nor
-  counted in `position` (the job would fail `source_missing` anyway).
+  counted in `position`; the claim still takes it, and the job ends it
+  `failed` `source_missing`.
 - **`GET` with `ids`:** a comma list of 1–500 ids with id syntax (duplicates
   ignored; any bad token, an empty list or more than 500 →
   `400 invalid_query`). `items` = one entry per requested id present in
@@ -798,7 +801,8 @@ Every function takes `db` first. The listing SQL may move to
 - `getFreshConversion(db, itemRow)` → row or `undefined`
 - `enqueueConversion(db, { relPath, storageKey, target, sourceSize, sourceMtimeMs, now })`
   (`INSERT … ON CONFLICT(rel_path) DO UPDATE`)
-- `claimNextConversion(db, now)` → row or `undefined`
+- `claimNextConversion(db, now)` → row or `undefined` (the oldest `queued`
+  row by `queued_at, rel_path`, whether or not `library_items` has its path)
 - `recordSourceStat(db, relPath, size, mtimeMs)`
 - `publishConversion(db, { relPath, outputRel, outputSize, notes, now })`
   (transaction incl. the `library_items` update)
@@ -849,7 +853,7 @@ copy.
     | `queued` | status "In Warteschlange · Platz N" |
     | `converting` | "Wird konvertiert …" |
     | `failed` | "Konvertierung fehlgeschlagen: <Grund>" + button "Erneut versuchen" |
-    | `playable` | "Konvertiert" + button "Neu laden" (`location.reload()`; see OPEN O1) |
+    | `playable` | "Konvertiert" + button "Neu laden" (`location.reload()` on every page, also ending the audio bottom-bar player; Prior decisions O1) |
 
   - A button click disables the button, then `requestConversion(id)`. The
     returned entry re-renders the control. Errors: `409 already_playable`
@@ -1089,7 +1093,7 @@ wins:
 None: nothing blocks implementation, since every machine test uses the stub
 and generated files.
 
-QA-only (at the milestone QA gate, not a blocker):
+QA-only (provided by the human at the milestone QA gate, not a blocker):
 
 - A sample directory without spaces in its path, with a real playable
   `sample.mp4` (H.264/AAC), a `sample.flac` and a `sample.opus`.
@@ -1109,9 +1113,10 @@ QA-only (at the milestone QA gate, not a blocker):
 | Human decision (H3): copies are keyed by a hash of `rel_path` (`storage_key = sha256`), with source size/mtime stored to detect a stale copy; not by `library_items.id` | Index ids change when an item vanishes and reappears or the index is rebuilt. `rel_path` is the stable natural key, the same reasoning as `progress` | 2026-09-28 |
 | Human decision (H4): video goes through the converter's `--to web`; audio through `flac`/`opus` | `--to mp4` keeps HEVC/AC3; `--to webm` re-encodes all h264; `web` copies only browser-safe streams. `flac`/`opus` force a browser codec via the muxer | 2026-09-28 |
 | Human decision (H5): storage usage is displayed only; no limit is enforced in Phase 7 | Enforcement needs deletion, which arrives with cleanup in Phase 8 | 2026-09-28 |
-| **OPEN (O1) — resolved at the spec-acceptance gate:** "Neu laden" on `/music` and `/audiobooks` | `location.reload()` ends the persistent bottom-bar player there. Options: (a) accept `location.reload()` everywhere in Phase 7; (b) the decorator takes an optional `onReload` callback and the two audio views pass a re-render of the current route (touches the audio views and `app.js` beyond one hook line). **Recommendation: (a)** — only the admin sees the button, once per conversion, and the item is playable after any later navigation | 2026-09-28 |
-| **OPEN (O2) — resolved at the spec-acceptance gate:** fresh row whose copy file is gone (deleted by hand, or `CONVERT_DIR` changed without moving the copies) | Today the item stays `playable = 1`, `/media` answers `404 not_found`, and the admin cannot act (a playable item has no control; POST answers 409). Options: (a) accept until the Phase-8 cleanup, which reconciles missing copies, and document in the README "CONVERT_DIR nur zusammen mit den Kopien verschieben", plus a stated exception in `docs/architecture.md` (Boundaries, "`library_items.playable` means streamable via `/media/:id`": not when the copy file of a fresh row is gone); (b) POST treats a fresh row whose `output_rel` does not resolve as stale and re-queues, and the admin panel's "Fertig" group shows "Kopie fehlt" + "Erneut konvertieren" (a file check per listed row); (c) at startup, rows whose copy is missing become `failed` `copy_missing` and their items get `scan_version = 0` for a re-parse. **Recommendation: (a)** — a manual-intervention case in a one-household app, and Phase 8 needs the flag-reset mechanism anyway. The Verification case "a fresh row whose file was removed → `404 not_found`" assumes (a); choosing (b) or (c) changes that test and the POST rules before merge. The flag-1-but-`404` state exists under every option (under (b) until the next POST, under (c) until the next startup), so `docs/architecture.md` Boundaries already names it as an exception to the `playable` meaning; (b) or (c) only amend how it ends | 2026-09-28 |
-| **OPEN (O3) — resolved at the spec-acceptance gate:** `MEDIA_ROOT` temporarily unmounted while jobs are queued | Every queued job fails `source_missing` one after another, with no automatic retry. Options: (a) accept (Unmanic: manual re-queue per item via "Erneut versuchen"); (b) pause the queue: when a source does not resolve and its category root (first `rel_path` segment) is not healthy per `rootHealth(mediaRoot, root)` from `src/library/root-health.js` (`missing`/`unreadable`/`empty`; a plain `fs.realpath(mediaRoot)` check would not fire, because an unmounted mountpoint usually still exists as an empty dir), the job puts its row back to `queued` (`started_at = NULL`), logs `conversion_paused { reason: 'media_root_unavailable' }` and sets an explicit queue flag `paused`. While `paused`, `kick()` claims nothing (otherwise the post-job `kick()` would re-claim the same head row in a busy loop). Only a restart or a `POST /api/conversions/:id` clears `paused`; a `POST` on an already `queued` row then also calls `kick()` (today it answers 200 without one). The `GET` envelope gains `paused`, and the admin panel shows "Warteschlange pausiert – Medienordner nicht erreichbar" with a "Fortsetzen" button that POSTs the first waiting item (the decorator shows no button on a `queued` item). No timer, so still no automatic retry. **Recommendation: (a)** (changed from (b) after review): once (b) is made correct it touches the job, the queue, the API envelope and the admin panel, while in a one-household app the few failed items are re-queued with one "Erneut versuchen" each | 2026-09-28 |
+| Gate decision (O1 → a): "Neu laden" uses `location.reload()` on every page in Phase 7, also on `/music` and `/audiobooks`, where it ends the bottom-bar player | Only the admin sees the button, once per conversion, and the item is playable after any later navigation; an `onReload` callback would touch the audio views and `app.js` beyond one hook line | 2026-09-29 |
+| Gate decision (O2 → a): a fresh row whose copy file is gone (deleted by hand, or `CONVERT_DIR` changed without the copies) stays `playable = 1` with `/media` answering `404 not_found` until the Phase-8 cleanup reconciles it; README: "CONVERT_DIR nur zusammen mit den Kopien verschieben"; `docs/architecture.md` Boundaries keeps this exception to the `playable` meaning | A manual-intervention case in a one-household app, and Phase 8 needs the flag-reset mechanism anyway; re-queue on POST or a startup copy check would add code for a hand-made state | 2026-09-29 |
+| Gate decision (O3 → a): while `MEDIA_ROOT` is unmounted, queued jobs fail `source_missing` one after another; the admin re-queues each with "Erneut versuchen"; no queue pause, no automatic retry | Unmanic: manual re-queue per item. A correct pause spans job, queue, API envelope and admin panel, while one household re-queues a few items by hand | 2026-09-29 |
+| Gate decision: the vision "Weak hardware" criterion is not guaranteed while a conversion runs in Phase 7 (no `nice`/`ionice`); accepted consciously | Conversions are admin-triggered and one at a time, the README states the effect, and CPU/IO priority plus playback protection arrive in Phase 8 | 2026-09-29 |
 | `library_items.playable` = source direct-play OR fresh conversion, computed in `upsertItem`'s SQL and set in the publish transaction | About ten readers across P2–P6 filter on the column, and progress `PUT` rejects `playable = 0`. One flag keeps them all correct with no edits. Computing it on upsert (not only on publish) keeps the index rebuildable (vanish/reappear, `SCAN_VERSION` bump) | 2026-09-28 |
 | Conversion rows reference `rel_path`, with no FK and no cascade | Plex AVOID: a vanished source must not delete its copy at once, because root safety expects items to reappear. Cleanup with a grace period is Phase 8 | 2026-09-28 |
 | One queue, one job at a time, FIFO by `queued_at` (ties by `rel_path`), claim in a `BEGIN IMMEDIATE` transaction | Prior art: parallel 1080p encodes gain little on a Pi 4; the Unmanic multi-worker pool is an AVOID. A sequence column for same-millisecond ties is not worth a column | 2026-09-28 |
@@ -1123,11 +1128,11 @@ QA-only (at the milestone QA gate, not a blocker):
 | `CONVERTER_CMD` is split on whitespace, with no quoting; the first token must be absolute; there is no existence check; it is validated in every config mode | No shell and no hand-rolled shell grammar. An absolute path avoids `PATH` surprises under systemd. A missing converter must fail jobs, not the media server. Every-mode validation follows the `PORT` precedent | 2026-09-28 |
 | `CONVERT_DIR` defaults to `<DATA_DIR>/converted`, is configurable, and must not overlap `MEDIA_ROOT` in either direction (lexically in config, by realpath in `start()`: first the realpath of the nearest existing ancestor plus the missing segments, and only then `mkdir -p`, then a re-check of the created dir's realpath); it must not lie inside `public/` (lexical config problem) | Big copies may belong on the USB disk rather than the SD card. The deletes under `.videothek-work/` must never reach media. Creating the dir before the realpath check would already write under `MEDIA_ROOT` when an ancestor is a symlink into it. Static files are served without a session, so copies inside `public/` would bypass login | 2026-09-28 |
 | A defaulted `CONVERT_DIR` does not add its overlap problem when the `DATA_DIR` overlap problem already fired; an explicit `CONVERT_DIR` is always checked; no overlap check at all while `mediaRoot` is `''` (no valid `MEDIA_ROOT`) | `loadConfig` collects all problems and throws once; a default derived from a `DATA_DIR` inside `MEDIA_ROOT` would otherwise add a second problem and break the unchanged `test/config.test.js` `deepEqual` assertions (106-160). The root cause is reported once, and nothing is left unchecked: the `DATA_DIR` error stops startup anyway. `isInside('', x)` resolves `''` as `cwd` and would report a false overlap next to `MEDIA_ROOT: required` (`test/config.test.js:82-104`); `resolveDataDir` uses the same guard | 2026-09-28 |
-| The converter gets an allowlisted environment (`config.converterEnv`, without `TMPDIR`/`TEMP`/`TMP`); the job adds `TMPDIR`/`TEMP`/`TMP` = its own `tmp/` dir | `ADMIN_PASSWORD` must not leak into a third-party process; only `src/config.js` reads `process.env`. Pointing the temp vars into the per-job dir makes the contract "files only inside OUTDIR or the given temp dir" satisfiable, and the job-dir removal cleans temp files too. Windows/Python additions wait for the Phase-8 adapter | 2026-09-28 |
+| The converter gets an allowlisted environment (`config.converterEnv`, without `TMPDIR`/`TEMP`/`TMP`); the job adds `TMPDIR`/`TEMP`/`TMP` = its own `tmp/` dir | `ADMIN_PASSWORD` must not leak into a third-party process; only `src/config.js` reads `process.env` (`src/`; stub exception: constitution.md Conventions). Pointing the temp vars into the per-job dir makes the contract "files only inside OUTDIR or the given temp dir" satisfiable, and the job-dir removal cleans temp files too. Windows/Python additions wait for the Phase-8 adapter | 2026-09-28 |
 | One fresh unique work dir per attempt (`mkdtemp` under `CONVERT_DIR/.videothek-work/`, converter writes into its realpath'd `out/`), removed as a whole in `finally`; then an atomic `rename` into `CONVERT_DIR/<key>/<fixed name>` | Converter prior art: two calls into one dir give a silent `SKIPPED`, and an orphan from a crash must not write into a retry's dir. The `out/` level keeps an escaping output inside the removed job dir; the realpath avoids false `..` on a symlinked `DATA_DIR`. Tdarr ADOPT: staging, then publish. Fixed names keep every served path free of user-controlled names | 2026-09-28 |
 | `runConverter` returns `{ result, kill }`, builds the argv itself, settles on `'close'`, and reports `killedBy` (`cap`/`stop`/`null`) | One shape for the real runner and the fake in `queue.test.js`; `interpretRun` can tell a foreign signal from its own cap kill; on Windows `'exit'` can precede stdio EOF | 2026-09-28 |
 | A result counts only after videothek's own check: strict MP4 sniff (unknown = fail, ≥ 1 video track) or FLAC/Ogg-Opus magic (`OpusHead` after the segment table), plus a source re-stat; `--to web` always writes MP4 | Converter v3.1.0 reports HEVC/AC3 remuxes as "converted"; the scanner's lenient "unknown = playable" is wrong for a result we publish. A WebM `web` output would fail the extension rule | 2026-09-28 |
-| Phase 7 parses only `outcome`, `output` (absolute), `error`, `notes` of exactly one per-file record; `skipped` is invalid; notes are truncated (10 × 200), bad types are invalid | Minimal fields, so the Phase-8 converter spec can still shape the rest. A fresh empty dir makes `skipped` impossible | 2026-09-28 |
+| Phase 7 parses only `outcome`, `output` (absolute), `error`, `notes` of exactly one per-file record; `skipped` is invalid; notes are validated ≤ 10 × 2000, stored ≤ 10 × 200, bad types are invalid | Minimal fields, so the Phase-8 converter spec can still shape the rest. A fresh empty dir makes `skipped` impossible | 2026-09-28 |
 | stderr is never logged; only its redacted tail is stored as `error_detail` (root prefixes replaced, ≤ 500 chars) | ffmpeg's stderr carries absolute source paths, and item JSON deliberately never exposes paths; H1 (admin-only) is only the backstop. Relative media paths (below `<MEDIA_ROOT>`) stay visible to admins in `error_detail` and notes; that is intended, since admins see titles and the library layout anyway | 2026-09-28 |
 | Failure codes: `storage_failed` covers only step 3 (`mkdir`/`mkdtemp`/`realpath`/containment of the work dir) and step 6 (`mkdir`/`realpath`/containment/`rename` of the publish); the step-7 work-dir removal never changes the recorded end state (see its own row); source `stat` ENOENT/EACCES → `source_missing`; any other throw → new code `internal` ("Interner Fehler") + `conversion_error` log | Every job must end in a terminal state with a displayable reason, and the `kick()` chain must never leave an unhandled rejection | 2026-09-28 |
 | Audio target: `audiobooks` → `opus`; `music` lossless-capable exts → `flac`, other music → `opus`; `mid`/`midi` not convertible; zero-byte sources not convertible | Opus fits speech and keeps multi-hour books small. FLAC avoids a second lossy generation for lossless music. ffmpeg has no MIDI synthesis by default. A zero-byte file can only fail | 2026-09-28 |
@@ -1165,8 +1170,9 @@ QA-only (at the milestone QA gate, not a blocker):
 | `redactDetail` skips `<CONVERTER>` when `path.dirname(converterCmd[0])` is a filesystem root; on `win32` the first `CONVERTER_CMD` token needs a drive letter or UNC prefix | A root dirname (`/converter`) would rewrite every separator; `\node.exe` is absolute but depends on the current drive | 2026-09-28 |
 | `startConversions` runs after `ensureAdmin` and before `startLibrary`, its first statement is `failInterruptedConversions` (also with the feature off), `queue` is a `let` next to `library`; `start()` never kicks, `runStart` kicks after `listen` | The `catch` branch can stop a started queue; no converter spawns before the signal handlers exist, so a Ctrl+C during startup cannot orphan one | 2026-09-28 |
 | A run whose stdio did not settle within `closeGraceMs` (`stdioTimedOut`) fails `converter_output_invalid`, checked before `converted` | Its records may be incomplete, and a grandchild may still be writing the output | 2026-09-28 |
-| The job redacts `interpretRun`'s detail and each note (notes validated up to 2000 chars, redacted, then cut to 200); a wrapped stderr tail drops its partial first line | A cut before redaction, or a partial first line, can split a root spelling so `redactDetail` misses it | 2026-09-28 |
-| `verifyOutput`'s extension check is case-insensitive; re-queue resets `notes` to `'[]'`; `claimNextConversion` skips `queued` rows whose `rel_path` is absent from `library_items` | The published name is fixed, so case is irrelevant; notes describe one run; claiming only the visible rows keeps "Platz N" exact, and a hidden row runs once its path reappears | 2026-09-28 |
+| The job redacts `interpretRun`'s detail and each note (notes validated up to 2000 chars, redacted, then cut to their first 200 characters); a wrapped stderr tail drops its partial first line | A cut before redaction, or a partial first line, can split a root spelling so `redactDetail` misses it; only spellings inside a note's first 2000 characters are protected | 2026-09-28 |
+| `verifyOutput`'s extension check is case-insensitive; re-queue resets `notes` to `'[]'` | The published name is fixed, so case is irrelevant; notes describe one run | 2026-09-28 |
+| Gate decision (queue blocker): `claimNextConversion` takes the oldest `queued` row regardless of a present `library_items` row; only the `position` numbering and the listing use the visible rows | Skipping hidden rows could leave a row "In Warteschlange" forever when its path never reappears; a job whose source is gone ends `failed` `source_missing` (with "Erneut versuchen") at step 1, so a hidden row ahead costs no conversion time | 2026-09-29 |
 | Admin rows show `item.title` for non-episodes (audio too) and category labels from `NAV_ENTRIES` | The item JSON has no book/album title; one label source for all pages | 2026-09-28 |
 | `runStart` delegates recovery and queue start to a private `startConversions({ db, config, log })` in `src/server.js`; lifecycle and runner tests may split into any number of `queue-lifecycle-*`/`run-converter-*` siblings | `runStart` would otherwise reach about 50–55 of 60 lines; about 17 lifecycle cases with real stub setup do not fit two 300-line files | 2026-09-28 |
 
@@ -1219,8 +1225,8 @@ Machine checks (`npm run verify`):
   - 006 applies on a DB at 005 and as a gap; re-running it is a no-op
   - `test/db/migrate.test.js`'s gap test (edited as listed under "Edited")
     stays green with `006` in the default directory
-  - claim is FIFO (ties by `rel_path`) and claims at most one row; it skips
-    a `queued` row whose `rel_path` is absent from `library_items`
+  - claim is FIFO (ties by `rel_path`) and claims at most one row; it also
+    claims a `queued` row whose `rel_path` is absent from `library_items`
   - re-queueing a row resets `notes` to `'[]'`
   - publish sets `library_items.playable = 1` only for a matching size/mtime
   - `failInterruptedConversions` touches only `converting` rows
@@ -1287,6 +1293,10 @@ Machine checks (`npm run verify`):
   - `kick()` before `start()` resolved and during a job is a no-op; a
     `start()` resolving `true` claims nothing until `kick()`
   - the next job starts after a failure; an unexpected throw → `internal`
+  - a `queued` row whose `rel_path` is absent from `library_items` is claimed
+    and ends `failed` `source_missing`, and the next row runs; two queued
+    rows whose sources are gone (unmounted `MEDIA_ROOT`, O3) both end
+    `source_missing` in turn, and nothing retries
   - `stop()` prevents new claims, including a job finishing while `stop()` is
     pending; `stop()` resolves only after the job's DB write and cleanup
   - `stop()` during steps 1–3 → `run` is never called, the row is `failed`
@@ -1323,7 +1333,8 @@ Machine checks (`npm run verify`):
     `<tmp>/pub -> <publicDir>` and `convertDir = <tmp>/pub/converted` →
     `start()` resolves `false` (`public`) and the `publicDir` listing is
     unchanged; a dangling symlink as the nearest existing ancestor →
-    `false` with its `realpath` code and nothing created
+    `false` with its `realpath` code and nothing created (on `win32` the
+    junction setup skips on `EPERM`/`ENOENT`)
   - a `converterCmd` whose absolute executable does not exist →
     `converter_unavailable` with `error_detail` exactly the errno code
     (`ENOENT`), no path
@@ -1356,7 +1367,9 @@ Machine checks (`npm run verify`):
   - every directory link in these cases is created with
     `fs.symlink(target, p, process.platform === 'win32' ? 'junction' : 'dir')`,
     so they run on `win32` without privileges (a junction `lstat`s as a
-    symbolic link); only `verify.test.js`'s file-symlink case skips on `EPERM`
+    symbolic link); only `verify.test.js`'s file-symlink case skips on `EPERM`,
+    and the dangling-link case skips on `EPERM`/`ENOENT` when `win32` cannot
+    create its junction
   - nothing outside `convertDir` is created or removed (checked with a
     temp-dir listing)
 - [ ] `test/server-conversions.test.js` (`start({ config, log })` with a
@@ -1403,7 +1416,7 @@ Machine checks (`npm run verify`):
   - a converted MKV item streams the copy with `video/mp4`, `206` for a
     Range, `416` beyond the end, and `HEAD` without a body
   - a stale copy → `404 not_playable`
-  - a fresh row whose file was removed → `404 not_found`
+  - a fresh row whose file was removed → `404 not_found` (O2 (a))
   - an `output_rel` tampered to `../x` or an absolute path → `404`
     (containment)
   - the original under `MEDIA_ROOT` is byte-identical afterwards
@@ -1412,7 +1425,8 @@ Machine checks (`npm run verify`):
 - [ ] `test/public/convert-control.test.js` (DOM fakes, precedent
       `test/helpers/player-page-fakes.js`): the first-match control table row
       by row; POST error mapping (`409` → "Konvertiert", `400`/`404`/`503` →
-      control removed, other → retry text, button enabled again); the poller
+      control removed, other → retry text, button enabled again); "Neu laden"
+      calls `location.reload()` (O1); the poller
       stops on `!root.isConnected`, pauses while hidden, stops for good on
       `401`/`403` and keeps its interval on a transient error.
 - [ ] `test/public/conversion-format.test.js`: `statusLabel` for all six
@@ -1455,7 +1469,7 @@ exports):
 | The Phase-8 converter's JSON shape differs from this minimum | Only four fields, the MP4 rule for `web` and the exit codes are fixed here; the Phase-8 adapter issue adapts `interpretRun`, never the queue or the DB |
 | A converter hangs forever and blocks the queue (no cancel/timeout in Phase 7) | A restart ends it as `failed interrupted` (no loop); cancel and timeout arrive in Phase 8. The admin panel makes a long "Läuft gerade" visible |
 | SIGTERM does not stop a Python converter's ffmpeg grandchild, and an orphan may keep writing after a crash | Irrelevant for the stub. A unique work dir per attempt keeps an orphan out of a retry. Phase 8 introduces the process-group kill and the converter's `.partial` cleanup; `.videothek-work/` is wiped at the next start regardless |
-| On Windows (dev) `kill('SIGTERM')` is `TerminateProcess` and file handles linger | Runner settles on `'close'`; every `rm` has `maxRetries: 3`; directory-link tests use junctions, only the file-symlink test skips on `EPERM`. Production is Linux |
+| On Windows (dev) `kill('SIGTERM')` is `TerminateProcess` and file handles linger | Runner settles on `'close'`; every `rm` has `maxRetries: 3`; directory-link tests use junctions; only the file-symlink test skips on `EPERM` and the dangling-junction case on `EPERM`/`ENOENT`. Production is Linux |
 | The strict sniff misses DTS/MP2 in `mp4a` or 10-bit h264 (`avc1`) | Known sniffer gap (prior art). The `web` target is specified to re-encode those; the human QA of Phase 8 checks real files |
 | `test/db/migrate.test.js`'s gap test pins the exact set of default migrations (`[1, 2, 3, 4]` after recording version 5), so every new migration file breaks it | The migration issue relaxes the assertion to "below 5 exactly `[1, 2, 3, 4]`, and 5 not re-applied" (listed under "Edited"); Phase 8's migrations then need no edit there |
 | The upsert SQL now references `conversions`, so a test applying only some migrations and then calling `upsertItem` would break | Verified 2026-09-28: every test that calls `upsertItem` migrates the default directory (`test/db/audio-meta-repo.test.js`'s `makeDb` included); the partial-directory tests (`audio-meta-repo` 004 case, `image-meta`, `migrate`) never call it. The library-repo issue re-checks this and adds the regression cases |
@@ -1469,7 +1483,7 @@ exports):
 | A source re-copied with `cp` gets a new mtime and loses its copy | Documented in the README; `mv`/`rsync -t` keep the copy fresh. Stale copies are re-convertible |
 | A second SIGINT/SIGTERM during shutdown (`src/server.js` `installSignalHandlers` exits 1 at once) orphans a running converter; so does a crash | The orphan cannot write into a retry's dir (unique work dir) and `.videothek-work/` is wiped at the next start. README: `--init`/tini when videothek is PID 1 in a container, default `KillMode=control-group` under systemd, so the orphan is reaped. Process-group kill is Phase 8 |
 | A child that never exits, even after `SIGKILL` (uninterruptible I/O on a hung mount), would block shutdown | `stop()` resolves after `stopDeadlineMs` at the latest; the row stays `converting` and startup recovery marks it `interrupted` |
-| Vision success criterion "Weak hardware" (two concurrent 1080p streams without stutter on a Pi 4) can be missed while a conversion runs, since Phase 7 has no `nice`/`ionice` | **To be accepted consciously at the spec-acceptance gate** (not an open option): conversions are admin-triggered and one at a time, the README states the effect, and CPU/IO priority plus playback protection arrive in Phase 8. The acceptance is recorded in the Decision log when the gate grants it |
+| Vision success criterion "Weak hardware" (two concurrent 1080p streams without stutter on a Pi 4) can be missed while a conversion runs, since Phase 7 has no `nice`/`ionice` | **Accepted consciously at the spec-acceptance gate** (2026-09-29, Prior decisions): conversions are admin-triggered and one at a time, the README states the effect, and CPU/IO priority plus playback protection arrive in Phase 8 |
 
 ## Decision log
 
@@ -1640,3 +1654,16 @@ exports):
   row titles and labels; the three item-9 decisions; constitution env
   wording and architecture stop-deadline note. Skipped: a `title` for
   `.convert-control` (intent unclear). O1-O3 stay open.
+- 2026-09-29: Spec-acceptance gate passed. O1 (a): "Neu laden" reloads
+  every page. O2 (a): a missing copy file stays flag 1 / `404` until Phase 8;
+  README note, architecture.md exception kept. O3 (a): unmounted
+  `MEDIA_ROOT` fails queued jobs `source_missing`, manual re-queue. H1–H5
+  ratified. The Pi "Weak hardware" risk is accepted. Human prerequisites:
+  none blocking; QA-only items are provided at the milestone QA gate.
+  Queue blocker fixed: `claimNextConversion` no longer skips rows absent
+  from `library_items` (a skipped row could wait forever); such a job fails
+  `source_missing`, and only `position`/listing stay visible-only. Also: the
+  `process.env` rule scoped to `src/` (stub exception) in Constraints and
+  architecture.md; notes keep their first 200 characters, and the no-split
+  claim is limited to spellings inside the first 2000; the dangling-junction
+  case may skip on `win32` `EPERM`/`ENOENT`.
