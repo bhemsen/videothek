@@ -1790,3 +1790,17 @@ exports):
   and `c_storage_key`, not just the ones the spec names as examples), per
   "every `conversions` column is aliased". `npm run verify` green (1573
   tests, 0 failures).
+- 2026-09-29: Issue #223 (`handleMedia` fresh-conversion serving) implemented
+  as specified: a new `resolvePlaybackPath` helper calls `getFreshConversion`
+  and, when it finds a row, resolves `conversion.output_rel` against
+  `config.convertDir` instead of the source; `config.convertDir` is read only
+  in that branch. `sendMedia` needed no change — `mediaTypeFor(extname(path))`
+  already maps `mp4`/`flac`/`opus` correctly via the existing compat table, so
+  no `contentType` override was added. `media.js` exports nothing new.
+  `test/api/media-converted.test.js` covers the copy streaming with Range/
+  HEAD, a stale copy (`404 not_playable`, falls out of #209's effective-
+  playable computation with no extra code), a fresh row whose copy file was
+  removed (`404 not_found`), `output_rel` tampered to `../x` or a leading `/`
+  (`404`, `resolveMediaPath`'s existing containment), byte-identical source
+  after streaming, and `PUT /api/progress/:id` resuming a converted item.
+  `npm run verify` green (1615 tests, 0 failures).

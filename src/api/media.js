@@ -7,10 +7,15 @@
  * `Content-Type`, the subtitle sidecar rules) lives in `src/http/stream.js`
  * (via `src/http/media-types.js`) and `src/media/subtitles.js`; this module
  * holds no MIME literal of its own beyond the imported subtitle constant.
+ * `/media/:id` transparently prefers a fresh converted copy under
+ * `CONVERT_DIR` over the original (`src/db/conversions.js`'s
+ * `getFreshConversion`); subtitle sidecars always come from the source.
  *
  * @see docs/specs/spec-video-streaming.md — "Error bodies", "Subtitle route".
+ * @see docs/specs/spec-conversion-core.md — "Serving".
  */
 
+import { getFreshConversion } from '../db/conversions.js';
 import { getItemById } from '../db/library-queries.js';
 import { requireUser } from '../http/guards.js';
 import { sendError } from '../http/respond.js';
@@ -77,11 +82,33 @@ function logStreamErrorIfNeeded(deps, id, error) {
 }
 
 /**
+ * Resolves the absolute path to actually stream for a playable item: a
+ * fresh converted copy under `CONVERT_DIR` when `getFreshConversion` finds
+ * one (status `playable`, source stat still matching), otherwise the
+ * original under `MEDIA_ROOT` as before. `config.convertDir` is never read
+ * for an item with no fresh conversion. A fresh row whose `output_rel` no
+ * longer resolves inside `CONVERT_DIR` (file removed, or tampered to
+ * escape it) yields `null`, same as an unresolvable source path.
+ * @param {MediaDeps} deps
+ * @param {import('../db/library-repo.js').LibraryItemRow} row
+ * @returns {Promise<string | null>}
+ */
+async function resolvePlaybackPath(deps, row) {
+  const conversion = getFreshConversion(deps.db, row);
+  if (conversion?.output_rel) {
+    return resolveMediaPath(deps.config.convertDir, conversion.output_rel);
+  }
+  return resolveMediaPath(deps.config.mediaRoot, row.rel_path);
+}
+
+/**
  * Handles `GET`/`HEAD /media/:id`: streams any playable library item of any
- * category. Unknown id, an item whose file no longer resolves inside
- * `MEDIA_ROOT`, or a category unrelated pre-check failure all answer the
- * same `404 not_found`; a known but non-playable item answers `404
- * not_playable`. The query string is never read.
+ * category — a fresh converted copy under `CONVERT_DIR` when one exists
+ * (see {@link resolvePlaybackPath}), otherwise the original. Unknown id, an
+ * item whose file no longer resolves inside its root, or a category
+ * unrelated pre-check failure all answer the same `404 not_found`; a known
+ * but non-playable item answers `404 not_playable`. The query string is
+ * never read.
  * @param {import('node:http').IncomingMessage} req
  * @param {import('node:http').ServerResponse} res
  * @param {import('../http/router.js').RequestContext} ctx
@@ -99,7 +126,7 @@ async function handleMedia(req, res, ctx, deps) {
     return;
   }
 
-  const filePath = await resolveMediaPath(deps.config.mediaRoot, row.rel_path);
+  const filePath = await resolvePlaybackPath(deps, row);
   if (filePath === null) return notFound(res);
 
   const result = await sendMedia(req, res, { path: filePath });
