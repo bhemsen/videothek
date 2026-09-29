@@ -1,0 +1,485 @@
+<!DOCTYPE html>
+<html lang="de">
+<head>
+  <meta charset="UTF-8">
+  <meta name="viewport" content="width=device-width, initial-scale=1.0">
+  <title>Konvertierungs-Steuerung – Audio (Mobile)</title>
+  <style>
+    :root {
+      --color-background: #0f1115;
+      --color-foreground: #e8eaed;
+      --color-primary: #ff7a1a;
+      --color-secondary: #1c2029;
+      --color-accent: #4fb3ff;
+      --color-muted: #9aa0aa;
+      --color-border: #2a2f3a;
+      --color-destructive: #ff5c5c;
+      --font-sans: system-ui, -apple-system, 'Segoe UI', Roboto, 'Helvetica Neue', Arial, sans-serif;
+      --font-mono: ui-monospace, 'SFMono-Regular', Consolas, 'Liberation Mono', monospace;
+      --space-1: 4px;
+      --space-2: 8px;
+      --space-3: 12px;
+      --space-4: 16px;
+      --space-6: 24px;
+      --radius-sm: 4px;
+      --radius-md: 8px;
+      --radius-full: 9999px;
+      --shadow-sm: 0 1px 2px rgba(0, 0, 0, .4);
+      --shadow-md: 0 8px 24px rgba(0, 0, 0, .5);
+      --row-min: 48px;
+      --tap-min: 44px;
+    }
+
+    *, *::before, *::after {
+      box-sizing: border-box;
+      margin: 0;
+      padding: 0;
+    }
+
+    html, body { max-width: 100%; overflow-x: hidden; }
+
+    body {
+      background-color: var(--color-background);
+      color: var(--color-foreground);
+      font-family: var(--font-sans);
+      line-height: 1.5;
+      min-height: 100vh;
+      -webkit-font-smoothing: antialiased;
+      padding-bottom: 148px; /* clears the fixed player bar + bottom nav */
+    }
+
+    /* Top bar (reference: control-video-mobile.html) */
+    header {
+      height: 56px;
+      padding: 0 var(--space-4);
+      border-bottom: 1px solid var(--color-border);
+      background-color: var(--color-background);
+      display: flex;
+      align-items: center;
+      justify-content: space-between;
+      position: sticky;
+      top: 0;
+      z-index: 50;
+    }
+
+    .brand { display: flex; align-items: center; gap: var(--space-2); text-decoration: none; color: var(--color-foreground); font-size: 18px; font-weight: 700; }
+    .brand svg { width: 18px; height: 18px; }
+
+    .logout-btn {
+      width: var(--tap-min);
+      height: var(--tap-min);
+      display: flex;
+      align-items: center;
+      justify-content: center;
+      background: none;
+      border: none;
+      color: var(--color-muted);
+      border-radius: var(--radius-sm);
+    }
+
+    a:focus-visible, button:focus-visible { outline: 2px solid var(--color-primary); outline-offset: 2px; }
+
+    main { padding: var(--space-4); }
+
+    .back-link {
+      display: inline-flex;
+      align-items: center;
+      gap: var(--space-2);
+      color: var(--color-accent);
+      text-decoration: none;
+      font-size: 14px;
+      font-weight: 400;
+      min-height: var(--tap-min);
+    }
+
+    .back-link svg { width: 16px; height: 16px; stroke: currentColor; fill: none; stroke-width: 2.4; stroke-linecap: round; stroke-linejoin: round; }
+
+    /* Album hero (reference: music-audiobooks/music-album-mobile.html) */
+    .album-header { display: flex; flex-direction: column; align-items: center; text-align: center; margin: var(--space-2) 0 var(--space-6); }
+
+    .cover-placeholder {
+      width: 152px;
+      height: 152px;
+      background-color: var(--color-secondary);
+      border: 1px solid var(--color-border);
+      border-radius: var(--radius-md);
+      box-shadow: var(--shadow-md);
+      display: flex;
+      align-items: center;
+      justify-content: center;
+      margin-bottom: var(--space-4);
+    }
+
+    .cover-placeholder svg { width: 56px; height: 56px; stroke: var(--color-muted); opacity: .55; fill: none; stroke-width: 1.6; stroke-linecap: round; stroke-linejoin: round; }
+
+    .eyebrow { font-size: 12px; font-weight: 600; text-transform: uppercase; letter-spacing: .08em; color: var(--color-muted); margin-bottom: 4px; }
+    .album-title { font-size: 22px; font-weight: 700; line-height: 1.2; margin-bottom: 4px; }
+    .album-artist { font-size: 15px; font-weight: 600; margin-bottom: 4px; }
+    .album-meta { font-size: 13px; color: var(--color-muted); margin-bottom: var(--space-4); }
+
+    .btn-primary {
+      display: inline-flex;
+      align-items: center;
+      justify-content: center;
+      gap: var(--space-2);
+      width: 100%;
+      height: var(--tap-min);
+      padding: 0 var(--space-4);
+      background-color: var(--color-primary);
+      color: var(--color-background);
+      font-family: inherit;
+      font-size: 16px;
+      font-weight: 700;
+      border: none;
+      border-radius: var(--radius-md);
+      box-shadow: var(--shadow-sm);
+      cursor: pointer;
+    }
+
+    .btn-primary svg { width: 18px; height: 18px; fill: currentColor; }
+
+    h2 { font-size: 18px; font-weight: 600; margin-bottom: 4px; }
+    .section-meta { font-size: 13px; color: var(--color-muted); margin-bottom: var(--space-3); }
+
+    /* Row list — shared shape for track rows (album) and file rows (audiobook) */
+    .track-list, .file-list {
+      background-color: var(--color-secondary);
+      border: 1px solid var(--color-border);
+      border-radius: var(--radius-md);
+      overflow: hidden;
+      margin-bottom: var(--space-6);
+    }
+
+    /* display:block (not flex-direction:column) — this build's headless renderer fails to
+       paint end-aligned flex/text content nested inside a column flex, so rows stack via
+       normal block flow and the secondary line stays left-aligned (still fully readable,
+       still wraps below the title) instead of using text-align:right / justify-content:flex-end. */
+    .track-row, .file-row {
+      display: block;
+      min-height: var(--row-min);
+      padding: var(--space-3) var(--space-4);
+      border-bottom: 1px solid var(--color-border);
+      text-decoration: none;
+      color: inherit;
+    }
+
+    .track-row:last-child, .file-row:last-child { border-bottom: none; }
+
+    .row-left { display: flex; align-items: center; gap: var(--space-3); flex-wrap: wrap; }
+
+    .row-num { font-family: var(--font-mono); font-size: 14px; color: var(--color-muted); width: 20px; text-align: right; flex-shrink: 0; }
+    .row-title { font-size: 16px; font-weight: 400; }
+    .track-row--unplayable .row-title, .file-row--unplayable .row-title { color: var(--color-muted); }
+
+    .row-right { display: block; margin-top: var(--space-1); }
+    .row-meta { font-size: 14px; color: var(--color-muted); white-space: nowrap; }
+    .row-check { display: inline-flex; align-items: center; gap: var(--space-1); font-size: 14px; color: var(--color-muted); }
+    .row-check svg { width: 14px; height: 14px; stroke: currentColor; fill: none; stroke-width: 2.4; stroke-linecap: round; stroke-linejoin: round; }
+
+    .track-row.is-current .row-title, .file-row.is-current .row-title { color: var(--color-primary); font-weight: 600; }
+    .file-row.is-current .row-meta { color: var(--color-primary); font-weight: 600; }
+
+    .badge-unplayable {
+      display: inline-flex;
+      align-items: center;
+      gap: 4px;
+      padding: var(--space-1) var(--space-2);
+      border: 1px solid var(--color-destructive);
+      border-radius: var(--radius-full);
+      color: var(--color-destructive);
+      font-size: 12px;
+      font-weight: 600;
+      white-space: nowrap;
+    }
+
+    .badge-unplayable svg { width: 11px; height: 11px; stroke: currentColor; stroke-width: 2; fill: none; }
+
+    /* Conversion control — appended as the host row's last child, wraps onto its own line */
+    .convert-control { display: block; margin-top: var(--space-2); }
+    .convert-control .status-text { margin-bottom: var(--space-2); }
+    .convert-control .btn { margin: 0; }
+
+    .btn {
+      display: inline-flex;
+      align-items: center;
+      justify-content: center;
+      height: var(--tap-min);
+      padding: 0 var(--space-4);
+      border-radius: var(--radius-md);
+      font-family: inherit;
+      font-size: 14px;
+      font-weight: 600;
+      cursor: pointer;
+      white-space: nowrap;
+    }
+
+    .btn-secondary { background-color: var(--color-secondary); border: 1px solid var(--color-border); color: var(--color-foreground); }
+    .btn-secondary:hover { background-color: color-mix(in srgb, var(--color-secondary), white 8%); }
+    .btn-secondary:active { background-color: color-mix(in srgb, var(--color-secondary), black 8%); }
+
+    .status-text { font-size: 14px; color: var(--color-muted); line-height: 1.3; }
+    .status-text.is-error { color: var(--color-destructive); }
+
+    /* Fixed bottom region: persistent player bar + category nav (reference: music-album-mobile.html) */
+    .bottom-container { position: fixed; bottom: 0; left: 0; right: 0; z-index: 60; box-shadow: var(--shadow-sm); }
+
+    .player-bar {
+      background-color: var(--color-secondary);
+      border-top: 1px solid var(--color-border);
+      padding: var(--space-2) var(--space-4);
+      display: flex;
+      align-items: center;
+      gap: var(--space-3);
+    }
+
+    .player-thumb {
+      width: 40px;
+      height: 40px;
+      border-radius: var(--radius-sm);
+      background-color: var(--color-background);
+      border: 1px solid var(--color-border);
+      display: flex;
+      align-items: center;
+      justify-content: center;
+      flex-shrink: 0;
+    }
+
+    .player-thumb svg { width: 18px; height: 18px; stroke: var(--color-muted); fill: none; stroke-width: 1.6; }
+
+    .player-info { flex: 1; min-width: 0; }
+    .player-title { font-size: 14px; font-weight: 600; overflow: hidden; text-overflow: ellipsis; white-space: nowrap; }
+    .player-artist { font-size: 12px; color: var(--color-muted); overflow: hidden; text-overflow: ellipsis; white-space: nowrap; }
+
+    .play-pause-btn {
+      width: var(--tap-min);
+      height: var(--tap-min);
+      border-radius: var(--radius-full);
+      background-color: var(--color-primary);
+      color: var(--color-background);
+      display: flex;
+      align-items: center;
+      justify-content: center;
+      border: none;
+      flex-shrink: 0;
+    }
+
+    .play-pause-btn svg { width: 16px; height: 16px; fill: currentColor; }
+
+    .category-nav {
+      background-color: var(--color-background);
+      border-top: 1px solid var(--color-border);
+      display: flex;
+      height: 60px;
+    }
+
+    .category-nav .nav-item {
+      flex: 1;
+      min-height: var(--tap-min);
+      display: flex;
+      flex-direction: column;
+      align-items: center;
+      justify-content: center;
+      gap: var(--space-1);
+      color: var(--color-muted);
+      text-decoration: none;
+      font-size: 12px;
+      font-weight: 600;
+    }
+
+    .category-nav .nav-item.active { color: var(--color-primary); }
+    .category-nav .nav-item svg { width: 20px; height: 20px; }
+  </style>
+</head>
+<body>
+
+  <header>
+    <a href="#" class="brand" aria-label="Videothek Startseite">
+      <svg viewBox="0 0 24 24" fill="currentColor" style="color: var(--color-primary)"><path d="M8 5v14l11-7z"/></svg>
+      <span>Videothek</span>
+    </a>
+    <button class="logout-btn" aria-label="Abmelden" type="button">
+      <svg width="20" height="20" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round">
+        <path d="M9 21H5a2 2 0 0 1-2-2V5a2 2 0 0 1 2-2h4"></path>
+        <polyline points="16 17 21 12 16 7"></polyline>
+        <line x1="21" y1="12" x2="9" y2="12"></line>
+      </svg>
+    </button>
+  </header>
+
+  <main>
+    <!-- Album view: track list with two not-playable rows carrying the conversion control -->
+    <section aria-labelledby="heading-album">
+      <a href="#" class="back-link">
+        <svg viewBox="0 0 24 24"><polyline points="15 18 9 12 15 6"></polyline></svg>
+        Musik
+      </a>
+
+      <div class="album-header">
+        <div class="cover-placeholder" aria-hidden="true">
+          <svg viewBox="0 0 24 24"><path d="M9 18V5l12-2v13"></path><circle cx="6" cy="18" r="3"></circle><circle cx="18" cy="16" r="3"></circle></svg>
+        </div>
+        <span class="eyebrow">Album</span>
+        <h1 id="heading-album" class="album-title">Unterwegs</h1>
+        <div class="album-artist">Die Beispiele</div>
+        <div class="album-meta">2019 · 12 Titel · 48 Min.</div>
+        <button class="btn-primary" type="button">
+          <svg viewBox="0 0 24 24"><polygon points="5 3 19 12 5 21 5 3"></polygon></svg>
+          Alle abspielen
+        </button>
+      </div>
+
+      <div class="track-list">
+        <a href="#" class="track-row">
+          <div class="row-left"><span class="row-num">1</span><span class="row-title">Aufbruch</span></div>
+          <div class="row-right"><span class="row-meta">3:41</span></div>
+        </a>
+
+        <a href="#" class="track-row">
+          <div class="row-left"><span class="row-num">2</span><span class="row-title">Am Fluss</span></div>
+          <div class="row-right"><span class="row-meta">4:05</span></div>
+        </a>
+
+        <!-- Not-playable, convertible → button "Konvertieren"; control wraps below the title -->
+        <div class="track-row track-row--unplayable" data-item-id="201">
+          <div class="row-left">
+            <span class="row-num">3</span>
+            <span class="row-title">Bonus (Live)</span>
+            <span class="badge-unplayable">
+              <svg viewBox="0 0 24 24"><circle cx="12" cy="12" r="10"></circle><line x1="4.93" y1="4.93" x2="19.07" y2="19.07"></line></svg>
+              Nicht abspielbar
+            </span>
+          </div>
+          <div class="convert-control" data-convert-control>
+            <button class="btn btn-secondary" type="button">Konvertieren</button>
+          </div>
+        </div>
+
+        <!-- Not-playable, queued → status "In Warteschlange · Platz 1" -->
+        <div class="track-row track-row--unplayable" data-item-id="202">
+          <div class="row-left">
+            <span class="row-num">4</span>
+            <span class="row-title">Outtake (Rohschnitt)</span>
+            <span class="badge-unplayable">
+              <svg viewBox="0 0 24 24"><circle cx="12" cy="12" r="10"></circle><line x1="4.93" y1="4.93" x2="19.07" y2="19.07"></line></svg>
+              Nicht abspielbar
+            </span>
+          </div>
+          <div class="convert-control" data-convert-control>
+            <p class="status-text" role="status">In Warteschlange · Platz 1</p>
+          </div>
+        </div>
+
+        <a href="#" class="track-row">
+          <div class="row-left"><span class="row-num">5</span><span class="row-title">Heimweg</span></div>
+          <div class="row-right"><span class="row-meta">3:27</span></div>
+        </a>
+      </div>
+    </section>
+
+    <!-- Audiobook detail view: file list with two not-playable rows carrying the conversion control -->
+    <section aria-labelledby="heading-audiobook">
+      <h2 id="heading-audiobook">Hörbuch-Detail – Die Reise zum Mittelpunkt</h2>
+      <p class="section-meta">Jules Beispiel · 14 Dateien · 7 Std. 12 Min.</p>
+
+      <div class="file-list">
+        <a href="#" class="file-row">
+          <div class="row-left"><span class="row-num">01</span><span class="row-title">Kapitel 01</span></div>
+          <div class="row-right"><span class="row-check"><svg viewBox="0 0 24 24"><polyline points="20 6 9 17 4 12"></polyline></svg>Gehört</span></div>
+        </a>
+
+        <a href="#" class="file-row">
+          <div class="row-left"><span class="row-num">02</span><span class="row-title">Kapitel 02</span></div>
+          <div class="row-right"><span class="row-check"><svg viewBox="0 0 24 24"><polyline points="20 6 9 17 4 12"></polyline></svg>Gehört</span></div>
+        </a>
+
+        <a href="#" class="file-row">
+          <div class="row-left"><span class="row-num">03</span><span class="row-title">Kapitel 03</span></div>
+          <div class="row-right"><span class="row-check"><svg viewBox="0 0 24 24"><polyline points="20 6 9 17 4 12"></polyline></svg>Gehört</span></div>
+        </a>
+
+        <a href="#" class="file-row is-current">
+          <div class="row-left"><span class="row-num">04</span><span class="row-title">Kapitel 04</span></div>
+          <div class="row-right"><span class="row-meta">12:34 / 31:05</span></div>
+        </a>
+
+        <!-- Not-playable, failed → reason text + button "Erneut versuchen", wraps below the title -->
+        <div class="file-row file-row--unplayable" data-item-id="203">
+          <div class="row-left">
+            <span class="row-num">05</span>
+            <span class="row-title">Kapitel 05</span>
+            <span class="badge-unplayable">
+              <svg viewBox="0 0 24 24"><circle cx="12" cy="12" r="10"></circle><line x1="4.93" y1="4.93" x2="19.07" y2="19.07"></line></svg>
+              Nicht abspielbar
+            </span>
+          </div>
+          <div class="convert-control" data-convert-control>
+            <p class="status-text is-error" role="status">Konvertierung fehlgeschlagen: Konverter nicht erreichbar</p>
+            <button class="btn btn-secondary" type="button">Erneut versuchen</button>
+          </div>
+        </div>
+
+        <!-- Not-playable, fresh copy ready → "Konvertiert" + button "Neu laden" -->
+        <div class="file-row file-row--unplayable" data-item-id="204">
+          <div class="row-left">
+            <span class="row-num">06</span>
+            <span class="row-title">Kapitel 06</span>
+            <span class="badge-unplayable">
+              <svg viewBox="0 0 24 24"><circle cx="12" cy="12" r="10"></circle><line x1="4.93" y1="4.93" x2="19.07" y2="19.07"></line></svg>
+              Nicht abspielbar
+            </span>
+          </div>
+          <div class="convert-control" data-convert-control>
+            <p class="status-text" role="status">Konvertiert</p>
+            <button class="btn btn-secondary" type="button">Neu laden</button>
+          </div>
+        </div>
+
+        <a href="#" class="file-row">
+          <div class="row-left"><span class="row-num">07</span><span class="row-title">Kapitel 07</span></div>
+          <div class="row-right"><span class="row-meta">30:02</span></div>
+        </a>
+      </div>
+    </section>
+  </main>
+
+  <div class="bottom-container">
+    <!-- Persistent audio player bar — unchanged component, shown for context only -->
+    <div class="player-bar" aria-label="Audio-Player">
+      <div class="player-thumb" aria-hidden="true">
+        <svg viewBox="0 0 24 24"><path d="M9 18V5l12-2v13"></path><circle cx="6" cy="18" r="3"></circle><circle cx="18" cy="16" r="3"></circle></svg>
+      </div>
+      <div class="player-info">
+        <div class="player-title">Aufbruch</div>
+        <div class="player-artist">Die Beispiele</div>
+      </div>
+      <button class="play-pause-btn" type="button" aria-label="Pause">
+        <svg viewBox="0 0 24 24"><rect x="6" y="4" width="4" height="16" rx="1"></rect><rect x="14" y="4" width="4" height="16" rx="1"></rect></svg>
+      </button>
+    </div>
+
+    <nav class="category-nav" aria-label="Hauptnavigation">
+      <a href="#" class="nav-item">
+        <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><rect x="2" y="2" width="20" height="20" rx="2.18" ry="2.18"></rect><line x1="7" y1="2" x2="7" y2="22"></line><line x1="17" y1="2" x2="17" y2="22"></line><line x1="2" y1="12" x2="22" y2="12"></line><line x1="2" y1="7" x2="7" y2="7"></line><line x1="2" y1="17" x2="7" y2="17"></line><line x1="17" y1="17" x2="22" y2="17"></line><line x1="17" y1="7" x2="22" y2="7"></line></svg>
+        <span>Filme</span>
+      </a>
+      <a href="#" class="nav-item">
+        <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><rect x="2" y="7" width="20" height="15" rx="2" ry="2"></rect><polyline points="17 2 12 7 7 2"></polyline></svg>
+        <span>Serien</span>
+      </a>
+      <a href="#" class="nav-item active" aria-current="page">
+        <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><path d="M9 18V5l12-2v13"></path><circle cx="6" cy="18" r="3"></circle><circle cx="18" cy="16" r="3"></circle></svg>
+        <span>Musik</span>
+      </a>
+      <a href="#" class="nav-item">
+        <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><path d="M3 18v-6a9 9 0 0 1 18 0v6"></path><path d="M21 19a2 2 0 0 1-2 2h-1a2 2 0 0 1-2-2v-3a2 2 0 0 1 2-2h3zM3 19a2 2 0 0 0 2 2h1a2 2 0 0 0 2-2v-3a2 2 0 0 0-2-2H3z"></path></svg>
+        <span>Hörbücher</span>
+      </a>
+      <a href="#" class="nav-item">
+        <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><rect x="3" y="3" width="18" height="18" rx="2" ry="2"></rect><circle cx="8.5" cy="8.5" r="1.5"></circle><polyline points="21 15 16 10 5 21"></polyline></svg>
+        <span>Bilder</span>
+      </a>
+    </nav>
+  </div>
+
+</body>
+</html>
