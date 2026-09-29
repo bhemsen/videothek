@@ -1864,3 +1864,27 @@ exports):
   win32 and `'dir'` elsewhere; the dangling-link cases skip on
   `EPERM`/`ENOENT`, per Verification. `npm run verify` green (1643 tests,
   0 failures, 2 pre-existing skips).
+- 2026-09-29: Issue #224 (`src/api/conversion-json.js`) implemented as
+  specified: `deriveConversionStatus` derives `stale` from a `playable` row's
+  `c_source_size`/`c_source_mtime_ms` vs. the joined item's own `size`/
+  `mtime_ms`; `buildConversionEntry` builds the full entry (`item` via P2's
+  `toItemJson`, `convertible`/`target` via `isConvertible`/`targetFor`, notes
+  `JSON.parse`d, timestamps to ISO-8601 or `null`); `buildConversionList`
+  groups `listConversionRows`' rows `converting, queued, failed, stale,
+  playable`, `queued` ascending by `position`, every other group descending
+  by `finished_at` else `queued_at` (a stable sort keeps the SQL's own
+  `queued_at, rel_path` order for ties). `listConversionRowsForIds` orders by
+  `li.id`, not request order, so the request-order reordering ("in request
+  order... unknown ids omitted") is this module's job too:
+  `buildConversionEntriesForIds(rows, ids)` looks each requested id up in a
+  `Map` and skips one absent from `rows`. `parseConversionIds` validates the
+  raw comma-split token count against the 1-500 bound before deduplicating
+  (so 501 identical ids is still rejected, not collapsed to one), matching
+  `media.js`'s `:id` syntax (`^[1-9][0-9]{0,15}$` + `Number.isSafeInteger`).
+  `test/api/conversion-json.test.js` covers status derivation (incl. size-only
+  and mtime-only staleness), entry field mapping, both listing orders
+  (including the `finished_at`-vs-`queued_at` fallback and the running job's
+  `position: null`), request-order/omission for `ids`, and the ids parser's
+  valid/invalid table (duplicates, empty, leading zero, decimal, negative,
+  501 ids, an unsafe 16-digit integer). `npm run verify` green (1651 tests,
+  0 failures).
