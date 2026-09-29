@@ -23,6 +23,7 @@ import { createStaticHandler, sendNotFoundPage } from './http/static.js';
 /** @typedef {import('./config.js').Config} Config */
 /** @typedef {import('./log.js').Logger} Logger */
 /** @typedef {import('./library/index.js').LibraryService} LibraryService */
+/** @typedef {import('./convert/queue.js').ConversionQueue} ConversionQueue */
 
 /**
  * @typedef {{
@@ -32,6 +33,7 @@ import { createStaticHandler, sendNotFoundPage } from './http/static.js';
  *   now: () => number,
  *   sessions: ReturnType<typeof createSessionStore>,
  *   library?: LibraryService,
+ *   conversions?: ConversionQueue,
  * } & Record<string, unknown>} AppDeps
  */
 
