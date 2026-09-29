@@ -1956,3 +1956,26 @@ exports):
   both leaving the already-recorded end state untouched and only logging
   `conversion_cleanup_failed { key, code }`. `npm run verify` green (1719
   tests, 1717 pass, 2 skipped, 0 failures); `npm ls --omit=dev --all` empty.
+- 2026-09-29 (#222): startup recovery and queue lifecycle wired into
+  `src/server.js`/`src/app.js`. The private `startConversions({ db, config,
+  log })` also owns the `conversion_enabled {}`/`conversion_disabled {}` log
+  line (not specified verbatim in "Server wiring", only in the Config
+  section's README note): `config.converterCmd` falsy, or `queue.start()`
+  resolving `false` (an unusable `CONVERT_DIR`), both log `disabled` and
+  return `null`, so `deps.conversions` reflects the feature's true, usable
+  state rather than merely "a `CONVERTER_CMD` was configured" — a
+  `queue.start()` failure already logs its own `conversion_dir_unavailable
+  { code }`, so `conversion_disabled {}` is an additional, not a
+  replacement, line. `createStop` starts `queue?.stop()` as its very first
+  statement (before `clearInterval`), keeping the returned promise in a
+  local and only `await`ing it inside the existing `finally`, ahead of
+  `library.stop()`; `runStart`'s `catch` branch mirrors the same order
+  (`queue?.stop()` then `library?.stop()`, `db.close()` last in `finally`).
+  `test/server-conversions.test.js` builds its own hand-cast `Config`
+  (`test/server.test.js`'s pattern, extended with `converterCmd`/
+  `convertDir`/`converterEnv`) rather than `loadConfig`, and drives the
+  feature-on case through a real `start()`/`stop()` round trip with the
+  `hang` stub mode: it polls for `<hold>/pid` instead of a fixed sleep, then
+  asserts the reopened DB (after `stop()` has closed it) and
+  `process.kill(pid, 0)` throwing `ESRCH`. `npm run verify` green (1710
+  tests, 0 failures); `npm ls --omit=dev --all` empty.
