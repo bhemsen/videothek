@@ -36,7 +36,7 @@ const timers = new WeakMap();
 export function startPolling(root, tick) {
   stopPolling(root);
   const id = setInterval(() => {
-    void runTick(root, tick);
+    void runTick(root, id, tick);
   }, POLL_INTERVAL_MS);
   timers.set(root, id);
 }
@@ -53,13 +53,27 @@ export function stopPolling(root) {
 }
 
 /**
+ * Cancels `root`'s poller only while it is still the interval `id` — a tick
+ * that settles after `root` was re-decorated must never stop the newer
+ * poller that replaced its own.
  * @param {Element} root
+ * @param {ReturnType<typeof setInterval>} id
+ * @returns {void}
+ */
+function stopOwn(root, id) {
+  if (timers.get(root) === id) stopPolling(root);
+  else clearInterval(id);
+}
+
+/**
+ * @param {Element} root
+ * @param {ReturnType<typeof setInterval>} id
  * @param {PollTick} tick
  * @returns {Promise<void>}
  */
-async function runTick(root, tick) {
+async function runTick(root, id, tick) {
   if (!root.isConnected) {
-    stopPolling(root);
+    stopOwn(root, id);
     return;
   }
   if (document.hidden) return;
@@ -69,5 +83,5 @@ async function runTick(root, tick) {
   } catch {
     keepGoing = true;
   }
-  if (!keepGoing || !root.isConnected) stopPolling(root);
+  if (!keepGoing || !root.isConnected) stopOwn(root, id);
 }

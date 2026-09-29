@@ -28,18 +28,34 @@ const SHOWN_REGARDLESS = new Set(['queued', 'converting', 'playable']);
 const GENERIC_ERROR = 'Konvertieren nicht möglich. Bitte erneut versuchen.';
 
 /**
+ * Per-root race guards. `generations`: every `decorateConversionsFor(root)`
+ * call bumps it, so an initial fetch that settles after a newer call for the
+ * same root is dropped (no out-of-order render). `owners`: the context whose
+ * controls are currently in the DOM; a poll or POST response of any other
+ * (superseded) context is dropped instead of adding a second control or
+ * re-arming the poller for stale data.
+ * @type {WeakMap<Element, number>}
+ */
+const generations = new WeakMap();
+/** @type {WeakMap<Element, Ctx>} */
+const owners = new WeakMap();
+
+/**
  * Decorates every not-playable host under `root` with its conversion
  * control, idempotently (earlier `data-convert-control` nodes are removed
  * first), and (re)starts the 5 s poller while something is
  * `queued`/`converting`. A `403` (non-admin), `enabled: false` or any fetch
  * error leaves the page untouched; with no matching host there is no
- * request. Re-decorating the same root always cancels its previous poller.
+ * request, and the stylesheet is only injected once controls will render.
+ * Re-decorating the same root always cancels its previous poller; once the
+ * new decoration renders, the previous one's in-flight responses are dropped.
  * @param {Element} root
  * @returns {Promise<void>}
  */
 export async function decorateConversionsFor(root) {
-  injectStylesheet(STYLESHEET_HREF);
   stopPolling(root);
+  const gen = (generations.get(root) ?? 0) + 1;
+  generations.set(root, gen);
   const hosts = collectHosts(root);
   if (hosts.length === 0) return;
   let fetched;
@@ -48,12 +64,19 @@ export async function decorateConversionsFor(root) {
   } catch {
     return;
   }
-  if (!fetched.enabled) return;
+  if (generations.get(root) !== gen || !fetched.enabled) return;
+  injectStylesheet(STYLESHEET_HREF);
   clearControls(root);
   /** @type {Ctx} */
   const ctx = { root, hosts, byId: byIdMap(fetched.items), controls: new Map() };
+  owners.set(root, ctx);
   for (const host of hosts) render(ctx, host, hostId(host));
   refreshPolling(ctx);
+}
+
+/** @param {Ctx} ctx @returns {boolean} whether `ctx`'s controls are still the ones in the DOM */
+function isCurrent(ctx) {
+  return owners.get(ctx.root) === ctx;
 }
 
 /** @param {ConversionEntry[]} items @returns {Map<string, EntryLike>} */
@@ -124,6 +147,7 @@ async function tick(ctx) {
     if (err instanceof ApiError && (err.status === 401 || err.status === 403)) return false;
     throw err;
   }
+  if (!isCurrent(ctx)) return false;
   for (const item of fetched.items) ctx.byId.set(String(item.itemId), item);
   for (const host of ctx.hosts) render(ctx, host, hostId(host));
   return [...ctx.byId.values()].some((entry) => ACTIVE_STATUSES.has(entry.status));
@@ -171,7 +195,7 @@ function buildControl(ctx, host, id, entry) {
 
 /** @param {EntryLike} entry @returns {HTMLElement} */
 function statusText(entry) {
-  return el('p', { class: ['status-text', entry.status === 'failed' && 'is-error'], role: 'status' }, statusLabel(entry));
+  return el('span', { class: ['status-text', entry.status === 'failed' && 'is-error'], role: 'status' }, statusLabel(entry));
 }
 
 /**
@@ -192,17 +216,25 @@ function actionButton(label, onClick) {
 
 /**
  * A button click's POST: success re-renders from the returned entry; the
- * POST error mapping is fixed by the spec.
+ * POST error mapping is fixed by the spec. A response for a root that was
+ * re-decorated meanwhile is dropped (the newer context owns the DOM).
  * @param {Ctx} ctx @param {Element} host @param {string} id @param {string} label
  * @returns {Promise<void>}
  */
 async function act(ctx, host, id, label) {
+  /** @type {{ entry: ConversionEntry } | { err: unknown }} */
+  let outcome;
   try {
-    const updated = await requestConversion(id);
-    ctx.byId.set(id, updated);
-    render(ctx, host, id);
+    outcome = { entry: await requestConversion(id) };
   } catch (err) {
-    applyPostError(ctx, host, id, label, err);
+    outcome = { err };
+  }
+  if (!isCurrent(ctx)) return;
+  if ('entry' in outcome) {
+    ctx.byId.set(id, outcome.entry);
+    render(ctx, host, id);
+  } else {
+    applyPostError(ctx, host, id, label, outcome.err);
   }
   refreshPolling(ctx);
 }
@@ -232,6 +264,6 @@ function applyPostError(ctx, host, id, label, err) {
 /** @param {string} label @param {() => void} onClick @returns {HTMLElement} */
 function errorControl(label, onClick) {
   const container = el('div', { class: 'convert-control', dataset: { convertControl: 'true' } });
-  container.append(el('p', { class: 'status-text is-error', role: 'status' }, GENERIC_ERROR), actionButton(label, onClick));
+  container.append(el('span', { class: 'status-text is-error', role: 'status' }, GENERIC_ERROR), actionButton(label, onClick));
   return container;
 }

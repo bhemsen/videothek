@@ -26,14 +26,14 @@
   width: 100%;
 }
 
-.status-text {
+.convert-control .status-text {
   margin: 0;
   color: var(--color-muted);
   font-size: var(--text-sm);
   line-height: var(--leading-body);
 }
 
-.status-text.is-error {
+.convert-control .status-text.is-error {
   color: var(--color-destructive);
 }
 
@@ -61,25 +61,45 @@
   width: auto;
 }
 
-.episode-row .status-text,
-.track-row--unplayable .status-text,
-.file-row--unplayable .status-text {
+.episode-row .convert-control .status-text,
+.track-row--unplayable .convert-control .status-text,
+.file-row--unplayable .convert-control .status-text {
   text-align: right;
 }
 
-/* Below 768 px the two row-flex hosts wrap so the control drops onto its own
-   line instead of squeezing the title (spec "Design" notes); its own
-   `align-items: flex-end` keeps it right-aligned on that full-width line.
-   `.file-row--unplayable` needs no such rule — its block host already gives
-   the control the full row width at every viewport. */
+/* Below 768 px a row-flex host that holds a control wraps, so the control
+   (`flex-basis: 100%`) drops onto its own line instead of squeezing the
+   title (spec "Design" notes); its own `align-items: flex-end` keeps it
+   right-aligned there. Scoped via `:has(> .convert-control)` so playable
+   rows, and every row a non-admin sees, keep their own layout untouched.
+   The title-bearing item gets `flex-basis: 0` so its long nowrap title
+   never pushes it onto a line of its own: number, title and badge stay on
+   the first line (the title ellipsizes), the control alone on the second,
+   with a bottom padding so it does not sit on the row's border.
+   The track title keeps "only its own width" via `max-width: max-content`,
+   so the badge still sits right after it. `.file-row--unplayable` needs no
+   such rule — its block host already gives the control the full row width
+   at every viewport. */
 @media not (min-width: 768px) {
-  .episode-row,
-  .track-row--unplayable {
+  .episode-row:has(> .convert-control),
+  .track-row--unplayable:has(> .convert-control) {
     flex-wrap: wrap;
+    padding-bottom: var(--space-3);
   }
 
-  .episode-row .convert-control,
-  .track-row--unplayable .convert-control {
+  .episode-row:has(> .convert-control) > .episode-row__body {
+    flex: 1 1 0;
+    min-width: 0;
+  }
+
+  .track-row--unplayable:has(> .convert-control) > .track-row__title {
+    flex: 1 1 0;
+    min-width: 0;
+    max-width: max-content;
+  }
+
+  .episode-row > .convert-control,
+  .track-row--unplayable > .convert-control {
     flex-basis: 100%;
   }
 }

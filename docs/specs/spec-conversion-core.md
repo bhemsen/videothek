@@ -2073,3 +2073,22 @@ exports):
   `decorateConversionsFor` yet (that is later issues' hook lines, out of
   this issue's Files list), so no design-export screenshot comparison was
   possible for this issue in isolation.
+- 2026-09-29 (#227, review round 1): the <768 px wrap is scoped to hosts
+  holding a control (`.episode-row:has(> .convert-control)`,
+  `.track-row--unplayable:has(> .convert-control)`), and their title item
+  gets `flex: 1 1 0` (track title additionally `max-width: max-content`),
+  so playable rows and every row a non-admin sees keep their layout, and a
+  long title no longer drops onto its own line; checked in headless Edge in
+  a true 390 px iframe viewport (playable long-title row 50 px with and
+  without the stylesheet; controlled rows: number/body/badge on line one,
+  control right-aligned on line two). The stylesheet is now injected only
+  once controls render (not for a `403`/disabled feature). `.status-text`
+  rules are scoped under `.convert-control`, and the status text is a
+  `role="status"` span as specified. Race guards: a per-root generation
+  drops an initial fetch superseded by a newer decoration; a per-root owner
+  context drops poll/POST responses of a superseded decoration; and
+  `convert-poller.js` only stops the interval a settling tick belongs to,
+  so a stale tick never cancels the newer poller. Tests split into
+  `convert-control.test.js`, `convert-control-poller.test.js`,
+  `convert-control-css.test.js` + `test/helpers/convert-control-fakes.js`
+  (300-line cap).
