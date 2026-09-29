@@ -2119,3 +2119,50 @@ exports):
   instance); left for the milestone's human QA pass, which also covers the
   queue-position, resume, failure/retry, restart-recovery and
   keyboard/screen-reader scenarios this issue's Files list does not touch.
+- 2026-09-29 (#229): Usage-line/disabled/empty/load-error branching resolved
+  by close reading of the acceptance bullet (only it, not the general "Usage
+  line" bullet, gates on `count > 0`, and only for the disabled case): load
+  error shows only its own text; disabled shows its text plus the usage line
+  iff `usage.count > 0`; enabled with zero visible items shows only "Keine
+  Konvertierungen." (no usage line); enabled otherwise shows the usage line
+  unconditionally, then the groups. Row title is `item.seriesTitle + ' · ' +
+  episodeLabel(item)` reusing `library-format.js`'s existing helper (the
+  design mock's "S1 · F4" shorthand is sample data, like its notes). The
+  panel keeps its own `Map<itemId, entry>` plus an `errorIds` set and
+  re-renders the whole body on every fetch/poll/action — no per-row DOM
+  patching, unlike `convert-control.js` — since a single admin list has no
+  per-row identity to preserve across renders. A button POST follows the
+  decorator's exact error rules (409 → synthetic `playable`, 400/404/503 →
+  row dropped, other → row kept with the generic-error text swapped in,
+  `errorIds` cleared on the next successful fetch); a poll-tick fetch error
+  leaves the previous render untouched instead of showing the load-error
+  text, matching `convert-control.js`'s "any other poll error keeps the
+  interval" rule — only the *initial* load renders it. The "Läuft
+  gerade"/"Fertig" icons (dot, checkmark) are built locally in
+  `admin-conversions-rows.js` with plain SVG attributes (no `icons.js` edit,
+  out of this issue's Files list); sizing goes through `--space-*` tokens
+  (`frontend-rules.test.js` bans raw px/rem/em, which also ruled out a
+  `letter-spacing: 0.05em` copied from the design mock — dropped, no
+  design-tokens equivalent exists). Row layout is mobile-default stacked /
+  `>= 768px` horizontal via the one allowed breakpoint, deviating from the
+  design export's mobile "meta+status same line, ellipsized" nuance for a
+  single simpler DOM shared by both viewports (same trade-off precedent as
+  #227's "not followed" audio-mobile note). Manual smoke check (app started
+  from the worktree against `test/fixtures/media` with the stub converter,
+  three server restarts sharing one `DATA_DIR` to reach every group without
+  mutating fixtures): as admin, `/admin` shows the panel below the user list
+  matching `admin-panel-desktop.png` (verified with "Fertig" populated, then
+  again with "Läuft gerade" + "seit 0 Min." elapsed + "Warteschlange" ·
+  "Platz 1" together, then again with "Fehlgeschlagen" + red reason + "Erneut
+  versuchen", whose click re-queued the row into "Läuft gerade" live); at
+  390 px the same panel stacks per row without horizontal overflow; with
+  `CONVERTER_CMD` unset it shows the disabled text plus the usage line and
+  the already-converted movie still streams (`GET /media/15` 200/206,
+  `video/mp4`); as a non-admin user both conversion routes answered `403`
+  and `/admin` itself redirected (302, never reaching the panel). No console
+  errors on any load. `npm run verify` green (1766 tests, 1764 pass, 2
+  pre-existing platform skips, 0 failures); `npm ls --omit=dev --all` empty;
+  `test/fixtures/media` left byte-unchanged (`git status --porcelain`
+  empty). Used a Chromium-based browser via the available automation tool
+  rather than a separately launched headless Edge (tool constraint, same as
+  #228's note); layout fidelity was otherwise checked as specified.
