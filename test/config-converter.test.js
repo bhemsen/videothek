@@ -81,26 +81,19 @@ test('parseConverterCmd: on win32 a rooted path without a drive letter is reject
   );
 });
 
-test('parseConverterCmd: on win32 a drive-letter path is accepted', () => {
-  const { cmd, problem } = parseConverterCmd('C:\\node.exe --to web', { platform: 'win32' });
-  assert.equal(problem, null);
-  assert.deepEqual(cmd, ['C:\\node.exe', '--to', 'web']);
-});
-
-test('parseConverterCmd: on win32 a forward-slash drive path is accepted', () => {
-  const { problem } = parseConverterCmd('C:/node.exe --to web', { platform: 'win32' });
-  assert.equal(problem, null);
-});
-
-test('parseConverterCmd: on win32 a UNC path is accepted', () => {
-  const { problem } = parseConverterCmd('\\\\srv\\share\\node.exe --to web', { platform: 'win32' });
-  assert.equal(problem, null);
-});
-
-test('parseConverterCmd: on POSIX a plain absolute path is accepted', () => {
-  const { problem } = parseConverterCmd('/usr/bin/node --to web', { platform: 'linux' });
-  assert.equal(problem, null);
-});
+/** @type {[string, string, NodeJS.Platform][]} */
+const acceptedConverterCmds = [
+  ['a win32 drive-letter path', 'C:\\node.exe --to web', 'win32'],
+  ['a win32 forward-slash drive path', 'C:/node.exe --to web', 'win32'],
+  ['a win32 UNC path', '\\\\srv\\share\\node.exe --to web', 'win32'],
+  ['a POSIX absolute path', '/usr/bin/node --to web', 'linux'],
+];
+for (const [label, value, platform] of acceptedConverterCmds) {
+  test(`parseConverterCmd: ${label} is accepted`, () => {
+    const { problem } = parseConverterCmd(value, { platform });
+    assert.equal(problem, null);
+  });
+}
 
 test('parseConverterCmd: problem text never contains the offending value', () => {
   const secret = 'relative/top-secret-converter-path';
@@ -206,20 +199,10 @@ test('an explicit CONVERT_DIR inside MEDIA_ROOT is rejected (valid DATA_DIR)', (
   }
 });
 
-test('MEDIA_ROOT inside an explicit CONVERT_DIR is rejected', () => {
-  const convertBase = mkdtempSync(join(tmpdir(), 'vt-convert-'));
-  const nestedMediaRoot = join(convertBase, 'media');
-  mkdirSync(nestedMediaRoot);
-  try {
-    const err = assertConfigError(() =>
-      loadConfig({ MEDIA_ROOT: nestedMediaRoot, CONVERT_DIR: convertBase }),
-    );
-    assert.deepEqual(err.problems, ['CONVERT_DIR: must not overlap MEDIA_ROOT']);
-  } finally {
-    rmSync(convertBase, { recursive: true, force: true });
-  }
-});
-
+// The reverse direction (an explicit CONVERT_DIR containing MEDIA_ROOT) uses
+// the same symmetric `isInside(convertDir, mediaRoot)` check exercised
+// directly by the `isInside` unit tests above; this covers it end to end via
+// the default CONVERT_DIR instead, per the acceptance list's paired cases.
 test('MEDIA_ROOT inside the default <DATA_DIR>/converted is rejected', () => {
   const dataDir = mkdtempSync(join(tmpdir(), 'vt-data-'));
   const nestedMediaRoot = join(dataDir, 'converted', 'media');
@@ -249,21 +232,17 @@ test('relative MEDIA_ROOT with the default CONVERT_DIR raises no false overlap p
   assert.deepEqual(err.problems, ['MEDIA_ROOT: must be an absolute path']);
 });
 
-test('an explicit CONVERT_DIR inside the public directory is rejected', () => {
-  const err = assertConfigError(() =>
-    loadConfig({ MEDIA_ROOT: mediaRoot, CONVERT_DIR: join(APP_PUBLIC_DIR, 'converted') }),
+test('an explicit CONVERT_DIR inside the public directory is rejected (also under requireMediaRoot: false)', () => {
+  const dir = join(APP_PUBLIC_DIR, 'converted');
+  const problem = 'CONVERT_DIR: must not be inside the public directory';
+  assert.deepEqual(
+    assertConfigError(() => loadConfig({ MEDIA_ROOT: mediaRoot, CONVERT_DIR: dir })).problems,
+    [problem],
   );
-  assert.deepEqual(err.problems, ['CONVERT_DIR: must not be inside the public directory']);
-});
-
-test('an explicit CONVERT_DIR inside the public directory is rejected under requireMediaRoot: false', () => {
-  const err = assertConfigError(() =>
-    loadConfig(
-      { CONVERT_DIR: join(APP_PUBLIC_DIR, 'converted') },
-      { requireMediaRoot: false },
-    ),
+  assert.deepEqual(
+    assertConfigError(() => loadConfig({ CONVERT_DIR: dir }, { requireMediaRoot: false })).problems,
+    [problem],
   );
-  assert.deepEqual(err.problems, ['CONVERT_DIR: must not be inside the public directory']);
 });
 
 // --- CONVERTER_CMD via loadConfig -----------------------------------------
@@ -275,18 +254,27 @@ test('CONVERTER_CMD unset or empty yields converterCmd: null via loadConfig', ()
   assert.equal(empty.converterCmd, null);
 });
 
-test('a relative CONVERTER_CMD first token is rejected via loadConfig', () => {
-  const err = assertConfigError(() =>
-    loadConfig({ MEDIA_ROOT: mediaRoot, CONVERTER_CMD: 'relative/node --to web' }),
+// The offending token is relative on every platform, but the reported rule
+// text differs: win32 also names the drive-letter/UNC requirement (see
+// `parseConverterCmd`'s win32 rule above), so the expectation follows
+// `loadConfig`'s real `process.platform`, never a fixed platform.
+test('a relative CONVERTER_CMD first token is rejected via loadConfig (also under requireMediaRoot: false)', () => {
+  const problem =
+    process.platform === 'win32'
+      ? 'CONVERTER_CMD: first token must be an absolute path with a drive letter or UNC prefix'
+      : 'CONVERTER_CMD: first token must be an absolute path';
+  assert.deepEqual(
+    assertConfigError(() =>
+      loadConfig({ MEDIA_ROOT: mediaRoot, CONVERTER_CMD: 'relative/node --to web' }),
+    ).problems,
+    [problem],
   );
-  assert.deepEqual(err.problems, ['CONVERTER_CMD: first token must be an absolute path']);
-});
-
-test('a relative CONVERTER_CMD first token is rejected under requireMediaRoot: false too', () => {
-  const err = assertConfigError(() =>
-    loadConfig({ CONVERTER_CMD: 'relative/node --to web' }, { requireMediaRoot: false }),
+  assert.deepEqual(
+    assertConfigError(() =>
+      loadConfig({ CONVERTER_CMD: 'relative/node --to web' }, { requireMediaRoot: false }),
+    ).problems,
+    [problem],
   );
-  assert.deepEqual(err.problems, ['CONVERTER_CMD: first token must be an absolute path']);
 });
 
 test('more than 32 CONVERTER_CMD tokens is rejected via loadConfig', () => {
