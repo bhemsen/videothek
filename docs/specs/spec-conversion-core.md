@@ -1484,6 +1484,7 @@ exports):
 | A second SIGINT/SIGTERM during shutdown (`src/server.js` `installSignalHandlers` exits 1 at once) orphans a running converter; so does a crash | The orphan cannot write into a retry's dir (unique work dir) and `.videothek-work/` is wiped at the next start. README: `--init`/tini when videothek is PID 1 in a container, default `KillMode=control-group` under systemd, so the orphan is reaped. Process-group kill is Phase 8 |
 | A child that never exits, even after `SIGKILL` (uninterruptible I/O on a hung mount), would block shutdown | `stop()` resolves after `stopDeadlineMs` at the latest; the row stays `converting` and startup recovery marks it `interrupted` |
 | Vision success criterion "Weak hardware" (two concurrent 1080p streams without stutter on a Pi 4) can be missed while a conversion runs, since Phase 7 has no `nice`/`ionice` | **Accepted consciously at the spec-acceptance gate** (2026-09-29, Prior decisions): conversions are admin-triggered and one at a time, the README states the effect, and CPU/IO priority plus playback protection arrive in Phase 8 |
+| Issue #209: `excluded.playable` in `ON CONFLICT DO UPDATE SET playable = excluded.playable` must resolve to the *computed* effective value, not the raw first bind param, or a rescan of an unchanged file would keep a stale flag | Verified: SQLite's `excluded.<col>` is the value the `VALUES` expression for that column would have produced, so putting the whole `(? OR EXISTS (...))` expression directly in the `playable` `VALUES` slot makes `excluded.playable` already carry the OR'd result — no separate handling needed for insert vs. update |
 
 ## Decision log
 
@@ -1760,3 +1761,14 @@ exports):
   this file and `test/constitution.test.js` requires the exact mirror name
   `test/db/conversions.test.js`. No behavioural coverage was dropped, only
   test-scaffolding overhead. `npm run verify` green (1468 tests, 0 failures).
+- 2026-09-29: Issue #209 (effective `playable` in `UPSERT_ITEM_SQL`) implemented
+  as specified: the `playable` `VALUES` slot becomes
+  `(? OR EXISTS (SELECT 1 FROM conversions c WHERE c.rel_path = ? AND
+  c.status = 'playable' AND c.source_size = ? AND c.source_mtime_ms = ?))`,
+  bound with the built row's `playable`, `rel_path`, `size`, `mtime_ms`; the
+  `ON CONFLICT` clause is untouched (`playable = excluded.playable` already
+  picks up the computed value — see the new Risks-table row above). New file
+  `test/db/library-repo-playable.test.js` inserts `conversions` rows with a
+  raw SQL statement (not via `src/db/conversions.js`) so its tests exercise
+  only this SQL in isolation; `test/db/library-repo.test.js` was not touched.
+  `npm run verify` green (1577 tests, 0 failures).
