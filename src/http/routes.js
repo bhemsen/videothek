@@ -1,5 +1,6 @@
 import { registerAudiobookRoutes } from '../api/audiobooks.js';
 import { registerAuthRoutes } from '../api/auth.js';
+import { registerConversionRoutes } from '../api/conversions.js';
 import { registerCoverRoutes } from '../api/cover.js';
 import { registerGalleryRoutes } from '../api/gallery.js';
 import { registerHealthRoutes } from '../api/health.js';
@@ -26,6 +27,7 @@ export function registerRoutes(router, deps) {
   registerHomePreviewsRoutes(router, deps);
   registerAuthRoutes(router, deps);
   registerAudiobookRoutes(router, deps);
+  registerConversionRoutes(router, deps);
   registerCoverRoutes(router, deps);
   registerLibraryRoutes(router, deps);
   registerMediaRoutes(router, deps);
