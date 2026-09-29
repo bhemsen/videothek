@@ -1889,3 +1889,30 @@ exports):
   valid/invalid table (duplicates, empty, leading zero, decimal, negative,
   501 ids, an unsafe 16-digit integer). `npm run verify` green (1651 tests,
   0 failures).
+- 2026-09-29 (#219): `src/convert/queue.js` implemented as plain top-level
+  functions over one `QueueState` object (matching `job.js`'s explicit-`ctx`
+  style) rather than a closure-heavy factory, so every function stays well
+  under the 60-line guideline. `start()` is a thin wrapper around
+  `work-dir.js`'s `setupConvertDir` (which already does the realpath/overlap
+  checks, `mkdir -p` and the crash work-area wipe) plus the
+  `conversion_dir_unavailable { code }` log line; both that line and
+  `conversion_stop_timeout {}` log at `error` level, matching `job.js`'s own
+  failure-type events (not specified by the spec). `kick()`'s claim wraps
+  `runConversionJob` in a defensive `.catch()` before chaining, even though
+  `job.js` documents that it never rejects, so "the chain never produces an
+  unhandled rejection" is a property of the queue's own code, not only an
+  inherited guarantee. `stop()` captures the run handle via `job.js`'s
+  `onHandle` and arms/clears the `killGraceMs` → `SIGKILL` timer itself
+  (cleared the moment `handle.result` settles, independently of the job's own
+  remaining steps 5-7), since only the queue knows the deadline and only
+  `job.js`'s synchronous `isStopping()`-then-`run()` step guarantees no
+  handle ever appears after `stopping` is set. Tests split
+  `test/convert/queue.test.js` (claim/FIFO/chaining/`source_missing`, fake
+  `run`) plus a sibling `test/convert/queue-stop.test.js` for `stop()`'s
+  kill-escalation and deadline behaviour, both built on a new shared
+  `test/helpers/conversion-queue-fixtures.js` — the same
+  fixture-file-plus-sibling-test-file pattern `job.js`/`job-failures.test.js`
+  and `conversion-job-fixtures.js` already established for this phase, kept
+  reusable now that a later queue-lifecycle issue needs its own real-stub
+  fixtures. `npm run verify` green (1704 tests, 0 failures);
+  `npm ls --omit=dev --all` empty.
