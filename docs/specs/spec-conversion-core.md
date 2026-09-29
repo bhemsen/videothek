@@ -2036,3 +2036,59 @@ exports):
   `killGraceMs: 300` to keep `hang`-mode `stop()` fast) rather than a fake,
   per the acceptance criteria. `npm run verify` green (1720 tests, 0
   failures, 2 pre-existing platform skips); `npm ls --omit=dev --all` empty.
+- 2026-09-29 (#227): `convert-control.js` + `convert-poller.js` +
+  `convert-control.css` added. Host matching reads `getAttribute('class')`
+  tokens plus `tagName` (not `classList`/a CSS selector string), so the
+  filter is plain, DOM-fake-friendly JS, not a selector engine; hosts are
+  found via `root.querySelectorAll('[data-item-id]')` then filtered, mirroring
+  `clearControls`'s own `[data-convert-control]` sweep. `convert-poller.js`
+  is domain-agnostic (a `WeakMap<root, intervalId>`, `startPolling`/
+  `stopPolling`, a caller-supplied `PollTick`); all conversion-specific
+  decisions (which HTTP errors stop it for good vs. keep the interval, what
+  "active" means) live in `convert-control.js`'s own `tick`. CSS discovery:
+  `.file-row--unplayable`'s real host (`audio-books.css`/
+  `audiobook-detail.js`) is `display: block` with a single existing child
+  (`.file-row__main`) — unlike `.episode-row`/`.track-row--unplayable`,
+  which are themselves the flex row the control becomes one more child of —
+  so `.file-row--unplayable .convert-control` gets `align-items: flex-end` +
+  auto-width buttons (it already spans the row's full width as a block-level
+  flex box) but not the `margin-top: 0`/`flex-wrap` treatment the two true
+  flex-row hosts need at <768 px (their `gap` already spaces the control;
+  `.file-row--unplayable` needs no wrap since it is never a flex item to
+  begin with). The design exports' audio-mobile left-alignment is the
+  renderer-limitation workaround their own HTML documents (see that file's
+  comment) — not followed; every row context stays right-aligned per the
+  spec text. POST-error handling rebuilds the control from scratch for every
+  outcome (409/400-404-503/other), rather than mutating the existing button
+  in place, keeping one render path (`buildControl`) for every state
+  including the client-only "generic retry" pseudo-state. `test/public/
+  convert-control.test.js` uses its own minimal DOM fake (not a full
+  `Element`/`HTMLElement`, cast at the `decorateConversionsFor`/`stopPolling`
+  call boundary) since `test/helpers/player-page-fakes.js` has no
+  `querySelectorAll`/`classList`; `t.mock.timers` (`apis: ['setInterval']`)
+  drives the poller cases. `npm run verify` green (1757 tests, 1755 pass, 2
+  pre-existing platform skips, 0 failures); `npm ls --omit=dev --all` empty;
+  manual smoke check (app started with the stub converter, logged in as
+  admin, `/movies` renders unchanged with no console errors) — no page wires
+  `decorateConversionsFor` yet (that is later issues' hook lines, out of
+  this issue's Files list), so no design-export screenshot comparison was
+  possible for this issue in isolation.
+- 2026-09-29 (#227, review round 1): the <768 px wrap is scoped to hosts
+  holding a control (`.episode-row:has(> .convert-control)`,
+  `.track-row--unplayable:has(> .convert-control)`), and their title item
+  gets `flex: 1 1 0` (track title additionally `max-width: max-content`),
+  so playable rows and every row a non-admin sees keep their layout, and a
+  long title no longer drops onto its own line; checked in headless Edge in
+  a true 390 px iframe viewport (playable long-title row 50 px with and
+  without the stylesheet; controlled rows: number/body/badge on line one,
+  control right-aligned on line two). The stylesheet is now injected only
+  once controls render (not for a `403`/disabled feature). `.status-text`
+  rules are scoped under `.convert-control`, and the status text is a
+  `role="status"` span as specified. Race guards: a per-root generation
+  drops an initial fetch superseded by a newer decoration; a per-root owner
+  context drops poll/POST responses of a superseded decoration; and
+  `convert-poller.js` only stops the interval a settling tick belongs to,
+  so a stale tick never cancels the newer poller. Tests split into
+  `convert-control.test.js`, `convert-control-poller.test.js`,
+  `convert-control-css.test.js` + `test/helpers/convert-control-fakes.js`
+  (300-line cap).
