@@ -1697,3 +1697,12 @@ exports):
   the output is written, right before the first line. The stub gets its own
   `test/helpers/converter-stub.test.js`, so a drifting mode fails there
   instead of inside the runner/queue suites.
+- 2026-09-29: Issue #216 (`verifyOutput`) implemented. `VerifyResult` is
+  `{ ok: true, path }` (the resolved realpath step 6 publishes) or
+  `{ ok: false, error }` with `converter_output_invalid` (containment/type/
+  extension) or `not_browser_safe` (format check) — no shape was fixed in the
+  spec text, so this mirrors `interpretRun`'s `{ ok, ... }` style. The `web`
+  check independently rejects a null sniff and a zero-video-track result
+  before calling `resolvePlayable` (which alone would treat "unknown" as
+  playable by extension, per the scanner's looser rule) — matching "unknown
+  fails here, unlike the scanner".
