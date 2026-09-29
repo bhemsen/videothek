@@ -1793,14 +1793,20 @@ exports):
 - 2026-09-29: Issue #223 (`handleMedia` fresh-conversion serving) implemented
   as specified: a new `resolvePlaybackPath` helper calls `getFreshConversion`
   and, when it finds a row, resolves `conversion.output_rel` against
-  `config.convertDir` instead of the source; `config.convertDir` is read only
-  in that branch. `sendMedia` needed no change — `mediaTypeFor(extname(path))`
+  `config.convertDir` instead of the source (a row with `output_rel` NULL
+  resolves `''` and answers `404 not_found`, never the source);
+  `config.convertDir` is read only in that branch. `sendMedia` needed no change — `mediaTypeFor(extname(path))`
   already maps `mp4`/`flac`/`opus` correctly via the existing compat table, so
   no `contentType` override was added. `media.js` exports nothing new.
-  `test/api/media-converted.test.js` covers the copy streaming with Range/
-  HEAD, a stale copy (`404 not_playable`, falls out of #209's effective-
+  `test/api/media-converted.test.js` (fixtures in
+  `media-converted-helpers.js`, path cases split into
+  `media-converted-paths.test.js` for the 300-line limit) covers the copy
+  streaming with Range/HEAD, `audio.flac`/`audio.opus` MIME types, a
+  `NULL` `output_rel`, `config.convertDir` not read for an unconverted
+  item, subtitles from the source folder, a stale copy (`404 not_playable`, falls out of #209's effective-
   playable computation with no extra code), a fresh row whose copy file was
-  removed (`404 not_found`), `output_rel` tampered to `../x` or a leading `/`
-  (`404`, `resolveMediaPath`'s existing containment), byte-identical source
+  removed (`404 not_found`), `output_rel` tampered to `../x`, an absolute
+  path or a leading `/` pointing at real, readable files (`404`,
+  `resolveMediaPath`'s existing containment), byte-identical source
   after streaming, and `PUT /api/progress/:id` resuming a converted item.
-  `npm run verify` green (1615 tests, 0 failures).
+  `npm run verify` green (1623 tests, 0 failures).

@@ -86,17 +86,18 @@ function logStreamErrorIfNeeded(deps, id, error) {
  * fresh converted copy under `CONVERT_DIR` when `getFreshConversion` finds
  * one (status `playable`, source stat still matching), otherwise the
  * original under `MEDIA_ROOT` as before. `config.convertDir` is never read
- * for an item with no fresh conversion. A fresh row whose `output_rel` no
- * longer resolves inside `CONVERT_DIR` (file removed, or tampered to
- * escape it) yields `null`, same as an unresolvable source path.
+ * for an item with no fresh conversion. A fresh row whose `output_rel` is
+ * missing or no longer resolves inside `CONVERT_DIR` (file removed, or
+ * tampered to escape it) yields `null` — never a fallback to the source,
+ * which may not be browser-playable.
  * @param {MediaDeps} deps
  * @param {import('../db/library-repo.js').LibraryItemRow} row
  * @returns {Promise<string | null>}
  */
 async function resolvePlaybackPath(deps, row) {
   const conversion = getFreshConversion(deps.db, row);
-  if (conversion?.output_rel) {
-    return resolveMediaPath(deps.config.convertDir, conversion.output_rel);
+  if (conversion) {
+    return resolveMediaPath(deps.config.convertDir, conversion.output_rel ?? '');
   }
   return resolveMediaPath(deps.config.mediaRoot, row.rel_path);
 }

@@ -4,122 +4,26 @@
  * `GET /media/:id` serving a fresh converted copy from `CONVERT_DIR`
  * (docs/specs/spec-conversion-core.md, "Serving"). Complements
  * `test/api/media.test.js` (the unconverted-item route), which stays
- * unchanged.
+ * unchanged. Path-related cases (containment, `CONVERT_DIR` not read,
+ * subtitle sidecars) live in `media-converted-paths.test.js`.
  */
 
 import { test } from 'node:test';
 import assert from 'node:assert/strict';
-import { mkdir, readFile, writeFile } from 'node:fs/promises';
+import { readFile } from 'node:fs/promises';
 import path from 'node:path';
 import { upsertItem } from '../../src/db/library-repo.js';
-import { enqueueConversion, publishConversion } from '../../src/db/conversions.js';
-import { startTestApp } from '../helpers/app.js';
-
-/** @typedef {import('../../src/db/library-repo.js').LibraryItemInput} LibraryItemInput */
-
-const SOURCE_REL = 'Filme/Show (2020).mkv';
-const SOURCE_SIZE = 1234;
-const SOURCE_MTIME = 1_700_000_000_000;
-const STORAGE_KEY = 'a'.repeat(64);
-
-/**
- * @param {Partial<LibraryItemInput>} overrides
- * @returns {LibraryItemInput}
- */
-function makeItem(overrides = {}) {
-  return /** @type {LibraryItemInput} */ ({
-    rel_path: SOURCE_REL,
-    dir: 'Filme',
-    category: 'movies',
-    kind: 'video',
-    ext: 'mkv',
-    title: 'Show',
-    sort_title: 'show',
-    playable: false,
-    size: SOURCE_SIZE,
-    mtime_ms: SOURCE_MTIME,
-    scan_version: 1,
-    ...overrides,
-  });
-}
-
-/**
- * `size` bytes, `value[i] = (i + seed) % 256`, so two buffers of the same
- * length are still trivially distinguishable (source vs. converted copy).
- * @param {number} size
- * @param {number} [seed]
- * @returns {Buffer}
- */
-function patternBytes(size, seed = 0) {
-  return Buffer.from(Array.from({ length: size }, (_, i) => (i + seed) % 256));
-}
-
-/**
- * @param {string} fullPath
- * @param {Buffer} bytes
- * @returns {Promise<void>}
- */
-async function writeFileDeep(fullPath, bytes) {
-  await mkdir(path.dirname(fullPath), { recursive: true });
-  await writeFile(fullPath, bytes);
-}
-
-/**
- * Boots the app and logs one user in.
- * @returns {Promise<{ app: Awaited<ReturnType<typeof startTestApp>>, cookie: string }>}
- */
-async function setup() {
-  const app = await startTestApp();
-  await app.createUser('alice', 'password123');
-  const cookie = await app.login('alice', 'password123');
-  return { app, cookie };
-}
-
-/**
- * Seeds `SOURCE_REL` under `MEDIA_ROOT` and publishes a fresh `playable`
- * conversions row for it, so `upsertItem`'s effective-playable computation
- * marks the item playable even though its own `playable` column is `false`.
- * The converted copy's bytes are written under `CONVERT_DIR` only when
- * `outputBytes` is given, so a caller can simulate a fresh row whose file
- * was removed by omitting it.
- * @param {Awaited<ReturnType<typeof startTestApp>>} app
- * @param {{ sourceBytes: Buffer, outputRel: string, outputBytes?: Buffer, now?: number }} opts
- * @returns {Promise<number>} the item's id
- */
-async function seedConvertedItem(app, { sourceBytes, outputRel, outputBytes, now = 1000 }) {
-  await writeFileDeep(path.join(app.config.mediaRoot, SOURCE_REL), sourceBytes);
-  const id = upsertItem(app.db, makeItem(), now);
-  enqueueConversion(app.db, {
-    relPath: SOURCE_REL,
-    storageKey: STORAGE_KEY,
-    target: 'web',
-    sourceSize: SOURCE_SIZE,
-    sourceMtimeMs: SOURCE_MTIME,
-    now,
-  });
-  publishConversion(app.db, {
-    relPath: SOURCE_REL,
-    outputRel,
-    outputSize: outputBytes ? outputBytes.length : 0,
-    notes: '[]',
-    now,
-  });
-  if (outputBytes) {
-    await writeFileDeep(path.join(app.config.convertDir, outputRel), outputBytes);
-  }
-  return id;
-}
-
-/**
- * @param {Awaited<ReturnType<typeof startTestApp>>} app
- * @param {string} cookie
- * @param {number} id
- * @param {Record<string, string>} [headers]
- * @returns {Promise<Response>}
- */
-function getMedia(app, cookie, id, headers = {}) {
-  return fetch(`${app.baseUrl}/media/${id}`, { headers: { Cookie: cookie, ...headers } });
-}
+import {
+  getMedia,
+  makeItem,
+  patternBytes,
+  seedConvertedItem,
+  setup,
+  SOURCE_MTIME,
+  SOURCE_REL,
+  SOURCE_SIZE,
+  STORAGE_KEY,
+} from './media-converted-helpers.js';
 
 test('GET /media/:id: a converted item streams the fresh copy, not the source, with the copy\'s own MIME type', async () => {
   const { app, cookie } = await setup();
@@ -134,19 +38,22 @@ test('GET /media/:id: a converted item streams the fresh copy, not the source, w
     assert.equal(full.headers.get('content-type'), 'video/mp4');
     assert.deepEqual(Buffer.from(await full.arrayBuffer()), outputBytes, 'streams the copy, not the source');
 
-    const ranged = await getMedia(app, cookie, id, { Range: 'bytes=5-9' });
+    const ranged = await getMedia(app, cookie, id, { headers: { Range: 'bytes=5-9' } });
     assert.equal(ranged.status, 206);
     assert.equal(ranged.headers.get('content-range'), `bytes 5-9/${outputBytes.length}`);
     assert.deepEqual(Buffer.from(await ranged.arrayBuffer()), outputBytes.subarray(5, 10));
 
-    const unsatisfiable = await getMedia(app, cookie, id, { Range: `bytes=${outputBytes.length + 10}-${outputBytes.length + 20}` });
+    const beyond = `bytes=${outputBytes.length + 10}-${outputBytes.length + 20}`;
+    const unsatisfiable = await getMedia(app, cookie, id, { headers: { Range: beyond } });
     assert.equal(unsatisfiable.status, 416);
     assert.equal(unsatisfiable.headers.get('content-range'), `bytes */${outputBytes.length}`);
 
-    const head = await fetch(`${app.baseUrl}/media/${id}`, { method: 'HEAD', headers: { Cookie: cookie } });
+    // fetch never exposes a HEAD body, so the copy's own headers (length and
+    // MIME type, both different from the source's) carry this check.
+    const head = await getMedia(app, cookie, id, { method: 'HEAD' });
     assert.equal(head.status, 200);
     assert.equal(head.headers.get('content-length'), String(outputBytes.length));
-    assert.equal(Buffer.from(await head.arrayBuffer()).length, 0);
+    assert.equal(head.headers.get('content-type'), 'video/mp4');
 
     const sourceOnDisk = await readFile(path.join(app.config.mediaRoot, SOURCE_REL));
     assert.deepEqual(sourceOnDisk, sourceBytes, 'the original under MEDIA_ROOT is byte-identical afterwards');
@@ -155,14 +62,43 @@ test('GET /media/:id: a converted item streams the fresh copy, not the source, w
   }
 });
 
+test('GET /media/:id: audio copies stream with the MIME type of their own extension (flac, opus)', async () => {
+  const { app, cookie } = await setup();
+  try {
+    const cases = /** @type {const} */ ([
+      { target: 'flac', file: 'audio.flac', mime: 'audio/flac', key: 'b' },
+      { target: 'opus', file: 'audio.opus', mime: 'audio/ogg', key: 'c' },
+    ]);
+    for (const { target, file, mime, key } of cases) {
+      const relPath = `Musik/Artist/Album/Song ${target}.wma`;
+      const outputBytes = patternBytes(25, key.charCodeAt(0));
+      const storageKey = key.repeat(64);
+      const id = await seedConvertedItem(app, {
+        sourceBytes: patternBytes(40, 0),
+        outputRel: `${storageKey}/${file}`,
+        outputBytes,
+        storageKey,
+        target,
+        item: { rel_path: relPath, dir: 'Musik/Artist/Album', category: 'music', kind: 'audio', ext: 'wma', title: relPath, sort_title: relPath },
+      });
+
+      const res = await getMedia(app, cookie, id);
+      assert.equal(res.status, 200, file);
+      assert.equal(res.headers.get('content-type'), mime, file);
+      assert.deepEqual(Buffer.from(await res.arrayBuffer()), outputBytes, file);
+    }
+  } finally {
+    await app.close();
+  }
+});
+
 test('GET /media/:id: a stale copy (source changed since conversion) answers 404 not_playable', async () => {
   const { app, cookie } = await setup();
   try {
-    const outputBytes = patternBytes(20, 5);
     const id = await seedConvertedItem(app, {
       sourceBytes: patternBytes(50, 0),
       outputRel: `${STORAGE_KEY}/web.mp4`,
-      outputBytes,
+      outputBytes: patternBytes(20, 5),
     });
 
     // Simulate a rescan that finds the source changed: the conversions row
@@ -179,7 +115,7 @@ test('GET /media/:id: a stale copy (source changed since conversion) answers 404
   }
 });
 
-test('GET /media/:id: a fresh row whose copy file was removed answers 404 not_found', async () => {
+test('GET /media/:id: a fresh row whose copy file was removed answers 404 not_found, never the source', async () => {
   const { app, cookie } = await setup();
   try {
     const id = await seedConvertedItem(app, {
@@ -197,29 +133,19 @@ test('GET /media/:id: a fresh row whose copy file was removed answers 404 not_fo
   }
 });
 
-test('GET /media/:id: an output_rel tampered to escape CONVERT_DIR answers 404 (containment)', async () => {
+test('GET /media/:id: a fresh playable row with output_rel NULL answers 404 not_found, never the source', async () => {
   const { app, cookie } = await setup();
   try {
-    let variant = 0;
-    for (const badOutputRel of ['../evil.mp4', '/evil.mp4']) {
-      variant += 1;
-      const relPath = `Filme/Tampered ${badOutputRel.replace(/[/.]/g, '_')}.mkv`;
-      await writeFileDeep(path.join(app.config.mediaRoot, relPath), patternBytes(10, 0));
-      const id = upsertItem(app.db, makeItem({ rel_path: relPath, title: relPath, sort_title: relPath }), 1000);
-      enqueueConversion(app.db, {
-        relPath,
-        storageKey: String(variant).repeat(64),
-        target: 'web',
-        sourceSize: SOURCE_SIZE,
-        sourceMtimeMs: SOURCE_MTIME,
-        now: 1000,
-      });
-      publishConversion(app.db, { relPath, outputRel: badOutputRel, outputSize: 1, notes: '[]', now: 1000 });
+    const id = await seedConvertedItem(app, {
+      sourceBytes: patternBytes(50, 0),
+      outputRel: `${STORAGE_KEY}/web.mp4`,
+      outputBytes: patternBytes(20, 5),
+    });
+    app.db.prepare('UPDATE conversions SET output_rel = NULL WHERE rel_path = ?').run(SOURCE_REL);
 
-      const res = await getMedia(app, cookie, id);
-      assert.equal(res.status, 404, badOutputRel);
-      assert.deepEqual(JSON.parse(await res.text()), { error: 'not_found' }, badOutputRel);
-    }
+    const res = await getMedia(app, cookie, id);
+    assert.equal(res.status, 404);
+    assert.deepEqual(JSON.parse(await res.text()), { error: 'not_found' });
   } finally {
     await app.close();
   }
