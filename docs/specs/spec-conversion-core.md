@@ -1927,3 +1927,24 @@ exports):
   to `false`. The `queue-stop.test.js` sibling is kept: merging it back would
   put `queue.test.js` near the 300-line limit. `npm run verify` green
   (1708 tests, 0 failures).
+- 2026-09-29 (#220): the real queue/job/runner/verify chain against
+  `test/helpers/converter-stub.js` (no fake `run`, unlike `queue.test.js`/
+  `queue-stop.test.js`) exposed no defect in `src/` — every case already
+  behaves as the spec's Queue/Job/Interpretation sections require, so this
+  issue is test-only. New shared fixtures in
+  `test/helpers/queue-lifecycle-setup.js` (a real temp `MEDIA_ROOT`/
+  `CONVERT_DIR`, `stubCmd(mode, extraArgs)` building the real
+  `[process.execPath, stubPath, '--mode', …]` `converterCmd`, an
+  `assertNoLeakedPaths` helper for the redaction requirement, and a
+  `makeSentinel`/`assertSentinelUnchanged` pair asserting an unrelated temp
+  dir's listing is unchanged - the "nothing outside `CONVERT_DIR`" check).
+  `test/convert/queue-lifecycle.test.js` covers one job outcome per test (`ok`
+  publish, `not-browser-safe`, `crash`, `usage`, `escape`, `hang` killed by
+  `stop()`, a source changed between `--hold` `started`/`go`, and a missing
+  `converterCmd[0]` -> `converter_unavailable` with `error_detail` exactly
+  `ENOENT`); `test/convert/queue-lifecycle-cleanup.test.js` covers an injected
+  `removeDir` `EBUSY` rejection (scoped to the job dir's `<storage_key>-`
+  prefix) after a successful `ok` publish and after a `not-browser-safe` run,
+  both leaving the already-recorded end state untouched and only logging
+  `conversion_cleanup_failed { key, code }`. `npm run verify` green (1718
+  tests, 1716 pass, 2 skipped, 0 failures); `npm ls --omit=dev --all` empty.
