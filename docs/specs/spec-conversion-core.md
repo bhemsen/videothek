@@ -1810,6 +1810,60 @@ exports):
   `resolveMediaPath`'s existing containment), byte-identical source
   after streaming, and `PUT /api/progress/:id` resuming a converted item.
   `npm run verify` green (1623 tests, 0 failures).
+- 2026-09-29: Issue #217 (`src/convert/work-dir.js`) implemented. No exact API
+  was fixed by the spec text (only the split's existence and responsibility),
+  so this issue settles it: four entry points (plus the exported
+  `createJobSubdirs` helper, below), each `{ ok: true, ... } | { ok:
+  false, code }`, with no logging and no DB access (the queue interprets
+  `code` into `conversion_dir_unavailable`/`storage_failed`) — `setupConvertDir`
+  (`start()` steps 1-6, incl. the work-area wipe), `wipeWorkArea` (exported
+  separately, since `setupConvertDir` calls it too), `createJobDir` (step 3)
+  and `preparePublishDir` (step 6). The step-3/6 "realpath must equal the
+  composed path" check is a dedicated `isExactly` helper using
+  `path.win32.relative`/`path.posix.relative` on an injectable `platform`
+  option (pattern of `redactDetail`/`resolveMediaPath`), not `isInside`
+  (containment would wrongly accept a `<storage_key>` link into
+  `.videothek-work/<job>`) and not a host-OS-bound `path.relative` (untestable
+  cross-platform from one dev machine). `JobDirResult`'s failure branch
+  carries `jobDir` once `mkdtemp` itself succeeded, so a caller whose
+  subdirectory creation then fails still knows what its own `finally` must
+  pass to `removeDir`. Three platform behaviours were checked empirically on
+  the win32 dev machine rather than assumed: `lstat`/`isDirectory()` on a
+  Windows junction reports `isSymbolicLink: true`/`isDirectory: false` (so the
+  work-area wipe's directory/non-directory dispatch already routes a junction
+  to `unlink`, matching the spec, with no extra type check needed);
+  `fs.mkdir(p, { recursive: true })` on a path whose leaf is a junction to an
+  existing directory is a silent no-op (the mechanism the containment check
+  must catch, since a bare `mkdir` gives no error to react to); and `lstat`
+  through an intermediate junction or a dangling symlink reports `ENOENT`
+  (not `ELOOP` or a distinct code), while an intermediate plain **file**
+  reports `ENOENT` from `lstat` but `ENOTDIR` from `mkdir`. A review round
+  added a fourth: `fs.mkdir(p, { recursive: true })` on a *dangling*
+  junction fails with `ENOENT` on win32 (POSIX may give `EEXIST`, unchecked),
+  so a dangling link at `.videothek-work` or `<storage_key>` fails at the
+  `mkdir` step, never reaching `realpath`. `createJobSubdirs` (the `out/` +
+  `tmp/` tail of step 3) is exported so its failure contract — `jobDir`
+  carried on failure — is tested directly (a file named `tmp` blocks it).
+  `test/convert/work-dir.test.js` covers: both overlap directions, the
+  public-dir check, missing `MEDIA_ROOT`/public dir, a dangling/escaping
+  ancestor, an `ENOTDIR`-blocked setup, the wipe's ENOENT/directory/
+  link/file branches and both `removeDir` seams, `mkdir` failures in
+  `createJobDir` and `preparePublishDir` (a regular file in the way →
+  `EEXIST`), a `mkdtemp` failure, the `createJobSubdirs` failure with
+  `jobDir`, a dangling link at the work area and at `<storage_key>`, both
+  containment checks against an escaping and an inside-`CONVERT_DIR` link
+  including the spec's `.videothek-work/<job>` case, and win32 case
+  insensitivity. **Not covered** (no deterministic trigger without
+  OS-specific permission tricks or a race, which this suite avoids): the
+  `realpath` failure *after* a successful `mkdir` in all three functions and
+  `setupConvertDir`'s second overlap check (both need the path to change
+  between `mkdir` and `realpath`), the ancestor walk reaching the
+  filesystem root, and on win32 the walk-up's "non-`ENOENT` `lstat` error
+  stops the walk" branch (on Linux the `ENOTDIR` test takes it). Test
+  fixtures are realpath'd temp dirs and directory links use `'junction'` on
+  win32 and `'dir'` elsewhere; the dangling-link cases skip on
+  `EPERM`/`ENOENT`, per Verification. `npm run verify` green (1643 tests,
+  0 failures, 2 pre-existing skips).
 - 2026-09-29: Issue #224 (`src/api/conversion-json.js`) implemented as
   specified: `deriveConversionStatus` derives `stale` from a `playable` row's
   `c_source_size`/`c_source_mtime_ms` vs. the joined item's own `size`/
