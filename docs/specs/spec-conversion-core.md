@@ -1678,6 +1678,25 @@ exports):
   character split across `push()` calls is handled by feeding each raw
   segment through one persistent `StringDecoder`, never by decoding a chunk
   before its line boundary is known.
+- 2026-09-29: Issue #212 (`test/helpers/converter-stub.js`) implemented. Two
+  stub-only decisions, neither touching the app-side contract: (1) the
+  `orphan-pipe` mode spawns its grandchild with `detached: true` (in addition
+  to the spec's inherited stdio) — verified on the dev machine that without it
+  Node ties an undetached child's lifetime to its spawning process on
+  `win32`, so the grandchild died the instant the stub exited instead of
+  outliving it as the mode requires; `detached` is scoped to this test double
+  and does not apply to `src/convert/run-converter.js`, whose "no detached"
+  constraint (Constraints) is unchanged. (2) every mode signals its exit via
+  `process.exitCode` and lets the event loop drain instead of calling
+  `process.exit()`, because a forced exit can truncate stdout still being
+  flushed to a pipe on `win32`, which would corrupt the very JSON Lines
+  records `src/convert/jsonl.js` needs to read intact. The grandchild keeps
+  the spec's bounded 30-s sleep, so a detached orphan a failed test never
+  kills still ends on its own. `--hold` and `--delay-ms` apply only to the
+  modes that print JSON Lines (header JSDoc lists them); the delay runs after
+  the output is written, right before the first line. The stub gets its own
+  `test/helpers/converter-stub.test.js`, so a drifting mode fails there
+  instead of inside the runner/queue suites.
 - 2026-09-29: Issue #216 (`verifyOutput`) implemented. `VerifyResult` is
   `{ ok: true, path }` (the resolved realpath step 6 publishes) or
   `{ ok: false, error }` with `converter_output_invalid` (containment/type/
