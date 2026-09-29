@@ -1,10 +1,12 @@
 // @ts-check
 import { test } from 'node:test';
 import assert from 'node:assert/strict';
+import fs from 'node:fs/promises';
+import path from 'node:path';
 import { getConversion } from '../../src/db/conversions.js';
 import { createConversionQueue } from '../../src/convert/queue.js';
 import {
-  makeDb, makeTempDir, fakeConfig, fakeLogger, enqueueSource, deferredRun, successResult,
+  makeDb, makeTempDir, fakeConfig, fakeLogger, enqueueSource, deferredRun, successResult, waitUntil,
 } from '../helpers/conversion-queue-fixtures.js';
 
 /** A minimal, unsettled RunResult shape for a foreign-signal / no-op `stop()` test. @param {Partial<any>} [extra] */
@@ -129,4 +131,71 @@ test('a run whose result never settles resolves stop() after stopDeadlineMs, log
 
   assert.ok(logCalls.some((c) => c.event === 'conversion_stop_timeout'));
   assert.equal(getConversion(db, 'Hoerbuecher/a.mp3')?.status, 'converting');
+});
+
+test("stop() resolves only after the job's step-7 work-dir removal has finished, not merely its DB write", async (t) => {
+  const db = makeDb();
+  t.after(() => db.close());
+  const convertDirReal = await makeTempDir(t, 'vt-queue-convert-');
+  const mediaRoot = await makeTempDir(t, 'vt-queue-media-');
+  await enqueueSource(db, mediaRoot, 'Hoerbuecher/a.mp3');
+
+  /** @type {{ target: string, release: () => void }[]} */
+  const removals = [];
+  const removeDir = (/** @type {string} */ target) => {
+    if (path.basename(target) === '.videothek-work') return fs.rm(target, { recursive: true, force: true });
+    return new Promise((resolve, reject) => {
+      removals.push({ target, release: () => { fs.rm(target, { recursive: true, force: true }).then(resolve, reject); } });
+    });
+  };
+  const { run, next } = deferredRun();
+  const { log } = fakeLogger();
+  const queue = createConversionQueue({ db, config: fakeConfig(mediaRoot, convertDirReal), log, now: () => 1, run, removeDir });
+  assert.equal(await queue.start(), true);
+  queue.kick();
+  const entry = await next();
+
+  let stopped = false;
+  const stopPromise = queue.stop().then(() => { stopped = true; });
+  entry.resolve(await successResult(entry.args));
+  await waitUntil(() => removals.length === 1);
+  assert.equal(getConversion(db, 'Hoerbuecher/a.mp3')?.error, 'interrupted', 'the DB write already happened');
+  await new Promise((resolve) => setTimeout(resolve, 30));
+  assert.equal(stopped, false, 'stop() still waits for the pending work-dir removal');
+
+  const jobDir = removals[0].target;
+  assert.equal(jobDir, entry.args.cwd, 'step 7 removes the job dir');
+  removals[0].release();
+  await stopPromise;
+  await assert.rejects(fs.access(jobDir), 'the job dir is gone once stop() resolved');
+});
+
+test('a handle whose kill() throws still lets stop() return its promise, resolve, and record interrupted', async (t) => {
+  const db = makeDb();
+  t.after(() => db.close());
+  const convertDirReal = await makeTempDir(t, 'vt-queue-convert-');
+  const mediaRoot = await makeTempDir(t, 'vt-queue-media-');
+  await enqueueSource(db, mediaRoot, 'Hoerbuecher/a.mp3');
+
+  /** @type {(value: any) => void} */
+  let settle = () => {};
+  let ran = false;
+  const run = () => {
+    ran = true;
+    return { result: new Promise((resolve) => { settle = resolve; }), kill: () => { throw Object.assign(new Error('gone'), { code: 'ESRCH' }); } };
+  };
+  const { log, calls: logCalls } = fakeLogger();
+  const queue = createConversionQueue({ db, config: fakeConfig(mediaRoot, convertDirReal), log, now: () => 1, run, killGraceMs: 10_000 });
+  assert.equal(await queue.start(), true);
+  queue.kick();
+  await waitUntil(() => ran);
+
+  /** @type {Promise<void> | undefined} */
+  let stopPromise;
+  assert.doesNotThrow(() => { stopPromise = queue.stop(); });
+  assert.ok(stopPromise instanceof Promise);
+  settle(unsettledResult());
+  await stopPromise;
+  assert.deepEqual(logCalls.find((c) => c.event === 'conversion_error')?.fields, { code: 'ESRCH' });
+  assert.equal(getConversion(db, 'Hoerbuecher/a.mp3')?.error, 'interrupted');
 });

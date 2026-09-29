@@ -1916,3 +1916,14 @@ exports):
   reusable now that a later queue-lifecycle issue needs its own real-stub
   fixtures. `npm run verify` green (1704 tests, 0 failures);
   `npm ls --omit=dev --all` empty.
+- 2026-09-29 (#219, review fixes): `kick()` never throws: a failed
+  `claimNextConversion` (e.g. `database is locked`) logs
+  `conversion_error { code }` (no `key`: no row was claimed) and leaves the
+  row `queued` for the next `kick()`. This applies both inside the previous
+  job's `finally` (where a throw would be an unhandled rejection) and to
+  external callers (POST, `runStart`), whose contract is `kick(): void`.
+  `stop()` wraps each `handle.kill()` the same way, so it always returns
+  its promise. `start()` also maps an unexpected throw of `setupConvertDir`
+  to `false`. The `queue-stop.test.js` sibling is kept: merging it back would
+  put `queue.test.js` near the 300-line limit. `npm run verify` green
+  (1708 tests, 0 failures).

@@ -114,12 +114,20 @@ export function createConversionQueue(options) {
  * @returns {Promise<boolean>}
  */
 async function start(state) {
-  const result = await setupConvertDir({
-    mediaRoot: state.config.mediaRoot,
-    convertDir: state.config.convertDir,
-    publicDir: state.publicDir,
-    removeDir: state.removeDir,
-  });
+  /** @type {import('./work-dir.js').SetupResult} */
+  let result;
+  try {
+    result = await setupConvertDir({
+      mediaRoot: state.config.mediaRoot,
+      convertDir: state.config.convertDir,
+      publicDir: state.publicDir,
+      removeDir: state.removeDir,
+    });
+  } catch (err) {
+    // setupConvertDir documents a result, never a throw; "any failure" still
+    // means false here, not a rejected start().
+    result = { ok: false, code: errorCode(err) };
+  }
   if (!result.ok) {
     state.log.error('conversion_dir_unavailable', { code: result.code });
     return false;
@@ -139,25 +147,37 @@ async function start(state) {
  */
 function onHandle(state, handle) {
   state.currentHandle = handle;
-  handle.result.finally(() => {
+  const clear = () => {
     state.currentHandle = null;
     if (state.killTimer !== null) {
       clearTimeout(state.killTimer);
       state.killTimer = null;
     }
-  });
+  };
+  // then(clear, clear), not finally(): the derived promise must never reject.
+  handle.result.then(clear, clear);
 }
 
 /**
  * Claims and runs the next `queued` row, if any, then chains itself once
- * that job settles - so exactly one job runs at a time. Defensively catches
- * a rejection of `runConversionJob` itself (which is documented to never
- * reject) so the chain can never produce an unhandled rejection.
+ * that job settles - so exactly one job runs at a time. Never throws: a
+ * failed claim (e.g. `database is locked`) only logs `conversion_error
+ * { code }` and leaves the row `queued` for the next `kick()` (from a POST,
+ * a later job or the next start), since this also runs inside the previous
+ * job's `finally` where a throw would be an unhandled rejection. Also
+ * defensively catches a rejection of `runConversionJob` itself (documented
+ * to never reject).
  * @param {QueueState} state
  */
 function kick(state) {
   if (!state.ready || state.stopping || state.currentJobPromise !== null) return;
-  const row = claimNextConversion(state.db, state.now());
+  let row;
+  try {
+    row = claimNextConversion(state.db, state.now());
+  } catch (err) {
+    state.log.error('conversion_error', { code: errorCode(err) });
+    return;
+  }
   if (!row) return;
   const jobPromise = runConversionJob({
     db: state.db,
@@ -197,12 +217,13 @@ function waitForJobOrDeadline(state) {
       state.log.error('conversion_stop_timeout', {});
       resolve();
     }, state.stopDeadlineMs);
-    jobDone.finally(() => {
+    const done = () => {
       if (settled) return;
       settled = true;
       clearTimeout(deadlineTimer);
       resolve();
-    });
+    };
+    jobDone.then(done, done);
   });
 }
 
@@ -220,14 +241,30 @@ function stop(state) {
   state.stopping = true;
   if (state.currentHandle) {
     const handle = state.currentHandle;
-    handle.kill('SIGTERM');
+    safeKill(state, handle, 'SIGTERM');
     state.killTimer = setTimeout(() => {
       state.killTimer = null;
-      handle.kill('SIGKILL');
+      safeKill(state, handle, 'SIGKILL');
     }, state.killGraceMs);
   }
   state.stopPromise = waitForJobOrDeadline(state);
   return state.stopPromise;
+}
+
+/**
+ * Sends `signal` via the run handle; a throw (never expected from
+ * `runConverter`'s `kill`) only logs, so `stop()` still returns its promise
+ * and the deadline still bounds it.
+ * @param {QueueState} state
+ * @param {RunConverter} handle
+ * @param {NodeJS.Signals} signal
+ */
+function safeKill(state, handle, signal) {
+  try {
+    handle.kill(signal);
+  } catch (err) {
+    state.log.error('conversion_error', { code: errorCode(err) });
+  }
 }
 
 /**

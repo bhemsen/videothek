@@ -1,6 +1,7 @@
 // @ts-check
 import { test } from 'node:test';
 import assert from 'node:assert/strict';
+import fs from 'node:fs/promises';
 import path from 'node:path';
 import { getConversion } from '../../src/db/conversions.js';
 import { createConversionQueue } from '../../src/convert/queue.js';
@@ -41,6 +42,8 @@ test('claims one queued row at a time, FIFO by rel_path on a queued_at tie, with
     assert.equal(calls.length, i + 1, 'no second job was claimed while this one is still in flight');
     order.push(path.relative(mediaRoot, entry.args.source).split(path.sep).join('/'));
     if (i === 0) {
+      assert.equal(path.dirname(entry.args.cwd), path.join(convertDirReal, '.videothek-work'), 'cwd is a job dir inside the work area');
+      assert.ok(path.basename(entry.args.cwd).startsWith(`${getConversion(db, 'Hoerbuecher/a.mp3')?.storage_key}-`));
       assert.equal(entry.args.cwd, path.dirname(entry.args.outDir));
       assert.equal(entry.args.outDir, path.join(entry.args.cwd, 'out'));
       assert.equal(entry.args.env.TMPDIR, path.join(entry.args.cwd, 'tmp'));
@@ -55,7 +58,10 @@ test('claims one queued row at a time, FIFO by rel_path on a queued_at tie, with
   assert.ok(relPaths.every((p) => getConversion(db, p)?.status === 'playable'));
 });
 
-test('kick() is a no-op before start(), after start() until called, and while a job is in flight', async (t) => {
+/** @param {{ event: string }[]} logCalls @param {string} event */
+const countEvent = (logCalls, event) => logCalls.filter((c) => c.event === event).length;
+
+test('kick() is a no-op before start(), while start() is pending, after start() until called, and while a job is in flight', async (t) => {
   const db = makeDb();
   t.after(() => db.close());
   const convertDirReal = await makeTempDir(t, 'vt-queue-convert-');
@@ -67,9 +73,14 @@ test('kick() is a no-op before start(), after start() until called, and while a 
   const queue = createConversionQueue({ db, config: fakeConfig(mediaRoot, convertDirReal), log, now: () => 1, run });
 
   queue.kick();
-  assert.equal(calls.length, 0, 'kick() before start() resolved claims nothing');
+  assert.equal(calls.length, 0, 'kick() before start() was called claims nothing');
 
-  assert.equal(await queue.start(), true);
+  const startPromise = queue.start();
+  queue.kick();
+  assert.equal(getConversion(db, 'Hoerbuecher/a.mp3')?.status, 'queued', 'kick() while start() is pending claims nothing');
+  assert.equal(await startPromise, true);
+  await new Promise((resolve) => setTimeout(resolve, 20));
+  assert.equal(calls.length, 0);
   assert.equal(getConversion(db, 'Hoerbuecher/a.mp3')?.status, 'queued', 'start() alone never kicks');
 
   queue.kick();
@@ -137,4 +148,87 @@ test('a queued row absent from library_items is claimed and ends source_missing 
   await waitForFinished(logCalls, 2);
   assert.equal(getConversion(db, 'Hoerbuecher/gone1.mp3')?.error, 'source_missing');
   assert.equal(getConversion(db, 'Hoerbuecher/gone2.mp3')?.error, 'source_missing');
+
+  queue.kick(); // an idle queue with only failed rows claims nothing
+  await new Promise((resolve) => setTimeout(resolve, 50));
+  assert.equal(countEvent(logCalls, 'conversion_started'), 2, 'nothing retries a failed source_missing row');
+  assert.equal(countEvent(logCalls, 'conversion_finished'), 2);
+  assert.equal(getConversion(db, 'Hoerbuecher/gone1.mp3')?.status, 'failed');
+});
+
+test('a start() failure (work-area removal rejected, or an overlap) resolves false, logs conversion_dir_unavailable { code }, and kick() stays a no-op', async (t) => {
+  const mediaRoot = await makeTempDir(t, 'vt-queue-media-');
+  const convertBase = await makeTempDir(t, 'vt-queue-convert-');
+  await fs.mkdir(path.join(convertBase, '.videothek-work', 'leftover'), { recursive: true });
+  const busy = (/** @type {string} */ target) => (path.basename(target) === '.videothek-work'
+    ? Promise.reject(Object.assign(new Error('busy'), { code: 'EBUSY' }))
+    : fs.rm(target, { recursive: true, force: true }));
+  const cases = [
+    { convertDir: convertBase, removeDir: busy, code: 'EBUSY' },
+    { convertDir: path.join(mediaRoot, 'converted'), removeDir: undefined, code: 'overlap' },
+  ];
+  for (const { convertDir, removeDir, code } of cases) {
+    const db = makeDb();
+    await enqueueSource(db, mediaRoot, 'Hoerbuecher/a.mp3');
+    const run = () => assert.fail('run must not be called after a failed start()');
+    const { log, calls: logCalls } = fakeLogger();
+    const queue = createConversionQueue({ db, config: fakeConfig(mediaRoot, convertDir), log, now: () => 1, run, removeDir });
+    assert.equal(await queue.start(), false, code);
+    assert.deepEqual(logCalls.filter((c) => c.event === 'conversion_dir_unavailable').map((c) => c.fields), [{ code }]);
+    queue.kick();
+    await new Promise((resolve) => setTimeout(resolve, 20));
+    assert.equal(getConversion(db, 'Hoerbuecher/a.mp3')?.status, 'queued', `${code}: kick() after a failed start() claims nothing`);
+    assert.equal(countEvent(logCalls, 'conversion_started'), 0);
+    db.close();
+  }
+  await assert.rejects(fs.access(path.join(mediaRoot, 'converted')), 'an overlap creates nothing under MEDIA_ROOT');
+});
+
+test('a failed claim (e.g. database is locked) inside the chain or from an external kick() only logs conversion_error { code }, never an unhandled rejection or a throw', async (t) => {
+  const realDb = makeDb();
+  t.after(() => realDb.close());
+  const convertDirReal = await makeTempDir(t, 'vt-queue-convert-');
+  const mediaRoot = await makeTempDir(t, 'vt-queue-media-');
+  await enqueueSource(realDb, mediaRoot, 'Hoerbuecher/a.mp3', { queuedAt: 1 });
+  await enqueueSource(realDb, mediaRoot, 'Hoerbuecher/b.mp3', { queuedAt: 2 });
+  /** @type {unknown[]} */
+  const unhandled = [];
+  const onUnhandled = (/** @type {unknown} */ reason) => { unhandled.push(reason); };
+  process.on('unhandledRejection', onUnhandled);
+  t.after(() => { process.off('unhandledRejection', onUnhandled); });
+
+  let locked = false;
+  const db = new Proxy(realDb, {
+    get(target, prop) {
+      if (prop === 'prepare') {
+        return (/** @type {string} */ sql) => {
+          if (locked && sql.includes("WHERE status = 'queued' ORDER BY")) {
+            throw Object.assign(new Error('database is locked'), { code: 'ERR_SQLITE_ERROR' });
+          }
+          return target.prepare(sql);
+        };
+      }
+      const value = Reflect.get(target, prop, target);
+      return typeof value === 'function' ? value.bind(target) : value;
+    },
+  });
+  const run = (/** @type {any} */ args) => { locked = true; return { result: successResult(args), kill: () => {} }; };
+  const { log, calls: logCalls } = fakeLogger();
+  const queue = createConversionQueue({ db, config: fakeConfig(mediaRoot, convertDirReal), log, now: () => 1, run });
+  assert.equal(await queue.start(), true);
+  queue.kick();
+
+  await waitUntil(() => countEvent(logCalls, 'conversion_error') === 1);
+  await new Promise((resolve) => setTimeout(resolve, 20));
+  assert.deepEqual(logCalls.find((c) => c.event === 'conversion_error')?.fields, { code: 'ERR_SQLITE_ERROR' });
+  assert.equal(getConversion(realDb, 'Hoerbuecher/a.mp3')?.status, 'playable');
+  assert.equal(getConversion(realDb, 'Hoerbuecher/b.mp3')?.status, 'queued', 'the failed claim left b queued');
+  assert.doesNotThrow(() => queue.kick(), 'an external kick() never throws a claim error');
+  assert.equal(countEvent(logCalls, 'conversion_error'), 2);
+  assert.deepEqual(unhandled, [], 'no unhandled rejection');
+
+  locked = false;
+  queue.kick(); // the chain is not stuck: the next kick() claims b
+  await waitForFinished(logCalls, 2);
+  assert.equal(getConversion(realDb, 'Hoerbuecher/b.mp3')?.status, 'playable');
 });
