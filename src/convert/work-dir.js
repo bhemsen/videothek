@@ -160,10 +160,13 @@ export async function createJobDir({ convertDirReal, storageKey, platform = proc
 }
 
 /**
+ * Creates `out/` and `tmp/` inside a fresh job directory (the tail of Queue
+ * "Job" step 3). Exported so its failure contract is testable: a failure
+ * here still carries `jobDir`, so the caller's `finally` can remove it.
  * @param {string} jobDir - the `mkdtemp`-created job directory.
  * @returns {Promise<JobDirResult>}
  */
-async function createJobSubdirs(jobDir) {
+export async function createJobSubdirs(jobDir) {
   const outDir = path.join(jobDir, 'out');
   const tmpDir = path.join(jobDir, 'tmp');
   try {
