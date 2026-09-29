@@ -1950,3 +1950,30 @@ exports):
   asserts the reopened DB (after `stop()` has closed it) and
   `process.kill(pid, 0)` throwing `ESRCH`. `npm run verify` green (1710
   tests, 0 failures); `npm ls --omit=dev --all` empty.
+- 2026-09-29 (#225): `src/api/conversions.js` added as thin orchestration
+  only — `deps.db`/`deps.config`/`deps.now` are read solely inside the two
+  handlers, never at `registerConversionRoutes` call time, so
+  `test/http/routes.test.js`'s `{ db }`-only registration stays green. It
+  reuses #222's `conversion-json.js` (`buildConversionList`,
+  `buildConversionEntriesForIds`, `buildConversionEntry`,
+  `parseConversionIds`) and #210's `conversion-queries.js`
+  (`listConversionRows`/`listConversionRowsForIds`) verbatim — no new SQL.
+  `POST`'s "existing `queued`/`converting` row" check reads the raw
+  `getConversion(db, relPath).status` (not the derived `stale` status): a
+  stored `status: 'playable'` row whose source stat no longer matches
+  falls through to the enqueue branch on its own, since `row.playable`
+  (checked just before) is already `false` for that case via `upsertItem`'s
+  effective-playable SQL — no separate `stale` branch is needed. `usage`'s
+  `freeBytes` uses `node:fs/promises` `statfs(convertDir)`
+  (`bavail × bsize`), added in this file only (no other module reads it),
+  wrapped in `try`/`catch` -> `null`. Split into `test/api/conversions.test.js`
+  (auth, id/origin/disabled preconditions, `GET` incl. `ids`
+  validation/position/grouping/usage — none of which need a running queue)
+  and `test/api/conversions-post.test.js` (the queue-dependent `POST` paths:
+  not-convertible/already-playable, the idle-queue-claims-at-once /
+  queued-behind-a-running-job / idempotent-repeat trio via the `hang` stub
+  mode, a `fail`-mode retry, and a `stale` re-queue), each building its own
+  real `createConversionQueue` (stub-backed, `converterEnv: {}`,
+  `killGraceMs: 300` to keep `hang`-mode `stop()` fast) rather than a fake,
+  per the acceptance criteria. `npm run verify` green (1720 tests, 0
+  failures, 2 pre-existing platform skips); `npm ls --omit=dev --all` empty.
