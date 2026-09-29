@@ -42,14 +42,17 @@ function avcMp4Buffer() {
  * A minimal Ogg page carrying an `OpusHead` payload, with `pageSegments`
  * bytes in its (unread) segment table (spec-conversion-core.md,
  * "Verification": bytes 0-3 `OggS`, byte 26 `page_segments` = n, bytes
- * `27+n`..`34+n` `OpusHead`).
+ * `27+n`..`34+n` `OpusHead`). `tableLength` (default `pageSegments`) is
+ * how many segment-table bytes are actually written, so a mismatch places
+ * `OpusHead` at the wrong offset.
  * @param {number} pageSegments
+ * @param {number} [tableLength]
  */
-function opusPageBuffer(pageSegments) {
+function opusPageBuffer(pageSegments, tableLength = pageSegments) {
   const header = Buffer.alloc(27);
   header.write('OggS', 0, 'ascii');
   header[26] = pageSegments;
-  const segmentTable = Buffer.alloc(pageSegments, 1);
+  const segmentTable = Buffer.alloc(tableLength, 1);
   const payload = Buffer.concat([Buffer.from('OpusHead', 'ascii'), Buffer.alloc(11)]);
   return Buffer.concat([header, segmentTable, payload]);
 }
@@ -151,10 +154,34 @@ test('verifyOutput: Ogg Opus with page_segments > 1 passes', async (t) => {
   assert.deepEqual(result, { ok: true, path: await fs.realpath(output) });
 });
 
-test('verifyOutput: wrong Opus magic fails not_browser_safe', async (t) => {
+test('verifyOutput: a missing OggS capture pattern fails not_browser_safe', async (t) => {
   const outDir = await makeTempDir('vt-verify-');
   t.after(() => fs.rm(outDir, { recursive: true, force: true }));
-  const output = await writeOutputFile(outDir, 'audio.opus', Buffer.alloc(64));
+  const buf = opusPageBuffer(1);
+  buf.write('XggS', 0, 'ascii');
+  const output = await writeOutputFile(outDir, 'audio.opus', buf);
+
+  const result = await verifyOutput({ output, outDir, target: 'opus' });
+
+  assert.deepEqual(result, { ok: false, error: 'not_browser_safe' });
+});
+
+test('verifyOutput: a wrong OpusHead magic after a valid OggS header fails not_browser_safe', async (t) => {
+  const outDir = await makeTempDir('vt-verify-');
+  t.after(() => fs.rm(outDir, { recursive: true, force: true }));
+  const buf = opusPageBuffer(5);
+  buf.write('VorbHead', 27 + 5, 'ascii');
+  const output = await writeOutputFile(outDir, 'audio.opus', buf);
+
+  const result = await verifyOutput({ output, outDir, target: 'opus' });
+
+  assert.deepEqual(result, { ok: false, error: 'not_browser_safe' });
+});
+
+test('verifyOutput: OpusHead at offset 27 while page_segments = 5 fails not_browser_safe', async (t) => {
+  const outDir = await makeTempDir('vt-verify-');
+  t.after(() => fs.rm(outDir, { recursive: true, force: true }));
+  const output = await writeOutputFile(outDir, 'audio.opus', opusPageBuffer(5, 0));
 
   const result = await verifyOutput({ output, outDir, target: 'opus' });
 
@@ -169,6 +196,50 @@ test('verifyOutput: an upper-case .MP4 extension passes (case-insensitive)', asy
   const result = await verifyOutput({ output, outDir, target: 'web' });
 
   assert.deepEqual(result, { ok: true, path: await fs.realpath(output) });
+});
+
+test('verifyOutput: a valid MP4 with a wrong extension fails converter_output_invalid', async (t) => {
+  const outDir = await makeTempDir('vt-verify-');
+  t.after(() => fs.rm(outDir, { recursive: true, force: true }));
+  const output = await writeOutputFile(outDir, 'web.mkv', avcMp4Buffer());
+
+  const result = await verifyOutput({ output, outDir, target: 'web' });
+
+  assert.deepEqual(result, { ok: false, error: 'converter_output_invalid' });
+});
+
+test('verifyOutput: valid FLAC bytes with the opus extension fail converter_output_invalid', async (t) => {
+  const outDir = await makeTempDir('vt-verify-');
+  t.after(() => fs.rm(outDir, { recursive: true, force: true }));
+  const content = Buffer.concat([Buffer.from('fLaC', 'ascii'), Buffer.alloc(16)]);
+  const output = await writeOutputFile(outDir, 'audio.opus', content);
+
+  const result = await verifyOutput({ output, outDir, target: 'flac' });
+
+  assert.deepEqual(result, { ok: false, error: 'converter_output_invalid' });
+});
+
+// Guards the isFile() check; on win32 a directory also reports size 0, so
+// there the size check alone would reject it as well.
+test('verifyOutput: a directory named like the output fails converter_output_invalid', async (t) => {
+  const outDir = await makeTempDir('vt-verify-');
+  t.after(() => fs.rm(outDir, { recursive: true, force: true }));
+  const output = path.join(outDir, 'web.mp4');
+  await fs.mkdir(output);
+
+  const result = await verifyOutput({ output, outDir, target: 'web' });
+
+  assert.deepEqual(result, { ok: false, error: 'converter_output_invalid' });
+});
+
+test('verifyOutput: a reported output that does not exist fails converter_output_invalid', async (t) => {
+  const outDir = await makeTempDir('vt-verify-');
+  t.after(() => fs.rm(outDir, { recursive: true, force: true }));
+  const output = path.join(outDir, 'web.mp4');
+
+  const result = await verifyOutput({ output, outDir, target: 'web' });
+
+  assert.deepEqual(result, { ok: false, error: 'converter_output_invalid' });
 });
 
 test('verifyOutput: an output outside outDir fails converter_output_invalid', async (t) => {
