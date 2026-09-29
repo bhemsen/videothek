@@ -1706,3 +1706,24 @@ exports):
   before calling `resolvePlayable` (which alone would treat "unknown" as
   playable by extension, per the scanner's looser rule) — matching "unknown
   fails here, unlike the scanner".
+- 2026-09-29: Issue #215 (`interpretRun` / `redactDetail`) implemented.
+  `Interpretation` is `{ ok: true, output, notes }` or
+  `{ ok: false, error, detail }`, mirroring `verifyOutput`'s `{ ok, ... }`
+  style; `detail` is the errno code (rule 1), the stderr tail (rule 3), or
+  the record's own `error` else the stderr tail (rule 5, reused unchanged for
+  rule 7's `failed` outcome, since the spec gives one formula for both
+  `converter_failed` sites) — every other rule (2, 4, 6, 7's `unsupported`/
+  `skipped`, 8) has no stated diagnostic text and returns `detail: null`
+  (the DB's `error_detail` column is nullable). Rule 5's "any other non-zero
+  exit" excludes `exitCode === null` (a signal-only termination), so it
+  cannot misfire on a run `killedBy = 'stop'`, though the queue never calls
+  `interpretRun` for one anyway. `redactDetail`'s `roots` parameter is fixed
+  as `{ mediaRoot: string[], convertDir: string[], converterDir: string |
+  null }` — one entry per configured spelling, `converterDir` singular since
+  config is read once — because no caller signature existed yet for later
+  issues to match; `redactDetail` itself applies the `<CONVERTER>`
+  filesystem-root skip (`path.parse(d).root === d`) rather than requiring the
+  caller to pre-filter. Both the skip check and the case/separator-insensitive
+  win32 matching use the passed `platform` option (`path.win32` vs
+  `path.posix`), never the host OS, so both branches are unit-testable from
+  either dev machine (same pattern as `parseConverterCmd`/`pickConverterEnv`).
