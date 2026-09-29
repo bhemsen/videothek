@@ -1710,7 +1710,7 @@ exports):
   `Interpretation` is `{ ok: true, output, notes }` or
   `{ ok: false, error, detail }`, mirroring `verifyOutput`'s `{ ok, ... }`
   style; `detail` is the errno code (rule 1), the stderr tail (rule 3), or
-  the record's own `error` else the stderr tail (rule 5, reused unchanged for
+  the record's own non-empty `error` else the stderr tail (rule 5, reused for
   rule 7's `failed` outcome, since the spec gives one formula for both
   `converter_failed` sites) — every other rule (2, 4, 6, 7's `unsupported`/
   `skipped`, 8) has no stated diagnostic text and returns `detail: null`

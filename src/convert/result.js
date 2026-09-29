@@ -120,13 +120,14 @@ function interpretSingleRecord(run) {
 /**
  * The `converter_failed` detail formula shared by rule 5 (any other
  * non-zero exit) and rule 7's `failed` outcome: the single record's own
- * `error` field when present, else the stderr tail.
+ * `error` field when present and non-empty, else the stderr tail (an empty
+ * `error` carries no diagnostic text).
  * @param {RunResult} run
  * @returns {string}
  */
 function failedDetail(run) {
   const record = run.records[0];
-  return record?.error ?? run.stderrTail;
+  return record?.error || run.stderrTail;
 }
 
 const MAX_DETAIL_LENGTH = 500;

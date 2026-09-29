@@ -53,7 +53,13 @@ test('interpretRun: a cap kill is not rule 2 (killedBy is not null) - falls thro
 });
 
 test('interpretRun: rule 3 - exit 2 with otherwise-valid JSON is converter_unavailable with the stderr tail', () => {
-  const run = { ...DEFAULT_RUN, exitCode: 2, stderrTail: 'usage: --to <target> --json <src> <outdir>' };
+  // One valid converted record: rule 3 must win before rule 9 could accept it.
+  const run = {
+    ...DEFAULT_RUN,
+    exitCode: 2,
+    records: [{ ...DEFAULT_RECORD }],
+    stderrTail: 'usage: --to <target> --json <src> <outdir>',
+  };
   assert.deepEqual(interpretRun(run, TARGET), {
     ok: false,
     error: 'converter_unavailable',
@@ -124,6 +130,15 @@ test('interpretRun: rule 7 - outcome failed with no record error falls back to t
   assert.deepEqual(interpretRun(run, TARGET), { ok: false, error: 'converter_failed', detail: 'stderr detail' });
 });
 
+test('interpretRun: rule 7 - outcome failed with an empty record error falls back to the stderr tail', () => {
+  const run = {
+    ...DEFAULT_RUN,
+    stderrTail: 'stderr detail',
+    records: [{ ...DEFAULT_RECORD, outcome: /** @type {const} */ ('failed'), error: '' }],
+  };
+  assert.deepEqual(interpretRun(run, TARGET), { ok: false, error: 'converter_failed', detail: 'stderr detail' });
+});
+
 test('interpretRun: rule 7 - outcome unsupported is unsupported_source', () => {
   const run = { ...DEFAULT_RUN, records: [{ ...DEFAULT_RECORD, outcome: /** @type {const} */ ('unsupported'), output: null }] };
   assert.deepEqual(interpretRun(run, TARGET), { ok: false, error: 'unsupported_source', detail: null });
@@ -156,6 +171,15 @@ test('redactDetail: cuts to the last 500 characters when there is nothing to red
   const result = redactDetail(text, EMPTY_ROOTS);
   assert.equal(result.length, 500);
   assert.equal(result, 'y'.repeat(500));
+});
+
+test('redactDetail: redacts before cutting, so a root straddling the cut point is still replaced', () => {
+  // 512 chars raw; cutting first would keep 'rv/media/a...' and leak the root
+  // remainder. Redacting first yields 514 chars, whose last 500 start mid-placeholder.
+  /** @type {import('../../src/convert/result.js').RedactRoots} */
+  const roots = { mediaRoot: ['/srv/media'], convertDir: [], converterDir: null };
+  const text = `${'x'.repeat(10)}/srv/media/a${'y'.repeat(490)}`;
+  assert.equal(redactDetail(text, roots, { platform: 'linux' }), `IA_ROOT>/a${'y'.repeat(490)}`);
 });
 
 test('redactDetail: replaces the longest root spelling first so a shorter root never matches inside it', () => {
