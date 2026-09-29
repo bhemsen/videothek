@@ -175,7 +175,13 @@ test('003 still applies after a higher version is already recorded (gap); re-run
     );
     db.prepare('INSERT INTO schema_migrations (version, name, applied_at) VALUES (5, ?, 0)').run('future');
 
-    assert.deepEqual(migrate(db), [1, 2, 3, 4], 'gap below the already-recorded version 5 is filled');
+    const applied = migrate(db);
+    assert.deepEqual(
+      applied.filter((v) => v < 5),
+      [1, 2, 3, 4],
+      'gap below the already-recorded version 5 is filled'
+    );
+    assert.equal(applied.includes(5), false, 'version 5 stays recorded as already applied, never re-applied');
     assert.equal(
       db.prepare("SELECT name FROM sqlite_master WHERE name = 'progress'").get()?.name,
       'progress'

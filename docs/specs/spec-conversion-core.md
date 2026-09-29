@@ -1727,3 +1727,17 @@ exports):
   win32 matching use the passed `platform` option (`path.win32` vs
   `path.posix`), never the host OS, so both branches are unit-testable from
   either dev machine (same pattern as `parseConverterCmd`/`pickConverterEnv`).
+- 2026-09-29: Issue #208 (`006-conversions.sql` + `src/db/conversions.js`)
+  implemented as specified, with one line-budget fix: `test/db/conversions.test.js`
+  was at 352 lines (over the constitution's 300-line limit). Fixed by merging
+  redundant single-assertion tests into their nearest scenario (`getConversion`
+  undefined-path check folded into the `enqueueConversion` test; the two
+  `publishConversion` cases — matching and mismatching size/mtime — merged
+  into one test with a second `rel_path`; `getConversionUsage`'s empty-table
+  case folded into the summing test; the separate "claims a row absent from
+  `library_items`" test dropped, since the existing FIFO test's rows already
+  have no `library_items` counterpart, now called out with a comment) instead
+  of splitting the file, since the spec's pre-authorised splits do not list
+  this file and `test/constitution.test.js` requires the exact mirror name
+  `test/db/conversions.test.js`. No behavioural coverage was dropped, only
+  test-scaffolding overhead. `npm run verify` green (1468 tests, 0 failures).
