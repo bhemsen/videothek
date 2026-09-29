@@ -1667,6 +1667,17 @@ exports):
   architecture.md; notes keep their first 200 characters, and the no-split
   claim is limited to spellings inside the first 2000; the dangling-junction
   case may skip on `win32` `EPERM`/`ENOENT`.
+- 2026-09-29: Issue #213 (`src/convert/jsonl.js`) implemented. `invalid` is a
+  sticky boolean (never reset once a line fails JSON.parse or
+  `validateRecord`), not a list — the runner only needs one bit for
+  `stdoutInvalid`. Both caps trip on strictly-`>` (a line/run at exactly the
+  configured size is not capped); line-byte accounting counts a line's
+  content only (the `\n` delimiter itself counts toward the total cap, not
+  the line cap). Newline splitting scans raw bytes for `0x0A` before any
+  decoding (UTF-8 continuation bytes never contain `0x0A`), so a multi-byte
+  character split across `push()` calls is handled by feeding each raw
+  segment through one persistent `StringDecoder`, never by decoding a chunk
+  before its line boundary is known.
 - 2026-09-29: Issue #216 (`verifyOutput`) implemented. `VerifyResult` is
   `{ ok: true, path }` (the resolved realpath step 6 publishes) or
   `{ ok: false, error }` with `converter_output_invalid` (containment/type/
