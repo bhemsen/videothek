@@ -15,7 +15,7 @@ import {
 
 /**
  * Planted work-area and storage symlinks against the real stub/queue
- * (docs/specs/spec-conversion-core.md, Queue `start()` step 6 and Job steps
+ * (docs/specs/archive/spec-conversion-core.md, Queue `start()` step 6 and Job steps
  * 3/6/7, `test/convert/queue-lifecycle.test.js`'s bullets not yet covered by
  * issue #220): each case's link target is an outside temp dir holding one
  * file, and every assertion proves that file untouched. `start()`-only

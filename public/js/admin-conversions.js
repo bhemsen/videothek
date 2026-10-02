@@ -7,7 +7,7 @@
  * `admin-conversions-rows.js`, and polls every 5 s while something is
  * `queued`/`converting` and the tab is visible (`convert-poller.js`, the
  * same generic poller `convert-control.js` uses). Mounted by `admin.js`
- * after its user list. See docs/specs/spec-conversion-core.md
+ * after its user list. See docs/specs/archive/spec-conversion-core.md
  * "UI behaviour" (Admin panel).
  */
 

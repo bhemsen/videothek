@@ -2,7 +2,7 @@
 
 /**
  * The one-at-a-time conversion queue
- * (`docs/specs/spec-conversion-core.md`, "Queue"): claims `queued` rows one
+ * (`docs/specs/archive/spec-conversion-core.md`, "Queue"): claims `queued` rows one
  * at a time via `job.js`'s `runConversionJob`, chains the next claim after
  * each job settles, and stops gracefully with a `SIGTERM`/`SIGKILL`
  * escalation and a hard deadline. State lives in one plain `QueueState`

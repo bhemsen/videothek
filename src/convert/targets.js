@@ -2,7 +2,7 @@
 
 /**
  * Pure target mapping for on-demand conversion
- * (`docs/specs/spec-conversion-core.md` "Targets"). No I/O: decides only
+ * (`docs/specs/archive/spec-conversion-core.md` "Targets"). No I/O: decides only
  * whether and how a library item could be converted, and derives the
  * directory name its copy would be stored under.
  */

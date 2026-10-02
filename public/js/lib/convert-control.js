@@ -5,7 +5,7 @@
  * conversion control on not-playable movie cards, episode rows, album track
  * rows and audiobook file rows, wires its POST retries and (re)starts a
  * per-root poller (`convert-poller.js`) while something is
- * `queued`/`converting`. See docs/specs/spec-conversion-core.md
+ * `queued`/`converting`. See docs/specs/archive/spec-conversion-core.md
  * "UI behaviour"; precedent: `progress-badges.js`'s grid decoration.
  */
 

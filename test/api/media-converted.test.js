@@ -2,7 +2,7 @@
 
 /**
  * `GET /media/:id` serving a fresh converted copy from `CONVERT_DIR`
- * (docs/specs/spec-conversion-core.md, "Serving"). Complements
+ * (docs/specs/archive/spec-conversion-core.md, "Serving"). Complements
  * `test/api/media.test.js` (the unconverted-item route), which stays
  * unchanged. Path-related cases (containment, `CONVERT_DIR` not read,
  * subtitle sidecars) live in `media-converted-paths.test.js`.

@@ -4,7 +4,7 @@
  * `.file-row--unplayable`) — never relies on `:last-child` or sibling order,
  * since P4's progress badges also append to `.episode-row`. Buttons reuse the
  * global `.btn`/`.btn-secondary` (base.css); this file only lays the control
- * out and styles its status text. See docs/specs/spec-conversion-core.md
+ * out and styles its status text. See docs/specs/archive/spec-conversion-core.md
  * "UI behaviour" and "Design".
  */
 

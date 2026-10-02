@@ -4,7 +4,7 @@
  * Pure formatting helpers for conversion status and failure reasons — no DOM
  * access, no I/O. Consumed by the conversion control decorator and the admin
  * panel (later issues) to render a `ConversionEntry` as German text. See
- * docs/specs/spec-conversion-core.md "Failure codes and German reasons" and
+ * docs/specs/archive/spec-conversion-core.md "Failure codes and German reasons" and
  * "UI behaviour".
  */
 

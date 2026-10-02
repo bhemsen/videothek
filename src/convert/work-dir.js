@@ -2,7 +2,7 @@
 
 /**
  * `CONVERT_DIR` setup, crash-recovery wipe, and per-job/per-publish directory
- * handling for on-demand conversion (`docs/specs/spec-conversion-core.md`,
+ * handling for on-demand conversion (`docs/specs/archive/spec-conversion-core.md`,
  * "Queue", `start()` steps 1-6 and the job's steps 3 and 6). Pure filesystem
  * I/O behind small result objects (`{ ok: true, ... } | { ok: false, code }`)
  * — no DB, no logging, no process spawning; the queue interprets `code` into

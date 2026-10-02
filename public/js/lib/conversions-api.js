@@ -5,7 +5,7 @@
  * P1's `request`. Response types mirror the server's
  * `src/api/conversion-json.js` shapes and are redeclared here since
  * `public/` never imports `src/` — see
- * docs/specs/spec-conversion-core.md "API contract".
+ * docs/specs/archive/spec-conversion-core.md "API contract".
  */
 import { request } from './api.js';
 

@@ -1010,23 +1010,23 @@ builders); the API test may
 
 ## Prior art
 
-- [On-demand browser-safe copies (Phase 7)](../prior-art.md#on-demand-browser-safe-copies-phase-7)
+- [On-demand browser-safe copies (Phase 7)](../../prior-art.md#on-demand-browser-safe-copies-phase-7)
   — Plex "same item, other file", with no version picker. Copies go outside the
   source folder, and a vanished source does not remove its copy right away.
   The pre-transcode plugin's "output directory, originals untouched" and its
   queue panel.
-- [Conversion job queue and states (Phase 7)](../prior-art.md#conversion-job-queue-and-states-phase-7)
+- [Conversion job queue and states (Phase 7)](../../prior-art.md#conversion-job-queue-and-states-phase-7)
   — Unmanic: explicit pending → processing → completed/failed, failed stays
   failed until a manual re-queue, and a short error per job. Tdarr: staging
   first and publishing only a finished file; AVOID non-terminal states without
   startup recovery.
-- [Converter child-process supervision (Phase 7)](../prior-art.md#converter-child-process-supervision-phase-7)
+- [Converter child-process supervision (Phase 7)](../../prior-art.md#converter-child-process-supervision-phase-7)
   — `spawn` with an argv array and `shell: false`, no `unref()`. The Windows
   and process-group caveats explain why the group kill waits for Phase 8.
-- [External converter contract (Phase 8)](../prior-art.md#external-converter-contract-phase-8)
+- [External converter contract (Phase 8)](../../prior-art.md#external-converter-contract-phase-8)
   — the source of the JSON Lines fields, the exit codes, the one-empty-dir-per-job
   rule and the own-sniff rule the stub emulates.
-- [Converting on weak hardware without hurting playback (Phase 8)](../prior-art.md#converting-on-weak-hardware-without-hurting-playback-phase-8)
+- [Converting on weak hardware without hurting playback (Phase 8)](../../prior-art.md#converting-on-weak-hardware-without-hurting-playback-phase-8)
   — parallel 1080p encodes gain little on a Pi 4, which backs one job at a
   time.
 

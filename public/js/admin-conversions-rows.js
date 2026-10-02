@@ -5,7 +5,7 @@
  * (`admin-conversions.js`): groups the flat `GET /api/conversions` list into
  * its five fixed sections and renders one row per entry. Pure DOM
  * construction only — no fetching, no polling; the panel owns those. See
- * docs/specs/spec-conversion-core.md "UI behaviour" (Admin panel).
+ * docs/specs/archive/spec-conversion-core.md "UI behaviour" (Admin panel).
  */
 
 import { el } from './lib/dom.js';

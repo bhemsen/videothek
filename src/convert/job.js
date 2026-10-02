@@ -1,7 +1,7 @@
 // @ts-check
 
 /**
- * One claimed conversion's full pipeline (`docs/specs/spec-conversion-core.md`,
+ * One claimed conversion's full pipeline (`docs/specs/archive/spec-conversion-core.md`,
  * "Queue" > "Job", steps 1-7) and the single writer of that row's end state.
  * No queue claim and no kill-escalation timers - both are `queue.js`'s job.
  */
