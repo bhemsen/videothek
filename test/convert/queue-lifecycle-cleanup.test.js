@@ -13,7 +13,7 @@ import {
 
 /**
  * Step-7 cleanup failures against the real stub
- * (docs/specs/spec-conversion-core.md, `test/convert/queue-lifecycle-cleanup.test.js`):
+ * (docs/specs/archive/spec-conversion-core.md, `test/convert/queue-lifecycle-cleanup.test.js`):
  * an injected `removeDir` rejection must never change a job's already
  * recorded end state, only log `conversion_cleanup_failed`. The rejection is
  * scoped to paths whose basename starts with `<storage_key>-` (the job dir),

@@ -11,7 +11,7 @@
  * request time — never at `registerConversionRoutes` call time — so
  * `test/http/routes.test.js` (which calls `registerRoutes` with only
  * `{ db }`) stays green.
- * @see docs/specs/spec-conversion-core.md — "API contract".
+ * @see docs/specs/archive/spec-conversion-core.md — "API contract".
  */
 
 import { statfs } from 'node:fs/promises';

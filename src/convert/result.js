@@ -2,7 +2,7 @@
 
 /**
  * Run interpretation and error-detail redaction for on-demand conversion
- * (`docs/specs/spec-conversion-core.md`, "Converter contract and stub" /
+ * (`docs/specs/archive/spec-conversion-core.md`, "Converter contract and stub" /
  * "Interpretation"). Pure: no I/O, no DB, no process spawning.
  *
  * `interpretRun` turns a finished `RunResult` (from

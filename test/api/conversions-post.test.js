@@ -1,6 +1,6 @@
 /**
  * `POST /api/conversions/:id` paths that need a real, running, stub-backed
- * queue (`docs/specs/spec-conversion-core.md`, "POST order"): the
+ * queue (`docs/specs/archive/spec-conversion-core.md`, "POST order"): the
  * not-convertible/already-playable preconditions, the idempotent claim of an
  * already `queued`/`converting` row, a retry after `failed`, and re-queueing
  * a `stale` copy. The pure id/origin/auth/disabled cases that need no queue

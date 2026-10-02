@@ -12,7 +12,7 @@
  * `getFreshConversion`); subtitle sidecars always come from the source.
  *
  * @see docs/specs/spec-video-streaming.md — "Error bodies", "Subtitle route".
- * @see docs/specs/spec-conversion-core.md — "Serving".
+ * @see docs/specs/archive/spec-conversion-core.md — "Serving".
  */
 
 import { getFreshConversion } from '../db/conversions.js';

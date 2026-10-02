@@ -15,7 +15,7 @@ import {
 
 /**
  * The real queue/job/runner/verify chain against `test/helpers/converter-stub.js`
- * (docs/specs/spec-conversion-core.md, `test/convert/queue-lifecycle.test.js`):
+ * (docs/specs/archive/spec-conversion-core.md, `test/convert/queue-lifecycle.test.js`):
  * one job outcome per test, no fake `run`. Cleanup-specific cases (an
  * injected `removeDir` rejection) live in `queue-lifecycle-cleanup.test.js`.
  */

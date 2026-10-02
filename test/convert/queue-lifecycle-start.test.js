@@ -12,7 +12,7 @@ import {
 } from '../helpers/queue-lifecycle-setup.js';
 
 /**
- * `start()`'s own checks (docs/specs/spec-conversion-core.md, Queue `start()`
+ * `start()`'s own checks (docs/specs/archive/spec-conversion-core.md, Queue `start()`
  * steps 1-6, `test/convert/queue-lifecycle.test.js`'s bullets not yet
  * covered by issue #220): a leftover crash work area, an unwritable or
  * overlapping `CONVERT_DIR`, a symlinked ancestor into `MEDIA_ROOT` or the

@@ -2,7 +2,7 @@
 
 /**
  * Output verification for on-demand conversion
- * (`docs/specs/spec-conversion-core.md`, "Verification"). Checks a
+ * (`docs/specs/archive/spec-conversion-core.md`, "Verification"). Checks a
  * converter-reported output path before the queue publishes it: containment
  * inside the job's `out/` dir (no symlink escape), a regular non-empty file
  * with the target's extension, then a target-specific format check - the
@@ -29,7 +29,7 @@ const OPUS_HEAD_MAGIC = Buffer.from('OpusHead', 'ascii');
 
 /**
  * Verifies a converter's reported output for one job
- * (`docs/specs/spec-conversion-core.md`, "Verification", steps 1-3).
+ * (`docs/specs/archive/spec-conversion-core.md`, "Verification", steps 1-3).
  *
  * @param {object} params
  * @param {string} params.output - absolute path the converter reported as its

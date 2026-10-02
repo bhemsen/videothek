@@ -2,7 +2,7 @@
 
 /**
  * `GET /media/:id` converted-copy path handling
- * (docs/specs/spec-conversion-core.md, "Serving"): `output_rel` containment
+ * (docs/specs/archive/spec-conversion-core.md, "Serving"): `output_rel` containment
  * inside `CONVERT_DIR`, `CONVERT_DIR` never read for an unconverted item,
  * and subtitle sidecars still served from the source folder.
  */

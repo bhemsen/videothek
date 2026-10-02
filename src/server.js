@@ -129,7 +129,7 @@ function installSignalHandlers(stop, log) {
 
 /**
  * Startup recovery and queue bring-up for the on-demand conversion feature
- * (`docs/specs/spec-conversion-core.md`, "Server wiring"). Its first
+ * (`docs/specs/archive/spec-conversion-core.md`, "Server wiring"). Its first
  * statement, always — feature on or off — is {@link failInterruptedConversions},
  * so a row a crash or a prior restart left `converting` never stays stuck;
  * `queued` rows are left for the next `kick()`. Only when `config.converterCmd`

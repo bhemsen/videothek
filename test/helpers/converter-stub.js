@@ -7,7 +7,7 @@ import { moovBox } from './mp4-boxes.js';
 
 /**
  * Test double for the converter contract
- * (docs/specs/spec-conversion-core.md, "Converter contract and stub"). Run as
+ * (docs/specs/archive/spec-conversion-core.md, "Converter contract and stub"). Run as
  * `[process.execPath, stubPath, ...options]`: leading `--mode`/`--sample-dir`/
  * `--delay-ms`/`--hold` flags this file validates, followed by the fixed
  * contract arguments `--to <target> --json <SRC> <OUTDIR>` that

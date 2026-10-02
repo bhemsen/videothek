@@ -6,7 +6,7 @@
  * so decorating the same root again first cancels its previous poller. Holds
  * no conversion-domain knowledge — the caller's `tick` decides what to fetch,
  * how to re-render and whether to keep going. See
- * docs/specs/spec-conversion-core.md "UI behaviour".
+ * docs/specs/archive/spec-conversion-core.md "UI behaviour".
  */
 
 const POLL_INTERVAL_MS = 5000;

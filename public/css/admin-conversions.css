@@ -2,7 +2,7 @@
  * Admin "Konvertierung" panel (`admin-conversions.js`,
  * `admin-conversions-rows.js`) — its own stylesheet, injected only once the
  * panel mounts; `admin.css` is never edited (owned by P1, at 291 lines). See
- * docs/specs/spec-conversion-core.md "UI behaviour" and "Design".
+ * docs/specs/archive/spec-conversion-core.md "UI behaviour" and "Design".
  *
  * Mobile default: each row stacks title / meta / status. >= 768 px: a row
  * becomes a horizontal card (title+meta left, status/actions right), same
