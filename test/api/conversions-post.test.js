@@ -175,7 +175,7 @@ test('POST /api/conversions/:id: a stale copy (GET reports "stale") re-queues on
     let stat = statSync(abs);
     const id = upsertItem(app.db, movie({ rel_path: relPath, size: stat.size, mtime_ms: Math.trunc(stat.mtimeMs) }), Date.now());
     enqueueConversion(app.db, { relPath, storageKey: storageKey(relPath), target: 'web', sourceSize: stat.size, sourceMtimeMs: Math.trunc(stat.mtimeMs), now: 1 });
-    publishConversion(app.db, { relPath, outputRel: `${storageKey(relPath)}/web.mp4`, outputSize: 10, notes: '[]', now: 2 });
+    publishConversion(app.db, { relPath, outputRel: `${storageKey(relPath)}/web.mp4`, outputSize: 10, notes: '[]', sidecars: '[]', now: 2 });
 
     // The source changes after publishing: the stored copy's source stat no
     // longer matches, so the effective-playable computation (and this

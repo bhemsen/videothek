@@ -110,7 +110,7 @@ test('position: numbered over all visible queued rows before any ids filter, nul
     assert.equal(subsetById.get(idC)?.position, 3);
 
     // A finished (non-queued) row: position null.
-    publishConversion(db, { relPath: 'a.mkv', outputRel: 'x/web.mp4', outputSize: 1, notes: '[]', now: 50 });
+    publishConversion(db, { relPath: 'a.mkv', outputRel: 'x/web.mp4', outputSize: 1, notes: '[]', sidecars: '[]', now: 50 });
     assert.equal(listConversionRows(db).find((r) => r.id === idA)?.position, null);
   } finally {
     db.close();

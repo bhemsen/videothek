@@ -110,6 +110,7 @@ export async function seedConvertedItem(app, opts) {
     outputRel,
     outputSize: outputBytes ? outputBytes.length : 0,
     notes: '[]',
+    sidecars: '[]',
     now,
   });
   await mkdir(app.config.convertDir, { recursive: true });

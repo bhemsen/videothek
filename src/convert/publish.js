@@ -99,6 +99,7 @@ async function publish({ db, now, row, convertDirReal }, { verifiedPath, notes, 
     outputRel: `${row.storage_key}/${TARGETS[row.target].file}`,
     outputSize: size,
     notes: JSON.stringify(redactedNotes),
+    sidecars: JSON.stringify([]),
     now: now(),
   });
   return { status: 'playable' };

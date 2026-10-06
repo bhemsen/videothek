@@ -76,7 +76,7 @@ test('getConversion is undefined for an unknown path; enqueueConversion inserts 
     assert.equal(row?.queued_at, 10);
 
     // Simulate a finished run with an output and a failure, then re-queue.
-    publishConversion(db, { relPath: row.rel_path, outputRel: 'x/web.mp4', outputSize: 5, notes: '["n"]', now: 20 });
+    publishConversion(db, { relPath: row.rel_path, outputRel: 'x/web.mp4', outputSize: 5, notes: '["n"]', sidecars: '[]', now: 20 });
     row = getConversion(db, 'Filme/Arrival (2016).mkv');
     assert.equal(row?.notes, '["n"]');
 
@@ -138,7 +138,7 @@ test('publishConversion sets library_items.playable = 1 only for a matching size
   try {
     makeItem(db, { size: 1000, mtime_ms: 1_700_000_000_000, playable: false });
     enqueue(db); // records source_size/source_mtime_ms = 1000 / 1_700_000_000_000
-    publishConversion(db, { relPath: 'Filme/Arrival (2016).mkv', outputRel: 'key/web.mp4', outputSize: 123, notes: '[]', now: 50 });
+    publishConversion(db, { relPath: 'Filme/Arrival (2016).mkv', outputRel: 'key/web.mp4', outputSize: 123, notes: '[]', sidecars: '[]', now: 50 });
 
     let row = getConversion(db, 'Filme/Arrival (2016).mkv');
     assert.equal(row?.status, 'playable');
@@ -150,7 +150,7 @@ test('publishConversion sets library_items.playable = 1 only for a matching size
     makeItem(db, { rel_path: 'changed.mkv', size: 1000, mtime_ms: 1, playable: false });
     enqueueConversion(db, { relPath: 'changed.mkv', storageKey: 'e'.repeat(64), target: 'web', sourceSize: 1000, sourceMtimeMs: 1, now: 1 });
     makeItem(db, { rel_path: 'changed.mkv', size: 2000, mtime_ms: 5, playable: false });
-    publishConversion(db, { relPath: 'changed.mkv', outputRel: 'key2/web.mp4', outputSize: 1, notes: '[]', now: 50 });
+    publishConversion(db, { relPath: 'changed.mkv', outputRel: 'key2/web.mp4', outputSize: 1, notes: '[]', sidecars: '[]', now: 50 });
 
     row = getConversion(db, 'changed.mkv');
     assert.equal(row?.status, 'playable', 'the row itself still publishes');
@@ -183,7 +183,7 @@ test('failInterruptedConversions touches only converting rows and reports their 
     enqueueConversion(db, { relPath: 'converting-one', storageKey: 'b'.repeat(64), target: 'web', sourceSize: 1, sourceMtimeMs: 1, now: 1 });
     enqueueConversion(db, { relPath: 'converting-two', storageKey: 'c'.repeat(64), target: 'web', sourceSize: 1, sourceMtimeMs: 1, now: 1 });
     db.prepare("UPDATE conversions SET status = 'converting', started_at = 5 WHERE rel_path IN ('converting-one', 'converting-two')").run();
-    publishConversion(db, { relPath: 'queued-one', outputRel: 'x', outputSize: 1, notes: '[]', now: 9 });
+    publishConversion(db, { relPath: 'queued-one', outputRel: 'x', outputSize: 1, notes: '[]', sidecars: '[]', now: 9 });
     // queued-one is now 'playable', not 'queued' -> re-queue a fresh untouched one.
     enqueueConversion(db, { relPath: 'still-queued', storageKey: 'd'.repeat(64), target: 'web', sourceSize: 1, sourceMtimeMs: 1, now: 1 });
 
@@ -208,7 +208,7 @@ test('getFreshConversion: only a playable row whose source stat still matches th
     enqueue(db);
     assert.equal(getFreshConversion(db, { rel_path: 'Filme/Arrival (2016).mkv', size: 1000, mtime_ms: 1_700_000_000_000 }), undefined, 'still queued, not playable yet');
 
-    publishConversion(db, { relPath: 'Filme/Arrival (2016).mkv', outputRel: 'key/web.mp4', outputSize: 1, notes: '[]', now: 5 });
+    publishConversion(db, { relPath: 'Filme/Arrival (2016).mkv', outputRel: 'key/web.mp4', outputSize: 1, notes: '[]', sidecars: '[]', now: 5 });
 
     assert.ok(getFreshConversion(db, { rel_path: 'Filme/Arrival (2016).mkv', size: 1000, mtime_ms: 1_700_000_000_000 }));
     assert.equal(
@@ -228,11 +228,11 @@ test('getConversionUsage sums bytes/count over every published copy, including o
 
     makeItem(db, { rel_path: 'a.mkv', size: 10, mtime_ms: 1 });
     enqueueConversion(db, { relPath: 'a.mkv', storageKey: 'a'.repeat(64), target: 'web', sourceSize: 10, sourceMtimeMs: 1, now: 1 });
-    publishConversion(db, { relPath: 'a.mkv', outputRel: 'a/web.mp4', outputSize: 100, notes: '[]', now: 2 });
+    publishConversion(db, { relPath: 'a.mkv', outputRel: 'a/web.mp4', outputSize: 100, notes: '[]', sidecars: '[]', now: 2 });
 
     // A row whose item was never indexed (or has since been deleted) still counts.
     enqueueConversion(db, { relPath: 'vanished.mkv', storageKey: 'b'.repeat(64), target: 'web', sourceSize: 20, sourceMtimeMs: 1, now: 1 });
-    publishConversion(db, { relPath: 'vanished.mkv', outputRel: 'b/web.mp4', outputSize: 250, notes: '[]', now: 2 });
+    publishConversion(db, { relPath: 'vanished.mkv', outputRel: 'b/web.mp4', outputSize: 250, notes: '[]', sidecars: '[]', now: 2 });
 
     // A queued row with no output yet must not count.
     enqueueConversion(db, { relPath: 'still-queued.mkv', storageKey: 'c'.repeat(64), target: 'web', sourceSize: 1, sourceMtimeMs: 1, now: 1 });
