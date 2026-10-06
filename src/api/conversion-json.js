@@ -25,6 +25,7 @@ import { isConvertible, targetFor } from '../convert/targets.js';
  *   convertible: boolean,
  *   target: 'web' | 'flac' | 'opus' | null,
  *   status: ConversionStatus,
+ *   cancelling: boolean,
  *   position: number | null,
  *   error: string | null,
  *   errorDetail: string | null,
@@ -87,16 +88,22 @@ function toIsoOrNull(ms) {
 /**
  * Builds one entry of the `GET`/`POST /api/conversions` response
  * (spec-conversion-core.md "API contract", "Entry JSON") from a joined row.
+ * `cancelling` is true only for a `converting` row whose `rel_path` is the
+ * queue's pending-cancel path (the queue keeps reporting it briefly after
+ * the job wrote its end state, hence the status check).
  * @param {ConversionListRow} row
+ * @param {string | null} [cancellingRelPath] `queue.cancellingRelPath()`
  * @returns {ConversionEntry}
  */
-export function buildConversionEntry(row) {
+export function buildConversionEntry(row, cancellingRelPath = null) {
+  const status = deriveConversionStatus(row);
   return {
     itemId: row.id,
     item: toItemJson(row),
     convertible: isConvertible(row),
     target: targetFor(row),
-    status: deriveConversionStatus(row),
+    status,
+    cancelling: status === 'converting' && cancellingRelPath !== null && row.rel_path === cancellingRelPath,
     position: row.position,
     error: row.c_error,
     errorDetail: row.c_error_detail,
@@ -129,9 +136,10 @@ function sortKey(row, status) {
  * conversion rows joined to `library_items` (`listConversionRows`), so every
  * one has a real status — `none` never appears in this listing.
  * @param {ConversionListRow[]} rows
+ * @param {string | null} [cancellingRelPath] `queue.cancellingRelPath()`
  * @returns {ConversionEntry[]}
  */
-export function buildConversionList(rows) {
+export function buildConversionList(rows, cancellingRelPath = null) {
   /** @type {Map<ConversionStatus, ConversionListRow[]>} */
   const groups = new Map(GROUP_ORDER.map((status) => [status, []]));
   for (const row of rows) {
@@ -144,7 +152,7 @@ export function buildConversionList(rows) {
     rowsInGroup.sort((a, b) => sortKey(a, status) - sortKey(b, status));
     ordered.push(...rowsInGroup);
   }
-  return ordered.map(buildConversionEntry);
+  return ordered.map((row) => buildConversionEntry(row, cancellingRelPath));
 }
 
 /**
@@ -155,14 +163,15 @@ export function buildConversionList(rows) {
  * from `rows` (never in `library_items`) is omitted.
  * @param {ConversionListRow[]} rows
  * @param {number[]} ids the parsed, deduplicated `ids` query, in request order
+ * @param {string | null} [cancellingRelPath] `queue.cancellingRelPath()`
  * @returns {ConversionEntry[]}
  */
-export function buildConversionEntriesForIds(rows, ids) {
+export function buildConversionEntriesForIds(rows, ids, cancellingRelPath = null) {
   const byId = new Map(rows.map((row) => [row.id, row]));
   const entries = [];
   for (const id of ids) {
     const row = byId.get(id);
-    if (row) entries.push(buildConversionEntry(row));
+    if (row) entries.push(buildConversionEntry(row, cancellingRelPath));
   }
   return entries;
 }
