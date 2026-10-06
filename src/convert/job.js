@@ -38,6 +38,9 @@ const defaultRemoveDir = (/** @type {string} */ target) => rm(target, { recursiv
  * @property {ConversionRow} row - already claimed (`status = 'converting'`).
  * @property {() => boolean} isStopping - read synchronously right before the
  *   spawn and again once the run settles (Queue `stop()`).
+ * @property {() => boolean} [isCancelled] - Queue `cancel()`'s flag; checked
+ *   at the same two points as `isStopping()` (cancel wins) and once more in
+ *   `publish.js` right before the publish transaction. Default: never.
  * @property {(handle: RunConverter) => void} [onHandle] - called
  *   synchronously with the run handle the moment it exists, in the same
  *   step as the `isStopping()` check, so `stop()` can find and kill it.
@@ -122,7 +125,7 @@ async function removeJobDir({ log, row, removeDir }, jobDir) {
  * @returns {Promise<JobOutcome>}
  */
 async function runPipeline(opts, ctx) {
-  const { db, config, now, row, isStopping, run, onHandle } = opts;
+  const { db, config, now, row, run, onHandle } = opts;
   const source = await resolveSource(opts);
   if (!source.ok) return recordFailure(db, row, now, source.error, source.detail);
 
@@ -130,7 +133,8 @@ async function runPipeline(opts, ctx) {
   if (jobDir.jobDir !== undefined) ctx.jobDir = jobDir.jobDir;
   if (!jobDir.ok) return recordFailure(db, row, now, 'storage_failed', jobDir.code);
 
-  if (isStopping()) return recordFailure(db, row, now, 'interrupted', null);
+  const early = earlyExit(opts);
+  if (early) return recordFailure(db, row, now, early, null);
   const cmd = /** @type {readonly string[]} */ (config.converterCmd);
   const handle = run({
     cmd,
@@ -142,9 +146,20 @@ async function runPipeline(opts, ctx) {
   });
   onHandle?.(handle);
   const result = await handle.result;
-  if (isStopping()) return recordFailure(db, row, now, 'interrupted', null);
+  const late = earlyExit(opts);
+  if (late) return recordFailure(db, row, now, late, null);
 
   return interpretAndPublish(opts, { outDir: jobDir.outDir, result, source });
+}
+
+/**
+ * The end code a pending cancel (wins) or `stop()` requires, else `null`.
+ * @param {NormalizedOptions} opts
+ * @returns {'cancelled' | 'interrupted' | null}
+ */
+function earlyExit({ isCancelled, isStopping }) {
+  if (isCancelled?.()) return 'cancelled';
+  return isStopping() ? 'interrupted' : null;
 }
 
 /**

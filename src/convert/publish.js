@@ -80,7 +80,7 @@ async function restatSource({ config, row }, sourcePath) {
  * @param {{ verifiedPath: string, notes: string[], roots: RedactRoots }} ctx
  * @returns {Promise<JobOutcome>}
  */
-async function publish({ db, now, row, convertDirReal }, { verifiedPath, notes, roots }) {
+async function publish({ db, now, row, convertDirReal, isCancelled }, { verifiedPath, notes, roots }) {
   const publishDir = await preparePublishDir({ convertDirReal, storageKey: row.storage_key });
   if (!publishDir.ok) return recordFailure(db, row, now, 'storage_failed', publishDir.code);
 
@@ -92,6 +92,10 @@ async function publish({ db, now, row, convertDirReal }, { verifiedPath, notes, 
   } catch (err) {
     return recordFailure(db, row, now, 'storage_failed', errorCode(err));
   }
+
+  // Last cancel check: after the renames, right before the commit. The renamed
+  // files are left for cleanup (spec rules 4/6).
+  if (isCancelled?.()) return recordFailure(db, row, now, 'cancelled', null);
 
   const redactedNotes = notes.map((note) => redactDetail(note, roots).slice(0, NOTE_MAX_LENGTH));
   publishConversion(db, {
