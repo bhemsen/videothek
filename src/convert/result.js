@@ -134,7 +134,7 @@ const MAX_DETAIL_LENGTH = 500;
 /** Regex-special characters that need escaping when building a literal-text pattern. */
 const REGEX_SPECIAL = /[.*+?^${}()|[\]\\]/;
 /** Regex source matching one win32 path separator: `/`, one backslash or two (JSON-escaped spelling in logs). */
-const SEPARATOR_CLASS = '(?:\\\\{1,2}|/)';
+const SEPARATOR_PATTERN = '(?:\\\\{1,2}|/)';
 
 /**
  * The filesystem roots `redactDetail` replaces, each as every spelling that
@@ -220,7 +220,7 @@ function isFilesystemRoot(dirname, platform) {
 
 /**
  * Turns one root spelling into a regex source string: every path separator
- * becomes a class matching either `/` or `\` when `anySeparator` (win32),
+ * becomes a group matching `/`, `\` or `\\` when `anySeparator` (win32),
  * every other regex-special character is escaped, everything else is
  * literal.
  *
@@ -232,7 +232,7 @@ function toPatternSource(spelling, anySeparator) {
   let source = '';
   for (const ch of spelling) {
     if (anySeparator && (ch === '/' || ch === '\\')) {
-      source += SEPARATOR_CLASS;
+      source += SEPARATOR_PATTERN;
     } else if (REGEX_SPECIAL.test(ch)) {
       source += `\\${ch}`;
     } else {

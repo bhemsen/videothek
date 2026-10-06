@@ -145,8 +145,8 @@ test('pickConverterEnv: only variables actually set are copied', () => {
 });
 
 test('pickConverterEnv: on win32 the lookup is case-insensitive, keeps the key and passes PATHEXT', () => {
-  const env = pickConverterEnv({ Path: 'C:\\x', ADMIN_PASSWORD: 'y' }, { platform: 'win32' });
-  assert.deepEqual(env, { Path: 'C:\\x' });
+  const env = pickConverterEnv({ Path: 'C:\\x', PathExt: '.COM;.EXE', ADMIN_PASSWORD: 'y' }, { platform: 'win32' });
+  assert.deepEqual(env, { Path: 'C:\\x', PathExt: '.COM;.EXE' });
 });
 
 // --- isInside -------------------------------------------------------------
