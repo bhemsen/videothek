@@ -25,7 +25,9 @@ import { moovBox } from './mp4-boxes.js';
  * for `<dir>/go`) and `--delay-ms <n>` (sleep before the first stdout line)
  * apply only to the modes that print JSON Lines: `ok`, `not-browser-safe`,
  * `fail`, `unsupported`, `skipped`, `no-record`, `missing-output`, `escape`,
- * `wrong-ext`. `hang` uses `--hold` only to report its pid in `<dir>/pid`;
+ * `wrong-ext`. `grandchild` and `grandchild-flood` spawn a long-lived
+ * grandchild (pid in `<outDir>/grandchild.pid`) in the same process group,
+ * then stay alive / flood stdout. `hang` uses `--hold` only to report its pid in `<dir>/pid`;
  * every other mode ignores both flags.
  */
 
@@ -191,6 +193,30 @@ async function modeOrphanPipe(ctx) {
   await writeFile(path.join(ctx.outDir, 'grandchild.pid'), String(child.pid));
 }
 
+/**
+ * Spawns a long-lived grandchild in this process's own process group (not
+ * detached, stdio ignored) and writes its pid to `<outDir>/grandchild.pid`:
+ * the stand-in for the converter's ffmpeg, to prove a group kill reaches it.
+ * @param {ModeContext} ctx
+ */
+async function spawnGrandchild(ctx) {
+  const child = spawn(process.execPath, ['-e', 'setInterval(() => {}, 1e3)'], { stdio: 'ignore' });
+  await writeFile(path.join(ctx.outDir, 'grandchild.pid'), String(child.pid));
+}
+
+/** @param {ModeContext} ctx the `grandchild` mode: grandchild, then stays alive until killed */
+async function modeGrandchild(ctx) {
+  await spawnGrandchild(ctx);
+  setInterval(() => {}, 60_000);
+}
+
+/** @param {ModeContext} ctx the `grandchild-flood` mode: grandchild, then trips the runner's output cap */
+async function modeGrandchildFlood(ctx) {
+  await spawnGrandchild(ctx);
+  modeFlood();
+  setInterval(() => {}, 60_000);
+}
+
 /** Path of the in-flight `.partial` file (`hang` mode), removed on SIGTERM. */
 let partialPath = '';
 
@@ -240,6 +266,8 @@ const MODES = {
   hang: modeHang,
   flood: modeFlood,
   'orphan-pipe': modeOrphanPipe,
+  grandchild: modeGrandchild,
+  'grandchild-flood': modeGrandchildFlood,
 };
 
 async function main() {
