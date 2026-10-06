@@ -85,6 +85,7 @@ import { requestCleanup, afterJob } from './cleanup-schedule.js';
  * @property {Promise<void> | null} currentJobPromise - the claimed job still running, if any.
  * @property {RunConverter | null} currentHandle - the running job's run handle, once step 4 is reached.
  * @property {NodeJS.Timeout | null} killTimer - the one armed `SIGKILL` escalation, if any (shared by `stop()` and `cancel()`).
+ * @property {boolean} killSent - a kill sequence started for the current run; reset when it settles.
  * @property {string | null} currentRelPath - `rel_path` of the claimed job still running.
  * @property {boolean} cancelRequested - the running job's cancel flag.
  * @property {Promise<void> | null} cleanupPromise - the in-flight cleanup pass, if any.
@@ -119,6 +120,7 @@ export function createConversionQueue(options) {
     currentJobPromise: null,
     currentHandle: null,
     killTimer: null,
+    killSent: false,
     currentRelPath: null,
     cancelRequested: false,
     cleanupPromise: null,
@@ -177,6 +179,7 @@ function onHandle(state, handle) {
   state.currentHandle = handle;
   const clear = () => {
     state.currentHandle = null;
+    state.killSent = false;
     if (state.killTimer !== null) {
       clearTimeout(state.killTimer);
       state.killTimer = null;

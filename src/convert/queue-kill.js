@@ -19,6 +19,7 @@ import { errorCode } from './error-code.js';
  * @property {number} killGraceMs
  * @property {RunConverter | null} currentHandle
  * @property {NodeJS.Timeout | null} killTimer
+ * @property {boolean} killSent - a kill sequence already started for this run.
  */
 
 /**
@@ -28,6 +29,7 @@ import { errorCode } from './error-code.js';
  * @param {KillState} state
  * @param {RunConverter} handle
  * @param {NodeJS.Signals} signal
+ * @returns {void}
  */
 export function safeKill(state, handle, signal) {
   try {
@@ -39,14 +41,17 @@ export function safeKill(state, handle, signal) {
 
 /**
  * Terminates the running job's process: `SIGTERM` now and `SIGKILL` after
- * `killGraceMs`. A no-op without a run handle, and when the escalation is
- * already armed (an earlier cancel/stop already sent `SIGTERM`; nothing is
- * re-armed or overwritten).
+ * `killGraceMs`. A no-op without a run handle, and once a kill sequence
+ * started for this run (`killSent`, reset when the run settles) - also after
+ * the SIGKILL fired but the run has not settled, so no second SIGTERM/SIGKILL
+ * pair ever reaches the group.
  * @param {KillState} state
+ * @returns {void}
  */
 export function terminateRun(state) {
   const handle = state.currentHandle;
-  if (handle === null || state.killTimer !== null) return;
+  if (handle === null || state.killSent) return;
+  state.killSent = true;
   safeKill(state, handle, 'SIGTERM');
   state.killTimer = setTimeout(() => {
     state.killTimer = null;

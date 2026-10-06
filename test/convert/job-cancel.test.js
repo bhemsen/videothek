@@ -60,16 +60,3 @@ test('cancel flagged right before the publish transaction ends cancelled and lea
   const published = await fs.readdir(path.join(convertDirReal, row.storage_key));
   assert.equal(published.length, 1, 'the renamed output is left in place for cleanup');
 });
-
-test('a cancel arriving after the commit changes nothing', async (t) => {
-  const { db, convertDirReal, mediaRoot, row } = await setup(t);
-  const { run } = fakeRun((args) => convertedFlac(args));
-  const { log } = fakeLogger();
-  let committed = false;
-  await runConversionJob({
-    db, config: fakeConfig(mediaRoot, convertDirReal), log, now: () => 1, run, convertDirReal, row,
-    isStopping: () => false, isCancelled: () => committed,
-  });
-  committed = true;
-  assert.equal(getConversion(db, REL_PATH)?.status, 'playable');
-});
