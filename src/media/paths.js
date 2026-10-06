@@ -28,17 +28,7 @@ const DRIVE_PREFIX_RE = /^[a-zA-Z]:/;
  *   cannot be resolved (missing file, permission error, etc.).
  */
 export async function resolveMediaPath(mediaRoot, relPath, { platform = process.platform } = {}) {
-  if (!isSafeRelativePath(relPath, platform)) {
-    return null;
-  }
-
-  try {
-    const target = path.resolve(mediaRoot, relPath);
-    const [realRoot, real] = await Promise.all([fs.realpath(mediaRoot), fs.realpath(target)]);
-    return isContained(realRoot, real) ? real : null;
-  } catch {
-    return null;
-  }
+  return resolveMediaPathStrict(mediaRoot, relPath, { platform }).catch(() => null);
 }
 
 /**
