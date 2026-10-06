@@ -13,7 +13,7 @@
 
 import { el } from './lib/dom.js';
 import { injectStylesheet } from './lib/stylesheet.js';
-import { listConversions, requestConversion } from './lib/conversions-api.js';
+import { listConversions, requestConversion, cancelConversion } from './lib/conversions-api.js';
 import { ApiError } from './lib/api.js';
 import { formatFileSize, pluralize } from './lib/library-format.js';
 import { startPolling, stopPolling } from './lib/convert-poller.js';
@@ -103,14 +103,30 @@ export function mountConversionPanel(container) {
     refreshPolling();
   }
 
+  /** Cancels a queued/running row, then reloads the list (a 409 etc. simply shows the real state). @param {string} id @returns {Promise<void>} */
+  async function cancel(id) {
+    try {
+      await cancelConversion(id);
+    } catch (err) {
+      if (err instanceof ApiError && (err.status === 401 || err.status === 403)) return;
+    }
+    try {
+      await refresh();
+    } catch {
+      // keep the previous render; the poller (if running) retries
+    }
+    render();
+    refreshPolling();
+  }
+
   /** @returns {void} */
   function render() {
-    body.replaceChildren(...renderBody({ enabled, loadError, usage, items: [...byId.values()], errorIds, onAction: act }));
+    body.replaceChildren(...renderBody({ enabled, loadError, usage, items: [...byId.values()], errorIds, onAction: act, onCancel: cancel }));
   }
 }
 
 /**
- * @param {{ enabled: boolean, loadError: boolean, usage: ConversionUsage, items: ConversionEntry[], errorIds: Set<string>, onAction: (id: string) => void }} state
+ * @param {{ enabled: boolean, loadError: boolean, usage: ConversionUsage, items: ConversionEntry[], errorIds: Set<string>, onAction: (id: string) => void, onCancel: (id: string) => void }} state
  * @returns {HTMLElement[]}
  */
 function renderBody(state) {
@@ -121,7 +137,7 @@ function renderBody(state) {
     return nodes;
   }
   if (state.items.length === 0) return [el('p', { class: 'conversion-empty' }, EMPTY_TEXT)];
-  return [usageLine(state.usage), ...buildGroups(state.items, { errorIds: state.errorIds, onAction: state.onAction })];
+  return [usageLine(state.usage), ...buildGroups(state.items, { errorIds: state.errorIds, onAction: state.onAction, onCancel: state.onCancel })];
 }
 
 /**

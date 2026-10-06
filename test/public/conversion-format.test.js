@@ -71,6 +71,7 @@ test('failureReason: an unknown code and null fall back to a generic reason', ()
 test('FAILURE_REASONS is frozen and covers every documented failure code', () => {
   assert.ok(Object.isFrozen(FAILURE_REASONS));
   assert.deepEqual(Object.keys(FAILURE_REASONS).sort(), [
+    'cancelled',
     'converter_failed',
     'converter_interrupted',
     'converter_output_invalid',
@@ -83,4 +84,14 @@ test('FAILURE_REASONS is frozen and covers every documented failure code', () =>
     'storage_failed',
     'unsupported_source',
   ]);
+});
+
+test('cancelled: the reason alone, without the failure prefix', () => {
+  assert.equal(failureReason('cancelled'), 'Vom Admin abgebrochen');
+  assert.equal(statusLabel(entry({ status: 'failed', error: 'cancelled' })), 'Vom Admin abgebrochen');
+});
+
+test('statusLabel: a running conversion with a pending cancel reads "Wird abgebrochen …"', () => {
+  assert.equal(statusLabel({ ...entry({ status: 'converting' }), cancelling: true }), 'Wird abgebrochen …');
+  assert.equal(statusLabel({ ...entry({ status: 'converting' }), cancelling: false }), 'Wird konvertiert …');
 });
