@@ -228,7 +228,7 @@ The decomposition into steps lives as GitHub issues, not in this file — one
 issue per step, grouped under a milestone. This spec owns the design; the
 issues own progress.
 
-- Milestone: Phase 8 — Converter adapter & Pi protection (linked from
+- Milestone: [Phase 8 — Converter adapter & Pi protection](https://github.com/bhemsen/videothek/milestone/8) (linked from
   `docs/roadmap.md` at acceptance)
 - Issues: created from this spec once it is merged (one per implementable step)
 

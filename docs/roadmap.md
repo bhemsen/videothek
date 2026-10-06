@@ -18,7 +18,7 @@
 | 5 | Music & audiobooks — ID3v2/FLAC tag readers, parsers, audio player with album/book queue and resume | [spec-music-audiobooks](specs/spec-music-audiobooks.md) | [#5](https://github.com/bhemsen/videothek/milestone/5) |
 | 6 | Image gallery — folder gallery, EXIF embedded thumbnails, lightbox | [spec-image-gallery](specs/spec-image-gallery.md) | [#6](https://github.com/bhemsen/videothek/milestone/6) |
 | 7 | On-demand conversion (core) — converter config (off when unset), one-at-a-time conversion queue against a stub converter, converted copy under `CONVERT_DIR` (default `DATA_DIR/converted`) served under the same item id, "Konvertieren" button + status and manual retry | [spec-conversion-core](specs/archive/spec-conversion-core.md) | [#7](https://github.com/bhemsen/videothek/milestone/7) |
-| 8 | Converter adapter & Pi protection — real `bhemsen/converter` adapter (needs a converter release with `--to web`, `--json`, kill-safe output), process-group cancel, playback protection while converting, stale-conversion cleanup | — | — |
+| 8 | Converter adapter & Pi protection — real `bhemsen/converter` adapter (needs a converter release with `--to web`, `--json`, kill-safe output), process-group cancel, playback protection while converting, stale-conversion cleanup | [spec-converter-adapter](specs/spec-converter-adapter.md) | [#8](https://github.com/bhemsen/videothek/milestone/8) |
 | 9 | Gallery-video conversion — "Konvertieren" for not-playable videos in the `/images` gallery (needs a hook that follows the lazily rendered tile batches; deferred from Phase 7) | — | — |
 
 A phase gets a Spec link once `/plan` drafts it, and a Milestone link once the
