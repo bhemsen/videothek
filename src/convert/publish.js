@@ -15,6 +15,7 @@ import { verifyOutput } from './verify.js';
 import { TARGETS } from './targets.js';
 import { preparePublishDir } from './work-dir.js';
 import { errorCode } from './error-code.js';
+import { publishSidecars } from './sidecars.js';
 
 /** @typedef {import('node:sqlite').DatabaseSync} DatabaseSync */
 /** @typedef {import('../db/conversions.js').ConversionRow} ConversionRow */
@@ -49,7 +50,7 @@ export async function interpretAndPublish(opts, { outDir, result, source }) {
     return recordFailure(db, row, now, 'source_changed', null);
   }
 
-  return publish(opts, { verifiedPath: verified.path, notes: interpreted.notes, sidecars: interpreted.sidecars, roots });
+  return publish(opts, { verifiedPath: verified.path, outDir, notes: interpreted.notes, sidecars: interpreted.sidecars, roots });
 }
 
 /**
@@ -77,13 +78,14 @@ async function restatSource({ config, row }, sourcePath) {
  * Step 6: prepares and verifies the publish directory, renames the verified
  * output into it, then commits the publish transaction.
  * @param {NormalizedOptions} opts
- * @param {{ verifiedPath: string, notes: string[], sidecars: import('./jsonl.js').ConverterSidecar[], roots: RedactRoots }} ctx
+ * @param {{ verifiedPath: string, outDir: string, notes: string[], sidecars: import('./jsonl.js').ConverterSidecar[], roots: RedactRoots }} ctx
  * @returns {Promise<JobOutcome>}
  */
-async function publish({ db, now, row, convertDirReal }, { verifiedPath, notes, roots }) {
+async function publish({ db, now, row, convertDirReal }, { verifiedPath, outDir, notes, sidecars, roots }) {
   const publishDir = await preparePublishDir({ convertDirReal, storageKey: row.storage_key });
   if (!publishDir.ok) return recordFailure(db, row, now, 'storage_failed', publishDir.code);
 
+  const side = await publishSidecars({ outDir: await fsRealpath(outDir).catch(() => outDir), publishDir: publishDir.publishDirReal, sidecars });
   const targetPath = path.join(publishDir.publishDirReal, TARGETS[row.target].file);
   let size;
   try {
@@ -93,13 +95,13 @@ async function publish({ db, now, row, convertDirReal }, { verifiedPath, notes, 
     return recordFailure(db, row, now, 'storage_failed', errorCode(err));
   }
 
-  const redactedNotes = notes.map((note) => redactDetail(note, roots).slice(0, NOTE_MAX_LENGTH));
+  const redactedNotes = [...notes.map((note) => redactDetail(note, roots).slice(0, NOTE_MAX_LENGTH)), ...side.notes];
   publishConversion(db, {
     relPath: row.rel_path,
     outputRel: `${row.storage_key}/${TARGETS[row.target].file}`,
-    outputSize: size,
+    outputSize: size + side.bytes,
     notes: JSON.stringify(redactedNotes),
-    sidecars: JSON.stringify([]),
+    sidecars: JSON.stringify(side.published),
     now: now(),
   });
   return { status: 'playable' };
