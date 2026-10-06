@@ -50,10 +50,10 @@ test('007-conversion-cleanup.sql applies on a Phase-7 DB; existing rows get side
   const db = new DatabaseSync(':memory:');
   try {
     assert.deepEqual(migrate(db, { dir }), [1, 2, 3, 4, 5, 6]);
-    db.exec(
+    db.prepare(
       `INSERT INTO conversions (rel_path, storage_key, target, status, source_size, source_mtime_ms, queued_at)
-       VALUES ('old.mkv', '${'e'.repeat(64)}', 'web', 'queued', 1, 1, 1)`
-    );
+       VALUES (?, ?, 'web', 'queued', 1, 1, 1)`
+    ).run('old.mkv', 'e'.repeat(64));
 
     copyMigrations(dir, '007-conversion-cleanup.sql');
     assert.deepEqual(migrate(db, { dir }), [7]);
@@ -71,14 +71,14 @@ test('enqueueConversion clears missing_since and keeps sidecars until a new publ
   const db = makeDb();
   try {
     enqueue(db);
-    publishConversion(db, { relPath: 'Filme/Arrival (2016).mkv', outputRel: 'k/web.mp4', outputSize: 1, notes: '[]', sidecars: '["a.vtt"]', now: 5 });
+    publishConversion(db, { relPath: 'Filme/Arrival (2016).mkv', outputRel: 'k/web.mp4', outputSize: 1, notes: '[]', sidecars: '[{"file":"sub-0.vtt","lang":"eng"}]', now: 5 });
     db.prepare("UPDATE conversions SET missing_since = 99 WHERE rel_path = 'Filme/Arrival (2016).mkv'").run();
     assert.equal(getConversion(db, 'Filme/Arrival (2016).mkv')?.missing_since, 99);
 
     enqueue(db, { now: 10 });
     const row = getConversion(db, 'Filme/Arrival (2016).mkv');
     assert.equal(row?.missing_since, null);
-    assert.equal(row?.sidecars, '["a.vtt"]');
+    assert.equal(row?.sidecars, '[{"file":"sub-0.vtt","lang":"eng"}]');
   } finally {
     db.close();
   }
@@ -88,8 +88,8 @@ test('publishConversion persists the sidecars JSON', () => {
   const db = makeDb();
   try {
     enqueue(db);
-    publishConversion(db, { relPath: 'Filme/Arrival (2016).mkv', outputRel: 'k/web.mp4', outputSize: 1, notes: '[]', sidecars: '["a.vtt","b.vtt"]', now: 5 });
-    assert.equal(getConversion(db, 'Filme/Arrival (2016).mkv')?.sidecars, '["a.vtt","b.vtt"]');
+    publishConversion(db, { relPath: 'Filme/Arrival (2016).mkv', outputRel: 'k/web.mp4', outputSize: 1, notes: '[]', sidecars: '[{"file":"sub-0.vtt","lang":"eng"},{"file":"sub-1.vtt","lang":"deu"}]', now: 5 });
+    assert.equal(getConversion(db, 'Filme/Arrival (2016).mkv')?.sidecars, '[{"file":"sub-0.vtt","lang":"eng"},{"file":"sub-1.vtt","lang":"deu"}]');
   } finally {
     db.close();
   }

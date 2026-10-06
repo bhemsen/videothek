@@ -19,7 +19,7 @@
  * @property {string | null} output_rel
  * @property {number | null} output_size
  * @property {string} notes
- * @property {string} sidecars JSON array of sidecar file names
+ * @property {string} sidecars JSON array of `{ file, lang }` (`sub-<n>.vtt` in the copy's storage_key directory)
  * @property {string | null} error
  * @property {string | null} error_detail
  * @property {number} queued_at
