@@ -143,6 +143,7 @@ async function runPipeline(opts, ctx) {
   onHandle?.(handle);
   const result = await handle.result;
   if (result.priorityError) log.warn('conversion_priority_failed', { key: row.storage_key, code: result.priorityError });
+  if (result.signalError) log.warn('conversion_signal_failed', { key: row.storage_key, code: result.signalError });
   if (isStopping()) return recordFailure(db, row, now, 'interrupted', null);
 
   return interpretAndPublish(opts, { outDir: jobDir.outDir, result, source });

@@ -95,7 +95,7 @@ export async function convertedFlac({ outDir }, notes = []) {
   await fs.writeFile(output, FLAC_BYTES);
   return {
     spawnError: null, exitCode: 0, signal: null, killedBy: null,
-    records: [{ outcome: 'converted', output, error: null, notes }],
+    records: [{ type: 'file', outcome: 'converted', output, error: null, notes, sidecars: [] }, { type: 'summary', total: 1, exitCode: 0 }],
     stdoutInvalid: false, stdioTimedOut: false, stderrTail: '',
   };
 }

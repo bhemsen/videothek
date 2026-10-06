@@ -129,7 +129,7 @@ test('step 5: a verification failure (bad magic) ends not_browser_safe with no d
   const { run } = fakeRun(async ({ outDir }) => {
     const output = path.join(outDir, TARGETS.flac.file);
     await fs.writeFile(output, 'not a flac file at all');
-    return { spawnError: null, exitCode: 0, signal: null, killedBy: null, records: [{ outcome: 'converted', output, error: null, notes: [] }], stdoutInvalid: false, stdioTimedOut: false, stderrTail: '' };
+    return { spawnError: null, exitCode: 0, signal: null, killedBy: null, records: [{ type: 'file', outcome: 'converted', output, error: null, notes: [], sidecars: [] }, { type: 'summary', total: 1, exitCode: 0 }], stdoutInvalid: false, stdioTimedOut: false, stderrTail: '' };
   });
   const { log } = fakeLogger();
   await runConversionJob({ db, config: fakeConfig(mediaRoot, convertDirReal), log, now: () => 1, run, convertDirReal, row, isStopping: () => false });

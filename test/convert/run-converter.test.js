@@ -35,7 +35,10 @@ test('a successful conversion settles with the parsed record and no failure flag
   assert.equal(result.killedBy, null);
   assert.equal(result.stdoutInvalid, false);
   assert.equal(result.stdioTimedOut, false);
-  assert.deepEqual(result.records, [{ outcome: 'converted', output: path.join(out, 'Film.mp4'), error: null, notes: [] }]);
+  assert.deepEqual(result.records, [
+    { type: 'file', outcome: 'converted', output: path.join(out, 'Film.mp4'), error: null, notes: [], sidecars: [] },
+    { type: 'summary', total: 1, exitCode: 0 },
+  ]);
 });
 
 test('argv reaches the stub exactly as cmd + --to/--json/source/outDir; a source with punctuation and spaces is one argument', async (t) => {
@@ -92,7 +95,7 @@ test('the 1 MiB total cap kills flood: killedBy=cap, stdoutInvalid, and stdout a
   // Mirrors the stub's own flood loop to compute the full, uncapped line
   // count: the cap must always stop strictly before that (at least the
   // final, over-cap chunk's lines are dropped unparsed).
-  const lineLength = Buffer.byteLength(`${JSON.stringify({ outcome: 'skipped' })}\n`);
+  const lineLength = Buffer.byteLength(`${JSON.stringify({ type: 'file', schema: 1, outcome: 'skipped' })}\n`);
   let written = 0;
   let fullLineCount = 0;
   while (written < 1024 * 1024 + 4096) {

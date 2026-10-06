@@ -79,7 +79,7 @@ function start(mode, d, extra) {
   return runConverter({ cmd: [process.execPath, stubPath, ...mode], env: {}, target: 'web', source: '/media/Film.mkv', outDir: d.out, cwd: d.dir, ...extra });
 }
 
-test('POSIX: stop SIGTERM and SIGKILL escalation go to the process group (-pid)', async (t) => {
+test('group (seam): stop SIGTERM and SIGKILL escalation go to the process group (-pid)', async (t) => {
   const d = await jobDir(t);
   const s = seams();
   const run = start(['--mode', 'hang', '--hold', d.hold], d, { platform: 'linux', ...s });
@@ -94,9 +94,10 @@ test('POSIX: stop SIGTERM and SIGKILL escalation go to the process group (-pid)'
   assert.equal(result.killedBy, 'stop');
   assert.deepEqual(s.priorities, [[pid, 19]]);
   assert.equal(result.priorityError, null);
+  assert.equal(result.signalError, null);
 });
 
-test('POSIX: the output cap kill goes to the group and sweeps once more after exit', async (t) => {
+test('group (seam): the output cap kill goes to the group and sweeps once more after exit', async (t) => {
   const d = await jobDir(t);
   const s = seams();
   const run = start(['--mode', 'flood'], d, { platform: 'linux', ...s });
@@ -122,7 +123,7 @@ test('kill() after exit sends nothing and does not relabel the run', async (t) =
   assert.equal(before, 0, 'a clean exit 0 is not swept');
 });
 
-test('POSIX: a non-zero exit triggers exactly one synchronous group SIGKILL; ESRCH is ignored', async (t) => {
+test('group (seam): a non-zero exit triggers exactly one synchronous group SIGKILL; ESRCH is ignored', async (t) => {
   const d = await jobDir(t);
   const s = seams();
   const run = start(['--mode', 'fail'], d, { platform: 'linux', ...s });
@@ -174,6 +175,37 @@ test('a throwing setPriority is reported as priorityError and the run still comp
 
   assert.equal(result.priorityError, 'EACCES');
   assert.equal(result.exitCode, 0);
+});
+
+test('a SystemError-shaped setPriority failure reports the errno from info.code', async (t) => {
+  const d = await jobDir(t);
+  const run = start(['--mode', 'ok'], d, {
+    setPriority: () => {
+      throw Object.assign(new Error('A system error occurred'), { code: 'ERR_SYSTEM_ERROR', info: { code: 'EACCES', errno: -13 } });
+    },
+  });
+  assert.equal((await run.result).priorityError, 'EACCES');
+});
+
+test('a signal error other than ESRCH is reported as signalError', async (t) => {
+  const d = await jobDir(t);
+  const run = start(['--mode', 'fail'], d, {
+    platform: 'linux',
+    killProcess: () => {
+      throw Object.assign(new Error('no'), { code: 'EPERM' });
+    },
+  });
+  const result = await run.result;
+  assert.equal(result.signalError, 'EPERM');
+  assert.equal(result.exitCode, 1);
+});
+
+test('the job logs conversion_signal_failed { key, code } and continues', async (t) => {
+  const { db, convertDirReal, mediaRoot, row } = await setup(t);
+  const { run } = fakeRun(async (args) => ({ ...(await convertedFlac(args)), signalError: 'EPERM' }));
+  const { log, calls } = fakeLogger();
+  await runConversionJob({ db, config: fakeConfig(mediaRoot, convertDirReal), log, now: () => 1, run, convertDirReal, row, isStopping: () => false });
+  assert.deepEqual(calls.find((c) => c.event === 'conversion_signal_failed')?.fields, { key: row.storage_key, code: 'EPERM' });
 });
 
 test('the job logs conversion_priority_failed { key, code } and still converts', async (t) => {
