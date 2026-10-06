@@ -42,6 +42,32 @@ export async function resolveMediaPath(mediaRoot, relPath, { platform = process.
 }
 
 /**
+ * Like {@link resolveMediaPath}, but surfaces why resolving failed: an unsafe
+ * or escaping path and a missing file (`ENOENT`/`ENOTDIR`) yield `null`,
+ * any other errno (`EACCES`, `EIO`, ...) is rethrown. Used by the cleanup
+ * pass, where only a missing source may be treated as missing.
+ *
+ * @param {string} mediaRoot
+ * @param {string} relPath
+ * @param {{ platform?: string }} [options]
+ * @returns {Promise<string | null>}
+ */
+export async function resolveMediaPathStrict(mediaRoot, relPath, { platform = process.platform } = {}) {
+  if (!isSafeRelativePath(relPath, platform)) {
+    return null;
+  }
+  try {
+    const target = path.resolve(mediaRoot, relPath);
+    const [realRoot, real] = await Promise.all([fs.realpath(mediaRoot), fs.realpath(target)]);
+    return isContained(realRoot, real) ? real : null;
+  } catch (err) {
+    const code = /** @type {{ code?: unknown }} */ (err)?.code;
+    if (code === 'ENOENT' || code === 'ENOTDIR') return null;
+    throw err;
+  }
+}
+
+/**
  * Up-front, filesystem-independent rejection of an unsafe relative path.
  *
  * @param {string} relPath

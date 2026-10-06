@@ -33,10 +33,11 @@ import { requestCleanup, afterJob } from './cleanup-schedule.js';
  *   `false` and logs `conversion_dir_unavailable { code }` on any failure,
  *   without kicking.
  * @property {() => void} kick - claims and runs the next `queued` row, if
- *   any; a no-op before `start()` resolved `true`, while a job is running,
- *   or once `stop()` was called.
+ *   any; a no-op before `start()` resolved `true`, while a job or a cleanup
+ *   pass is running, or once `stop()` was called.
  * @property {() => Promise<void>} stop - prevents further claims and waits
- *   for the currently running job to finish (its DB write and cleanup), or
+ *   for the currently running job (its DB write and cleanup) or in-flight
+ *   cleanup pass to finish, or
  *   at the latest `stopDeadlineMs` after this call; memoised, never rejects.
  * @property {(relPath: string) => 'cancelled' | 'cancelling' | 'not_cancellable'} cancel -
  *   `queued` row: ended `failed`/`cancelled` at once (`'cancelled'`); the
@@ -232,9 +233,9 @@ function kick(state) {
 }
 
 /**
- * Waits for the currently running job to settle, at the latest after
- * `stopDeadlineMs`, logging `conversion_stop_timeout` on that path. Resolves
- * at once when no job is running.
+ * Waits for the currently running job or in-flight cleanup pass (never both)
+ * to settle, at the latest after `stopDeadlineMs`, logging
+ * `conversion_stop_timeout` on that path. Resolves at once when neither runs.
  * @param {QueueState} state
  * @returns {Promise<void>}
  */

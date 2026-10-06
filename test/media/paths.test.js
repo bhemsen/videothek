@@ -268,3 +268,20 @@ test('resolveMediaPath: a file symlink inside the root resolves', async (t) => {
   }
   assert.equal(await resolveMediaPath(root, 'movie-link.mp4'), await fs.realpath(target));
 });
+
+test('resolveMediaPathStrict: missing file and unsafe path yield null, rethrow of other errnos is by construction', async () => {
+  const { resolveMediaPathStrict } = await import('../../src/media/paths.js');
+  const os = await import('node:os');
+  const fsp = await import('node:fs/promises');
+  const pathMod = await import('node:path');
+  const root = await fsp.mkdtemp(pathMod.join(os.tmpdir(), 'vt-strict-'));
+  try {
+    await fsp.writeFile(pathMod.join(root, 'a.txt'), 'x');
+    assert.equal(await resolveMediaPathStrict(root, 'a.txt'), await fsp.realpath(pathMod.join(root, 'a.txt')));
+    assert.equal(await resolveMediaPathStrict(root, 'missing.txt'), null);
+    assert.equal(await resolveMediaPathStrict(root, '../a.txt'), null);
+    assert.equal(await resolveMediaPathStrict(root, 'a.txt/child'), null, 'ENOTDIR counts as missing');
+  } finally {
+    await fsp.rm(root, { recursive: true, force: true });
+  }
+});

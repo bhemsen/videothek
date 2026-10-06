@@ -14,7 +14,7 @@
 
 import fs from 'node:fs/promises';
 import path from 'node:path';
-import { resolveMediaPath } from '../media/paths.js';
+import { resolveMediaPathStrict } from '../media/paths.js';
 import { errorCode } from './error-code.js';
 import {
   syncMissingSince, listExpiredMissing, deleteExpiredMissing, listPlayableWithItem,
@@ -39,6 +39,7 @@ const HEX_KEY = /^[0-9a-f]{64}$/;
  * @property {import('../log.js').Logger} log
  * @property {() => number} now
  * @property {() => boolean} isStopping - checked between rules and between directory removals.
+ * @property {(file: string) => Promise<{ size: number, mtimeMs: number }>} [stat] - injectable `fs.stat` seam (tests); default the real one.
  */
 
 /**
@@ -48,6 +49,7 @@ const HEX_KEY = /^[0-9a-f]{64}$/;
  * @property {number} reconciled - fresh rows whose copy file was gone (rule 5)
  * @property {number} orphans - unreferenced hex directories removed (rule 6)
  * @property {number} missing - rows newly marked `missing_since` (rule 1)
+ * @property {number} cleared - rows whose `missing_since` was cleared again (rule 1)
  */
 
 class CleanupStopped extends Error {}
@@ -97,12 +99,13 @@ function copyPath(row, convertDirReal) {
 }
 
 /**
+ * @param {CleanupContext} ctx
  * @param {string} file
  * @returns {Promise<boolean>} `false` only for `ENOENT`; any other error propagates
  */
-async function statExists(file) {
+async function statExists(ctx, file) {
   try {
-    await fs.stat(file);
+    await (ctx.stat ?? fs.stat)(file);
     return true;
   } catch (err) {
     if (isEnoent(err)) return false;
@@ -151,16 +154,17 @@ async function ruleVanished(ctx, stats) {
 async function ruleStale(ctx, stats) {
   for (const row of listPlayableWithItem(ctx.db)) {
     checkStop(ctx);
-    const source = await resolveMediaPath(ctx.mediaRoot, row.rel_path);
+    const source = await resolveMediaPathStrict(ctx.mediaRoot, row.rel_path);
     if (source === null) continue;
     let stat;
     try {
-      stat = await fs.stat(source);
+      stat = await (ctx.stat ?? fs.stat)(source);
     } catch (err) {
       if (isEnoent(err)) continue;
       throw err;
     }
     if (stat.size === row.source_size && Math.trunc(stat.mtimeMs) === row.source_mtime_ms) continue;
+    checkStop(ctx);
     if (!deletePlayableAndResetItem(ctx.db, row.rel_path, row.storage_key)) continue;
     stats.purged += 1;
     await removeKeyDir(ctx, row.storage_key);
@@ -195,7 +199,7 @@ async function unmountedDiskReason(ctx) {
   if ((await listHexDirs(ctx.convertDirReal)).length === 0) return 'convert_dir_empty';
   for (const row of rows) {
     const file = copyPath(row, ctx.convertDirReal);
-    if (file !== null && (await statExists(file))) return null;
+    if (file !== null && (await statExists(ctx, file))) return null;
   }
   return 'no_copy_found';
 }
@@ -210,7 +214,8 @@ async function ruleMissingCopies(ctx, stats) {
   for (const row of listFreshPlayable(ctx.db)) {
     checkStop(ctx);
     const file = copyPath(row, ctx.convertDirReal);
-    if (file === null || (await statExists(file))) continue;
+    if (file === null || (await statExists(ctx, file))) continue;
+    checkStop(ctx);
     if (!deletePlayableAndResetItem(ctx.db, row.rel_path, row.storage_key)) continue;
     stats.reconciled += 1;
     await removeKeyDir(ctx, row.storage_key);
@@ -235,7 +240,7 @@ async function ruleOrphans(ctx, stats) {
  * Runs rules 1-6 in order. Never throws: a stop request ends the pass quietly
  * (changes so far are logged), any other error logs
  * `conversion_cleanup_failed { code }` and abandons the remaining rules. Logs
- * `conversion_cleanup { purged, stripped, reconciled, orphans, missing }` when
+ * `conversion_cleanup { purged, stripped, reconciled, orphans, missing, cleared }` when
  * anything changed and `conversion_cleanup_skipped { reason }` when the
  * unmounted-disk guard skipped rules 5 and 6.
  * @param {CleanupContext} ctx
@@ -243,10 +248,12 @@ async function ruleOrphans(ctx, stats) {
  */
 export async function runCleanup(ctx) {
   /** @type {CleanupStats} */
-  const stats = { purged: 0, stripped: 0, reconciled: 0, orphans: 0, missing: 0 };
+  const stats = { purged: 0, stripped: 0, reconciled: 0, orphans: 0, missing: 0, cleared: 0 };
   try {
     checkStop(ctx);
-    stats.missing = syncMissingSince(ctx.db, ctx.now()).marked;
+    const sync = syncMissingSince(ctx.db, ctx.now());
+    stats.missing = sync.marked;
+    stats.cleared = sync.cleared;
     checkStop(ctx);
     await ruleVanished(ctx, stats);
     checkStop(ctx);

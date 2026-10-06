@@ -25,7 +25,7 @@ test('rule 1: marks a row whose item is gone, clears it when the item is back, l
   assert.equal(stats.missing, 1);
   assert.equal(getConversion(f.db, 'Gone/a.mp3')?.missing_since, NOW);
   assert.equal(getConversion(f.db, 'Back/b.mp3')?.missing_since, null);
-  assert.deepEqual(events(f, 'conversion_cleanup')[0].fields, { purged: 0, stripped: 0, reconciled: 0, orphans: 0, missing: 1 });
+  assert.deepEqual(events(f, 'conversion_cleanup')[0].fields, { purged: 0, stripped: 0, reconciled: 0, orphans: 0, missing: 1, cleared: 1 });
 });
 
 test('rule 2: deletes rows missing for more than 30 days (any status but converting) and their directory', async (t) => {
@@ -82,7 +82,7 @@ test('rule 3: a source that is gone from disk (protected root) is left alone and
   const { key } = await addPlayableCopy(f, rel);
   await fs.rm(path.join(f.mediaRoot, 'Buch'), { recursive: true });
   const stats = await runCleanup(f.ctx());
-  assert.deepEqual(stats, { purged: 0, stripped: 0, reconciled: 0, orphans: 0, missing: 0 });
+  assert.deepEqual(stats, { purged: 0, stripped: 0, reconciled: 0, orphans: 0, missing: 0, cleared: 0 });
   assert.equal(getConversion(f.db, rel)?.missing_since, null, 'the item row still exists, so nothing is marked missing');
   assert.equal(getConversion(f.db, rel)?.status, 'playable');
   assert.equal(await exists(path.join(f.convertDirReal, key)), true);
@@ -237,4 +237,51 @@ test('stopping: nothing runs when already stopping; a stop between directory rem
 
 test('storageKey sanity: a real key is 64 lowercase hex characters', () => {
   assert.match(storageKey('a/b.mp3'), /^[0-9a-f]{64}$/);
+});
+
+/** @param {string} code @returns {() => Promise<never>} */
+const failingStat = (code) => () => Promise.reject(Object.assign(new Error(code), { code }));
+
+for (const code of ['EACCES', 'ENOTDIR']) {
+  test(`stat seam: a ${code} on a copy file aborts rules 5/6, deletes nothing and logs conversion_cleanup_failed (all platforms)`, async (t) => {
+    const f = await cleanupFixture(t);
+    await addPlayableCopy(f, 'Buch/a.mp3');
+    await addPlayableCopy(f, 'Buch/b.mp3');
+    await writeCopy(f.convertDirReal, HEX);
+    const stats = await runCleanup(f.ctx({ stat: failingStat(code) }));
+    assert.equal(stats.reconciled, 0);
+    assert.equal(stats.orphans, 0);
+    assert.deepEqual(f.removed, []);
+    assert.ok(getConversion(f.db, 'Buch/a.mp3') && getConversion(f.db, 'Buch/b.mp3'));
+    assert.equal(await exists(path.join(f.convertDirReal, HEX)), true);
+    assert.deepEqual(events(f, 'conversion_cleanup_failed')[0].fields, { code });
+  });
+}
+
+test('rule 3: a non-ENOENT error stat-ing the source aborts the pass and deletes nothing; ENOENT is skipped', async (t) => {
+  const f = await cleanupFixture(t);
+  const { key } = await addPlayableCopy(f, 'Buch/a.mp3');
+  await runCleanup(f.ctx({ stat: failingStat('ENOENT') }));
+  assert.equal(events(f, 'conversion_cleanup_failed').length, 0, 'ENOENT leaves the row to rules 1/2');
+  await writeCopy(f.convertDirReal, HEX);
+  await runCleanup(f.ctx({ stat: failingStat('EACCES') }));
+  assert.deepEqual(events(f, 'conversion_cleanup_failed')[0].fields, { code: 'EACCES' });
+  assert.deepEqual(f.removed, []);
+  assert.ok(getConversion(f.db, 'Buch/a.mp3'));
+  assert.equal(await exists(path.join(f.convertDirReal, key)), true);
+});
+
+test('a stop that arrives during the source stat prevents the rule 3 and rule 5 deletes', async (t) => {
+  const f = await cleanupFixture(t);
+  const { key } = await addPlayableCopy(f, 'Buch/a.mp3');
+  await addPlayableCopy(f, 'Buch/b.mp3');
+  await fs.writeFile(path.join(f.mediaRoot, 'Buch/a.mp3'), 'changed source, longer');
+  const stat = async (/** @type {string} */ file) => {
+    const s = await fs.stat(file);
+    f.state.stopping = true;
+    return s;
+  };
+  await runCleanup(f.ctx({ stat }));
+  assert.ok(getConversion(f.db, 'Buch/a.mp3'), 'no DB write after the stop');
+  assert.equal(await exists(path.join(f.convertDirReal, key)), true);
 });
