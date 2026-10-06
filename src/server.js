@@ -189,6 +189,7 @@ async function runStart(providedConfig, log) {
     library = startLibrary({ db, config, log });
     library.onScanComplete(createAudioMetaPass({ db, mediaRoot: config.mediaRoot, log }).refreshAudioMeta);
     library.onScanComplete(createImageMetaSync({ db, mediaRoot: config.mediaRoot, log }).syncImageMeta);
+    if (queue) library.onScanComplete(() => queue?.requestCleanup());
     const app = createApp({ config, db, log, library, conversions: queue ?? undefined });
     await listen(app.server, config.host, config.port);
     log.info('listening', { host: config.host, port: config.port });
