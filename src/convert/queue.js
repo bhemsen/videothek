@@ -15,6 +15,7 @@ import { APP_PUBLIC_DIR } from '../config-converter.js';
 import { claimNextConversion } from '../db/conversions.js';
 import { runConversionJob } from './job.js';
 import { runConverter } from './run-converter.js';
+import { errorCode } from './error-code.js';
 import { setupConvertDir } from './work-dir.js';
 
 /** @typedef {import('node:sqlite').DatabaseSync} DatabaseSync */
@@ -265,15 +266,4 @@ function safeKill(state, handle, signal) {
   } catch (err) {
     state.log.error('conversion_error', { code: errorCode(err) });
   }
-}
-
-/**
- * @param {unknown} err
- * @returns {string} the errno `code`, else the error's `name`, else `'ERR_UNKNOWN'`.
- */
-function errorCode(err) {
-  const code = /** @type {{ code?: unknown }} */ (err)?.code;
-  if (typeof code === 'string') return code;
-  const name = /** @type {{ name?: unknown }} */ (err)?.name;
-  return typeof name === 'string' ? name : 'ERR_UNKNOWN';
 }
