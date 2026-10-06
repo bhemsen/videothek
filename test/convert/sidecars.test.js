@@ -131,3 +131,30 @@ test('interpretAndPublish stores sidecars, appends own notes and counts their by
   assert.equal(stored?.output_size, main + (await fs.stat(path.join(dir, 'sub-0.vtt'))).size);
   await assert.rejects(fs.stat(path.join(dir, 'sub-5.vtt')));
 });
+
+test('containment: symlink out of out/, ../ path and signature edge cases', async (t) => {
+  const { outDir, publishDir } = await dirs(t);
+  const secret = await put(publishDir, 'secret.vtt', 'WEBVTT\n');
+  const link = path.join(outDir, 'link.vtt');
+  let linked = true;
+  await fs.symlink(secret, link).catch(() => fs.symlink(secret, link, 'junction')).catch(() => { linked = false; });
+  const dots = await put(outDir, '..a.vtt', 'WEBVTT');
+  const bad = await put(outDir, 'bad.vtt', 'WEBVTTX\n');
+  const tab = await put(outDir, 'tab.vtt', 'WEBVTT\tfoo');
+  const res = await publishSidecars({
+    outDir, publishDir,
+    sidecars: [
+      { path: link, stream: 1, language: 'eng' },
+      { path: path.join(outDir, '..', path.basename(publishDir), 'secret.vtt'), stream: 2, language: 'eng' },
+      { path: bad, stream: 3, language: 'eng' },
+      { path: dots, stream: 4, language: 'eng' },
+      { path: tab, stream: 5, language: 'eng' },
+    ],
+  });
+  assert.deepEqual(res.published.map((p) => p.file), ['sub-0.vtt', 'sub-1.vtt']);
+  assert.equal(res.notes.length, linked ? 3 : 2);
+  const joined = res.notes.join('\n');
+  assert.match(joined, /stream 2/);
+  assert.match(joined, /stream 3/);
+  if (linked) assert.match(joined, /stream 1/);
+});

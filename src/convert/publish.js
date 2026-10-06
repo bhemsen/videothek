@@ -75,7 +75,8 @@ async function restatSource({ config, row }, sourcePath) {
 }
 
 /**
- * Step 6: prepares and verifies the publish directory, renames the verified
+ * Step 6: prepares and verifies the publish directory, publishes the verified
+ * WebVTT sidecars (`sidecars.js`), renames the verified
  * output into it, then commits the publish transaction.
  * @param {NormalizedOptions} opts
  * @param {{ verifiedPath: string, outDir: string, notes: string[], sidecars: import('./jsonl.js').ConverterSidecar[], roots: RedactRoots }} ctx
@@ -85,7 +86,7 @@ async function publish({ db, now, row, convertDirReal, isCancelled }, { verified
   const publishDir = await preparePublishDir({ convertDirReal, storageKey: row.storage_key });
   if (!publishDir.ok) return recordFailure(db, row, now, 'storage_failed', publishDir.code);
 
-  const side = await publishSidecars({ outDir: await fsRealpath(outDir).catch(() => outDir), publishDir: publishDir.publishDirReal, sidecars });
+  const side = await publishSidecars({ outDir, publishDir: publishDir.publishDirReal, sidecars });
   const targetPath = path.join(publishDir.publishDirReal, TARGETS[row.target].file);
   let size;
   try {

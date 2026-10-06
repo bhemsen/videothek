@@ -35,7 +35,8 @@ export function sidecarLang(language) {
  */
 function relativeInside(outDir, entryPath) {
   const rel = path.relative(outDir, entryPath);
-  return rel === '' || rel.startsWith('..') || path.isAbsolute(rel) ? null : rel;
+  const escapes = rel === '..' || rel.startsWith(`..${path.sep}`) || path.isAbsolute(rel);
+  return rel === '' || escapes ? null : rel;
 }
 
 /**
@@ -45,11 +46,12 @@ function relativeInside(outDir, entryPath) {
 async function hasWebvttSignature(file) {
   const handle = await open(file, 'r');
   try {
-    const buf = Buffer.alloc(9);
-    const { bytesRead } = await handle.read(buf, 0, 9, 0);
+    const buf = Buffer.alloc(10);
+    const { bytesRead } = await handle.read(buf, 0, 10, 0);
     const head = buf.subarray(0, bytesRead);
     const body = head.length >= 3 && head[0] === 0xef && head[1] === 0xbb && head[2] === 0xbf ? head.subarray(3) : head;
-    return body.subarray(0, 6).toString('latin1') === 'WEBVTT';
+    if (body.subarray(0, 6).toString('latin1') !== 'WEBVTT') return false;
+    return body.length === 6 || [0x20, 0x09, 0x0d, 0x0a].includes(body[6]);
   } finally {
     await handle.close();
   }
