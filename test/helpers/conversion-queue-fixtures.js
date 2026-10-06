@@ -159,7 +159,7 @@ export async function successResult({ outDir }) {
   await fs.writeFile(output, Buffer.concat([Buffer.from('fLaC', 'ascii'), Buffer.alloc(4)]));
   return {
     spawnError: null, exitCode: 0, signal: null, killedBy: null,
-    records: [{ outcome: 'converted', output, error: null, notes: [] }],
+    records: [{ type: 'file', outcome: 'converted', output, error: null, notes: [], sidecars: [] }, { type: 'summary', total: 1, exitCode: 0 }],
     stdoutInvalid: false, stdioTimedOut: false, stderrTail: '',
   };
 }

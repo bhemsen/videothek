@@ -198,7 +198,7 @@ async function interpretAndPublish(opts, { outDir, result, source }) {
     return recordFailure(db, row, now, 'source_changed', null);
   }
 
-  return publish(opts, { verifiedPath: verified.path, notes: interpreted.notes, roots });
+  return publish(opts, { verifiedPath: verified.path, notes: interpreted.notes, sidecars: interpreted.sidecars, roots });
 }
 
 /**
@@ -226,7 +226,7 @@ async function restatSource({ config, row }, sourcePath) {
  * Step 6: prepares and verifies the publish directory, renames the verified
  * output into it, then commits the publish transaction.
  * @param {NormalizedOptions} opts
- * @param {{ verifiedPath: string, notes: string[], roots: RedactRoots }} ctx
+ * @param {{ verifiedPath: string, notes: string[], sidecars: import('./jsonl.js').ConverterSidecar[], roots: RedactRoots }} ctx
  * @returns {Promise<JobOutcome>}
  */
 async function publish({ db, now, row, convertDirReal }, { verifiedPath, notes, roots }) {
