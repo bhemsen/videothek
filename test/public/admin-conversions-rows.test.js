@@ -17,13 +17,13 @@ function find(node, test) {
   return out;
 }
 
-/** @param {object} overrides @param {Set<string>} [errorIds] @returns {{ sections: Node[], cancelled: string[] }} */
-function render(overrides, errorIds = new Set()) {
+/** @param {object} overrides @param {Set<string>} [cancelErrorIds] @returns {{ sections: Node[], cancelled: string[] }} */
+function render(overrides, cancelErrorIds = new Set()) {
   setup();
   /** @type {any} */ (globalThis).document.createElementNS = (/** @type {string} */ _ns, /** @type {string} */ tag) => new Node(tag);
   const cancelled = /** @type {string[]} */ ([]);
   const e = { ...entry(7, {}), item: ITEM, cancelling: false, ...overrides };
-  const sections = buildGroups([/** @type {any} */ (e)], { errorIds, onAction: () => {}, onCancel: (id) => cancelled.push(id) });
+  const sections = buildGroups([/** @type {any} */ (e)], { errorIds: new Set(), cancelErrorIds, onAction: () => {}, onCancel: (id) => cancelled.push(id) });
   return { sections: /** @type {Node[]} */ (/** @type {unknown} */ (sections)), cancelled };
 }
 
@@ -62,8 +62,8 @@ test('failed/stale rows have no "Abbrechen"; a cancelled row shows the reason al
   assert.doesNotMatch(failed.sections[0].textContent, /fehlgeschlagen:/);
 });
 
-test('a failed cancel (errorIds) shows the generic German error on the queued row, button still available', () => {
+test('a failed cancel (cancelErrorIds) shows the cancel-specific German error on the queued row, button still available', () => {
   const { sections } = render({ status: 'queued', position: 1 }, new Set(['7']));
-  assert.match(sections[0].textContent, /Konvertieren nicht möglich\. Bitte erneut versuchen\./);
+  assert.match(sections[0].textContent, /Abbrechen nicht möglich\. Bitte erneut versuchen\./);
   assert.equal(dangerButtons(sections)[0].disabled, false);
 });

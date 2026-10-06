@@ -43,6 +43,8 @@ export function mountConversionPanel(container) {
   let byId = new Map();
   /** @type {Set<string>} */
   const errorIds = new Set();
+  /** @type {Set<string>} */
+  const cancelErrorIds = new Set();
   /** @type {ConversionUsage} */
   let usage = { bytes: 0, count: 0, freeBytes: null };
   let enabled = true;
@@ -70,6 +72,7 @@ export function mountConversionPanel(container) {
     usage = result.usage;
     byId = new Map(result.items.map((item) => [String(item.itemId), item]));
     errorIds.clear();
+    cancelErrorIds.clear();
   }
 
   /** A poll round: on a non-auth error the previous render is left as is and polling keeps retrying. @returns {Promise<boolean>} */
@@ -103,7 +106,7 @@ export function mountConversionPanel(container) {
     refreshPolling();
   }
 
-  /** Cancels a queued/running row, then reloads the list (409/404/503 simply show the real state; other failures mark the row with the generic error). @param {string} id @returns {Promise<void>} */
+  /** Cancels a queued/running row, then reloads the list (409/404/503 simply show the real state; other failures mark the row with the cancel error). @param {string} id @returns {Promise<void>} */
   async function cancel(id) {
     /** @type {unknown} */
     let failure = null;
@@ -119,19 +122,19 @@ export function mountConversionPanel(container) {
     }
     // 409/404/503 are settled by the reload; anything else shows the generic row error.
     const status = failure instanceof ApiError ? failure.status : 0;
-    if (failure !== null && ![409, 404, 503].includes(status)) errorIds.add(id);
+    if (failure !== null && ![409, 404, 503].includes(status)) cancelErrorIds.add(id);
     render();
     refreshPolling();
   }
 
   /** @returns {void} */
   function render() {
-    body.replaceChildren(...renderBody({ enabled, loadError, usage, items: [...byId.values()], errorIds, onAction: act, onCancel: cancel }));
+    body.replaceChildren(...renderBody({ enabled, loadError, usage, items: [...byId.values()], errorIds, cancelErrorIds, onAction: act, onCancel: cancel }));
   }
 }
 
 /**
- * @param {{ enabled: boolean, loadError: boolean, usage: ConversionUsage, items: ConversionEntry[], errorIds: Set<string>, onAction: (id: string) => void, onCancel: (id: string) => void }} state
+ * @param {{ enabled: boolean, loadError: boolean, usage: ConversionUsage, items: ConversionEntry[], errorIds: Set<string>, cancelErrorIds: Set<string>, onAction: (id: string) => void, onCancel: (id: string) => void }} state
  * @returns {HTMLElement[]}
  */
 function renderBody(state) {
@@ -142,7 +145,7 @@ function renderBody(state) {
     return nodes;
   }
   if (state.items.length === 0) return [el('p', { class: 'conversion-empty' }, EMPTY_TEXT)];
-  return [usageLine(state.usage), ...buildGroups(state.items, { errorIds: state.errorIds, onAction: state.onAction, onCancel: state.onCancel })];
+  return [usageLine(state.usage), ...buildGroups(state.items, { errorIds: state.errorIds, cancelErrorIds: state.cancelErrorIds, onAction: state.onAction, onCancel: state.onCancel })];
 }
 
 /**

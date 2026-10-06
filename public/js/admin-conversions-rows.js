@@ -21,6 +21,7 @@ import { failureReason, statusLabel } from './lib/conversion-format.js';
  * @property {Set<string>} errorIds - itemIds whose last POST failed with an
  *   error the decorator's rules treat as "generic" (see conversion-format.js
  *   consumers); shows the fallback text instead of the row's own reason.
+ * @property {Set<string>} cancelErrorIds - itemIds whose last cancel POST failed unexpectedly.
  * @property {(id: string) => void} onAction - invoked with the itemId when a
  *   retry/re-convert button is pressed.
  * @property {(id: string) => void} onCancel - invoked with the itemId when the
@@ -30,6 +31,7 @@ import { failureReason, statusLabel } from './lib/conversion-format.js';
 const MIDDLE_DOT = '·';
 const SVG_NS = 'http://www.w3.org/2000/svg';
 const MAX_FINISHED = 20;
+const CANCEL_ERROR = 'Abbrechen nicht möglich. Bitte erneut versuchen.';
 const GENERIC_ERROR = 'Konvertieren nicht möglich. Bitte erneut versuchen.';
 
 /** @type {readonly { status: ConversionStatus, heading: string }[]} */
@@ -143,8 +145,8 @@ function buildActive(status, entry, ctx) {
     button.disabled = true;
     ctx.onCancel(String(entry.itemId));
   });
-  const failed = ctx.errorIds.has(String(entry.itemId));
-  return el('div', { class: 'conversion-active' }, failed && el('span', { class: 'conversion-fail__reason' }, GENERIC_ERROR), text, button);
+  const failed = ctx.cancelErrorIds.has(String(entry.itemId));
+  return el('div', { class: 'conversion-active' }, failed && el('span', { class: 'conversion-fail__reason' }, CANCEL_ERROR), text, button);
 }
 
 /** @param {ConversionEntry} entry @returns {string} */
