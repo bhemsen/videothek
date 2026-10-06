@@ -64,7 +64,7 @@ function parseArgs(argv) {
   const [to, target, json, source, outDir, extra] = argv.slice(i);
   if (to !== '--to' || json !== '--json' || !target || !source || !outDir || extra !== undefined) throw new UsageError();
   if (!Object.hasOwn(TARGET_EXT, target)) throw new UsageError();
-  return { ...opts, target, source, outDir: path.resolve(outDir) };
+  return { ...opts, target, source: path.resolve(source), outDir: path.resolve(outDir) };
 }
 
 /** @param {number} ms */
@@ -96,21 +96,30 @@ async function finish(ctx, records) {
 }
 
 /**
+ * @param {ModeContext} ctx
  * @param {string} output
  * @returns {Record<string, unknown>}
  */
-function converted(output) {
-  return fileRecord('converted', { output });
+function converted(ctx, output) {
+  return fileRecord(ctx, 'converted', { output });
 }
 
 /**
- * One `file` record in the converter v3.3 shape (`schema` 1).
+ * One `file` record in the converter v3.3 shape (`schema` 1), mirroring
+ * converter/report.py `file_record`: `source` is the absolute argv source,
+ * `output` is always present (absolute), and `attempt` and `sidecars` are
+ * `null` unless the outcome is `converted`.
+ * @param {ModeContext} ctx
  * @param {string} outcome
  * @param {Record<string, unknown>} [extra] fields overriding the defaults
  * @returns {Record<string, unknown>}
  */
-function fileRecord(outcome, extra = {}) {
-  return { type: 'file', schema: 1, source: '/media/Film.mkv', outcome, attempt: 1, notes: [], error: null, sidecars: [], ...extra };
+function fileRecord(ctx, outcome, extra = {}) {
+  const isConverted = outcome === 'converted';
+  return {
+    type: 'file', schema: 1, source: ctx.source, output: ctx.outPath, outcome,
+    attempt: isConverted ? 1 : null, notes: [], error: null, sidecars: isConverted ? [] : null, ...extra,
+  };
 }
 
 /**
@@ -152,14 +161,14 @@ function syntheticBytes(target, videoFourcc = 'avc1') {
  */
 async function reportConverted(ctx, outPath, bytes) {
   await writeFile(outPath, bytes);
-  await finish(ctx, [converted(outPath), summary({ converted: 1 })]);
+  await finish(ctx, [converted(ctx, outPath), summary({ converted: 1 })]);
 }
 
 /** @param {ModeContext} ctx the default mode: sample copy or synthetic bytes, record + summary */
 async function modeOk(ctx) {
   if (ctx.sampleDir) await copyFile(path.join(ctx.sampleDir, `sample.${ctx.ext}`), ctx.outPath);
   else await writeFile(ctx.outPath, syntheticBytes(ctx.target));
-  await finish(ctx, [converted(ctx.outPath), summary({ converted: 1 })]);
+  await finish(ctx, [converted(ctx, ctx.outPath), summary({ converted: 1 })]);
 }
 
 /** @param {ModeContext} ctx `.partial` file, pid to `<hold>/pid`, then stays alive until killed */
@@ -238,10 +247,10 @@ const MODES = {
   'not-browser-safe': (ctx) => reportConverted(ctx, ctx.outPath, syntheticBytes(ctx.target, 'hvc1')),
   fail: (ctx) => {
     process.exitCode = 1;
-    return finish(ctx, [fileRecord('failed', { error: 'ffmpeg exited with 1' }), summary({ failed: 1, exit_code: 1 })]);
+    return finish(ctx, [fileRecord(ctx, 'failed', { error: 'ffmpeg exited with 1' }), summary({ failed: 1, exit_code: 1 })]);
   },
-  unsupported: (ctx) => finish(ctx, [fileRecord('unsupported'), summary({ unsupported: 1 })]),
-  skipped: (ctx) => finish(ctx, [fileRecord('skipped'), summary({ skipped: 1 })]),
+  unsupported: (ctx) => finish(ctx, [fileRecord(ctx, 'unsupported'), summary({ unsupported: 1 })]),
+  skipped: (ctx) => finish(ctx, [fileRecord(ctx, 'skipped'), summary({ skipped: 1 })]),
   garbage: () => {
     process.stdout.write('not a json line\n');
   },
@@ -249,7 +258,7 @@ const MODES = {
     await writeFile(ctx.outPath, syntheticBytes(ctx.target));
     await finish(ctx, [summary({ total: 0 })]);
   },
-  'missing-output': (ctx) => finish(ctx, [converted(ctx.outPath), summary({ converted: 1 })]),
+  'missing-output': (ctx) => finish(ctx, [converted(ctx, ctx.outPath), summary({ converted: 1 })]),
   escape: (ctx) => reportConverted(ctx, path.join(ctx.outDir, '..', `x.${ctx.ext}`), syntheticBytes(ctx.target)),
   'wrong-ext': (ctx) => reportConverted(ctx, path.join(ctx.outDir, `${ctx.stem}.mkv`), syntheticBytes(ctx.target)),
   crash: async (ctx) => {
