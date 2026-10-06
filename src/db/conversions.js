@@ -19,11 +19,13 @@
  * @property {string | null} output_rel
  * @property {number | null} output_size
  * @property {string} notes
+ * @property {string} sidecars JSON array of sidecar file names
  * @property {string | null} error
  * @property {string | null} error_detail
  * @property {number} queued_at
  * @property {number | null} started_at
  * @property {number | null} finished_at
+ * @property {number | null} missing_since
  */
 
 /**
@@ -68,7 +70,8 @@ export function getFreshConversion(db, itemRow) {
  * request, a retry after `failed`, and a re-conversion of a stale copy alike.
  * Re-queueing resets `notes` to `'[]'` and clears `error`/`error_detail`/
  * `started_at`/`finished_at`, but leaves a prior `output_rel`/`output_size`
- * in place until the new run replaces them.
+ * in place until the new run replaces them (likewise `sidecars`), and clears
+ * `missing_since`.
  * @param {import('node:sqlite').DatabaseSync} db
  * @param {{ relPath: string, storageKey: string, target: ConversionTarget, sourceSize: number, sourceMtimeMs: number, now: number }} input
  * @returns {void}
@@ -90,6 +93,7 @@ export function enqueueConversion(db, { relPath, storageKey, target, sourceSize,
        error_detail = NULL,
        started_at = NULL,
        finished_at = NULL,
+       missing_since = NULL,
        queued_at = excluded.queued_at`
   ).run(relPath, storageKey, target, sourceSize, sourceMtimeMs, now);
 }
@@ -157,10 +161,10 @@ export function recordSourceStat(db, relPath, size, mtimeMs) {
  * a source that changed mid-conversion never gets marked playable from a
  * stale copy.
  * @param {import('node:sqlite').DatabaseSync} db
- * @param {{ relPath: string, outputRel: string, outputSize: number, notes: string, now: number }} input
+ * @param {{ relPath: string, outputRel: string, outputSize: number, notes: string, sidecars: string, now: number }} input
  * @returns {void}
  */
-export function publishConversion(db, { relPath, outputRel, outputSize, notes, now }) {
+export function publishConversion(db, { relPath, outputRel, outputSize, notes, sidecars, now }) {
   try {
     db.exec('BEGIN IMMEDIATE');
     const source = /** @type {{ source_size: number, source_mtime_ms: number } | undefined} */ (
@@ -168,10 +172,10 @@ export function publishConversion(db, { relPath, outputRel, outputSize, notes, n
     );
     db.prepare(
       `UPDATE conversions SET
-         status = 'playable', output_rel = ?, output_size = ?, notes = ?,
+         status = 'playable', output_rel = ?, output_size = ?, notes = ?, sidecars = ?,
          error = NULL, error_detail = NULL, finished_at = ?
        WHERE rel_path = ?`
-    ).run(outputRel, outputSize, notes, now, relPath);
+    ).run(outputRel, outputSize, notes, sidecars, now, relPath);
     if (source) {
       db.prepare('UPDATE library_items SET playable = 1 WHERE rel_path = ? AND size = ? AND mtime_ms = ?').run(
         relPath,
@@ -212,6 +216,33 @@ export function failConversion(db, { relPath, error, detail, now }) {
     } catch {
       // No transaction to roll back, e.g. BEGIN itself failed; the original
       // error below is what matters.
+    }
+    throw err;
+  }
+}
+
+/**
+ * Cancels a still-`queued` row: guarded so a `converting`/`playable`/`failed`
+ * row is never touched. Ends as `failed` with `error = 'cancelled'`.
+ * @param {import('node:sqlite').DatabaseSync} db
+ * @param {{ relPath: string, now: number }} input
+ * @returns {boolean} whether a queued row was cancelled
+ */
+export function cancelQueuedConversion(db, { relPath, now }) {
+  try {
+    db.exec('BEGIN IMMEDIATE');
+    const result = db
+      .prepare(
+        "UPDATE conversions SET status = 'failed', error = 'cancelled', error_detail = NULL, finished_at = ? WHERE rel_path = ? AND status = 'queued'"
+      )
+      .run(now, relPath);
+    db.exec('COMMIT');
+    return Number(result.changes) > 0;
+  } catch (err) {
+    try {
+      db.exec('ROLLBACK');
+    } catch {
+      // No transaction to roll back; the original error below is what matters.
     }
     throw err;
   }

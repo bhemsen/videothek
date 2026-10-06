@@ -175,7 +175,7 @@ test('GET /api/conversions: position counts waiting rows only, group ordering, i
     const playableItem = movie({ rel_path: 'ok.mkv' });
     const playableId = upsertItem(app.db, playableItem, NOW);
     enqueueConversion(app.db, { relPath: 'ok.mkv', storageKey: storageKey('ok.mkv'), target: 'web', sourceSize: playableItem.size, sourceMtimeMs: playableItem.mtime_ms, now: 6 });
-    publishConversion(app.db, { relPath: 'ok.mkv', outputRel: `${storageKey('ok.mkv')}/web.mp4`, outputSize: 500, notes: '[]', now: 40 });
+    publishConversion(app.db, { relPath: 'ok.mkv', outputRel: `${storageKey('ok.mkv')}/web.mp4`, outputSize: 500, notes: '[]', sidecars: '[]', now: 40 });
 
     const res = await call(app.baseUrl, 'GET', '/api/conversions', { cookie: adminCookie });
     assert.equal(res.status, 200);
