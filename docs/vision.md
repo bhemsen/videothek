@@ -50,7 +50,8 @@ harvest: `docs/prior-art.md`.
   a restart or manual import — within 10 s when change detection works, and at
   the latest after the periodic rescan interval (default 15 min).
 - Weak hardware: on a Raspberry Pi 4 (4 GB) the service idles below 100 MB RSS
-  and serves two concurrent 1080p direct-play streams without stutter.
+  and serves two concurrent 1080p direct-play streams without stutter, also
+  while one conversion runs.
 - Footprint: zero runtime dependencies in `package.json`.
 
 ## Scope
