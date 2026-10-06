@@ -1,5 +1,6 @@
 import { spawn } from 'node:child_process';
 import { createJsonLinesReader } from './jsonl.js';
+import { errorCode } from './error-code.js';
 
 // The only src/ module allowed to import node:child_process
 // (test/constitution.test.js, "src/ and public/ never use child_process,
@@ -61,20 +62,6 @@ const CONTINUATION_BYTE_MAX = 0xbf;
  * @property {Promise<RunResult>} result
  * @property {(signal: NodeJS.Signals) => void} kill
  */
-
-/**
- * Extracts a safe-to-log identifier for a spawn failure: the errno code
- * (`'ENOENT'`, …) when there is one, never the raw message, which can embed
- * the converter's install path.
- * @param {unknown} err
- * @returns {string}
- */
-function errorCode(err) {
-  const code = /** @type {{ code?: unknown }} */ (err)?.code;
-  if (typeof code === 'string') return code;
-  const name = /** @type {{ name?: unknown }} */ (err)?.name;
-  return typeof name === 'string' ? name : 'ERR_SPAWN';
-}
 
 /**
  * A fixed-size trailing window over the bytes seen so far, for
@@ -139,7 +126,7 @@ function wireChild(child, { reader, stderrRing, closeGraceMs, settle, onCap }) {
   });
   child.on('error', (err) => {
     if (spawnSucceeded) return;
-    settle({ spawnError: errorCode(err) });
+    settle({ spawnError: errorCode(err, 'ERR_SPAWN') });
   });
   child.stdout?.on('data', (chunk) => {
     if (capped) return;
@@ -209,7 +196,7 @@ export function runConverter({ cmd, env, target, source, outDir, cwd, closeGrace
       cwd,
     });
   } catch (err) {
-    settle({ spawnError: errorCode(err) });
+    settle({ spawnError: errorCode(err, 'ERR_SPAWN') });
     return { result, kill: () => {} };
   }
 
