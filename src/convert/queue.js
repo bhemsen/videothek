@@ -18,6 +18,7 @@ import { runConverter } from './run-converter.js';
 import { errorCode } from './error-code.js';
 import { setupConvertDir } from './work-dir.js';
 import { terminateRun } from './queue-kill.js';
+import { requestCleanup, afterJob } from './cleanup-schedule.js';
 
 /** @typedef {import('node:sqlite').DatabaseSync} DatabaseSync */
 /** @typedef {import('../config.js').Config} Config */
@@ -44,6 +45,8 @@ import { terminateRun } from './queue-kill.js';
  *   (idempotent); anything else `'not_cancellable'`. A DB error propagates.
  * @property {() => string | null} cancellingRelPath - the running job's
  *   `rel_path` while its cancel flag is set, else `null`.
+ * @property {() => void} requestCleanup - asks for one cleanup pass (scan
+ *   trigger); see `cleanup-schedule.js`. No-op before ready / after `stop()`.
  */
 
 /**
@@ -83,6 +86,8 @@ import { terminateRun } from './queue-kill.js';
  * @property {NodeJS.Timeout | null} killTimer - the one armed `SIGKILL` escalation, if any (shared by `stop()` and `cancel()`).
  * @property {string | null} currentRelPath - `rel_path` of the claimed job still running.
  * @property {boolean} cancelRequested - the running job's cancel flag.
+ * @property {Promise<void> | null} cleanupPromise - the in-flight cleanup pass, if any.
+ * @property {boolean} cleanupPending - a cleanup was requested during a job or cleanup.
  */
 
 const defaultRemoveDir = (/** @type {string} */ target) =>
@@ -115,6 +120,8 @@ export function createConversionQueue(options) {
     killTimer: null,
     currentRelPath: null,
     cancelRequested: false,
+    cleanupPromise: null,
+    cleanupPending: false,
   };
   return {
     start: () => start(state),
@@ -122,6 +129,7 @@ export function createConversionQueue(options) {
     stop: () => stop(state),
     cancel: (relPath) => cancel(state, relPath),
     cancellingRelPath: () => (state.cancelRequested ? state.currentRelPath : null),
+    requestCleanup: () => requestCleanup(state, () => kick(state)),
   };
 }
 
@@ -189,7 +197,7 @@ function onHandle(state, handle) {
  * @param {QueueState} state
  */
 function kick(state) {
-  if (!state.ready || state.stopping || state.currentJobPromise !== null) return;
+  if (!state.ready || state.stopping || state.currentJobPromise !== null || state.cleanupPromise !== null) return;
   let row;
   try {
     row = claimNextConversion(state.db, state.now());
@@ -219,7 +227,7 @@ function kick(state) {
     state.currentJobPromise = null;
     state.currentRelPath = null;
     state.cancelRequested = false;
-    if (!state.stopping) kick(state);
+    afterJob(state, () => kick(state));
   });
 }
 
@@ -231,7 +239,7 @@ function kick(state) {
  * @returns {Promise<void>}
  */
 function waitForJobOrDeadline(state) {
-  const jobDone = state.currentJobPromise;
+  const jobDone = state.currentJobPromise ?? state.cleanupPromise;
   if (jobDone === null) return Promise.resolve();
   return new Promise((resolve) => {
     let settled = false;
