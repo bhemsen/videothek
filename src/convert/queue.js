@@ -12,11 +12,12 @@
 
 import { rm } from 'node:fs/promises';
 import { APP_PUBLIC_DIR } from '../config-converter.js';
-import { claimNextConversion } from '../db/conversions.js';
+import { claimNextConversion, cancelQueuedConversion, getConversion } from '../db/conversions.js';
 import { runConversionJob } from './job.js';
 import { runConverter } from './run-converter.js';
 import { errorCode } from './error-code.js';
 import { setupConvertDir } from './work-dir.js';
+import { terminateRun } from './queue-kill.js';
 
 /** @typedef {import('node:sqlite').DatabaseSync} DatabaseSync */
 /** @typedef {import('../config.js').Config} Config */
@@ -36,6 +37,13 @@ import { setupConvertDir } from './work-dir.js';
  * @property {() => Promise<void>} stop - prevents further claims and waits
  *   for the currently running job to finish (its DB write and cleanup), or
  *   at the latest `stopDeadlineMs` after this call; memoised, never rejects.
+ * @property {(relPath: string) => 'cancelled' | 'cancelling' | 'not_cancellable'} cancel -
+ *   `queued` row: ended `failed`/`cancelled` at once (`'cancelled'`); the
+ *   running job's row: sets its cancel flag, terminates the run
+ *   (`SIGTERM`, `SIGKILL` after `killGraceMs`) and returns `'cancelling'`
+ *   (idempotent); anything else `'not_cancellable'`. A DB error propagates.
+ * @property {() => string | null} cancellingRelPath - the running job's
+ *   `rel_path` while its cancel flag is set, else `null`.
  */
 
 /**
@@ -72,7 +80,9 @@ import { setupConvertDir } from './work-dir.js';
  * @property {Promise<void> | null} stopPromise - memoises `stop()`.
  * @property {Promise<void> | null} currentJobPromise - the claimed job still running, if any.
  * @property {RunConverter | null} currentHandle - the running job's run handle, once step 4 is reached.
- * @property {NodeJS.Timeout | null} killTimer - the armed `SIGKILL` escalation, if any.
+ * @property {NodeJS.Timeout | null} killTimer - the one armed `SIGKILL` escalation, if any (shared by `stop()` and `cancel()`).
+ * @property {string | null} currentRelPath - `rel_path` of the claimed job still running.
+ * @property {boolean} cancelRequested - the running job's cancel flag.
  */
 
 const defaultRemoveDir = (/** @type {string} */ target) =>
@@ -103,8 +113,16 @@ export function createConversionQueue(options) {
     currentJobPromise: null,
     currentHandle: null,
     killTimer: null,
+    currentRelPath: null,
+    cancelRequested: false,
   };
-  return { start: () => start(state), kick: () => kick(state), stop: () => stop(state) };
+  return {
+    start: () => start(state),
+    kick: () => kick(state),
+    stop: () => stop(state),
+    cancel: (relPath) => cancel(state, relPath),
+    cancellingRelPath: () => (state.cancelRequested ? state.currentRelPath : null),
+  };
 }
 
 /**
@@ -180,6 +198,8 @@ function kick(state) {
     return;
   }
   if (!row) return;
+  state.currentRelPath = row.rel_path;
+  state.cancelRequested = false;
   const jobPromise = runConversionJob({
     db: state.db,
     config: state.config,
@@ -190,12 +210,15 @@ function kick(state) {
     convertDirReal: state.convertDirReal,
     row,
     isStopping: () => state.stopping,
+    isCancelled: () => state.cancelRequested,
     onHandle: (handle) => onHandle(state, handle),
   }).catch((err) => {
     state.log.error('conversion_error', { key: row.storage_key, code: errorCode(err) });
   });
   state.currentJobPromise = jobPromise.finally(() => {
     state.currentJobPromise = null;
+    state.currentRelPath = null;
+    state.cancelRequested = false;
     if (!state.stopping) kick(state);
   });
 }
@@ -240,30 +263,26 @@ function waitForJobOrDeadline(state) {
 function stop(state) {
   if (state.stopPromise) return state.stopPromise;
   state.stopping = true;
-  if (state.currentHandle) {
-    const handle = state.currentHandle;
-    safeKill(state, handle, 'SIGTERM');
-    state.killTimer = setTimeout(() => {
-      state.killTimer = null;
-      safeKill(state, handle, 'SIGKILL');
-    }, state.killGraceMs);
-  }
+  terminateRun(state);
   state.stopPromise = waitForJobOrDeadline(state);
   return state.stopPromise;
 }
 
 /**
- * Sends `signal` via the run handle; a throw (never expected from
- * `runConverter`'s `kill`) only logs, so `stop()` still returns its promise
- * and the deadline still bounds it.
+ * `cancel(relPath)`: see `ConversionQueue.cancel`. A running job whose row
+ * is no longer `converting` (its publish already committed) is too late to
+ * cancel.
  * @param {QueueState} state
- * @param {RunConverter} handle
- * @param {NodeJS.Signals} signal
+ * @param {string} relPath
+ * @returns {'cancelled' | 'cancelling' | 'not_cancellable'}
  */
-function safeKill(state, handle, signal) {
-  try {
-    handle.kill(signal);
-  } catch (err) {
-    state.log.error('conversion_error', { code: errorCode(err) });
+function cancel(state, relPath) {
+  if (state.currentRelPath === relPath) {
+    if (state.cancelRequested) return 'cancelling';
+    if (getConversion(state.db, relPath)?.status !== 'converting') return 'not_cancellable';
+    state.cancelRequested = true;
+    terminateRun(state);
+    return 'cancelling';
   }
+  return cancelQueuedConversion(state.db, { relPath, now: state.now() }) ? 'cancelled' : 'not_cancellable';
 }
