@@ -115,11 +115,11 @@ test('toItemDetailJson: next mirrors the series successor summary; null for a mo
       title: 'Lügen',
     });
 
-    const detail = await toItemDetailJson({ db, mediaRoot: '/does-not-exist' }, e01);
+    const detail = await toItemDetailJson({ db, mediaRoot: '/does-not-exist', convertDir: '/does-not-exist-either' }, e01);
     assert.deepEqual(detail.next, { id: e02.id, title: 'Lügen', season: 1, episode: 2, episodeEnd: 3 });
 
     const movie = insertItem(db, { rel_path: 'Filme/Arrival.mp4', title: 'Arrival' });
-    const movieDetail = await toItemDetailJson({ db, mediaRoot: '/does-not-exist' }, movie);
+    const movieDetail = await toItemDetailJson({ db, mediaRoot: '/does-not-exist', convertDir: '/does-not-exist-either' }, movie);
     assert.equal(movieDetail.next, null);
   } finally {
     db.close();
@@ -130,7 +130,7 @@ test('toItemDetailJson: still includes every toItemJson key alongside next/subti
   const db = makeDb();
   try {
     const movie = insertItem(db, { rel_path: 'Filme/Arrival.mp4', title: 'Arrival', year: 2016 });
-    const detail = await toItemDetailJson({ db, mediaRoot: '/does-not-exist' }, movie);
+    const detail = await toItemDetailJson({ db, mediaRoot: '/does-not-exist', convertDir: '/does-not-exist-either' }, movie);
     assert.equal(detail.title, 'Arrival');
     assert.equal(detail.year, 2016);
     assert.equal(detail.fileName, 'Arrival.mp4');
@@ -148,7 +148,7 @@ test('toItemDetailJson: subtitles lists a video\'s sidecars without leaking a pa
     await writeMediaFile(root, 'Filme/Arrival.en.vtt');
 
     const video = insertItem(db, { rel_path: 'Filme/Arrival.mp4', kind: 'video', title: 'Arrival' });
-    const detail = await toItemDetailJson({ db, mediaRoot: root }, video);
+    const detail = await toItemDetailJson({ db, mediaRoot: root, convertDir: path.join(root, '.convert-none') }, video);
     assert.deepEqual(detail.subtitles, [
       { index: 0, lang: 'de', label: 'de' },
       { index: 1, lang: 'en', label: 'en' },
@@ -163,7 +163,7 @@ test('toItemDetailJson: subtitles lists a video\'s sidecars without leaking a pa
       ext: 'flac',
       title: 'Song',
     });
-    const audioDetail = await toItemDetailJson({ db, mediaRoot: root }, audio);
+    const audioDetail = await toItemDetailJson({ db, mediaRoot: root, convertDir: path.join(root, '.convert-none') }, audio);
     assert.deepEqual(audioDetail.subtitles, []);
 
     const image = insertItem(db, {
@@ -174,7 +174,7 @@ test('toItemDetailJson: subtitles lists a video\'s sidecars without leaking a pa
       ext: 'jpg',
       title: 'Urlaub',
     });
-    const imageDetail = await toItemDetailJson({ db, mediaRoot: root }, image);
+    const imageDetail = await toItemDetailJson({ db, mediaRoot: root, convertDir: path.join(root, '.convert-none') }, image);
     assert.deepEqual(imageDetail.subtitles, []);
   } finally {
     db.close();
