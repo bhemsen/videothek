@@ -47,7 +47,9 @@ exits with code `1`.
 
 Setting `CONVERTER_CMD` lets an admin convert a not-playable movie, episode,
 music track or audiobook file into a browser-safe copy, stored under
-`CONVERT_DIR` — `MEDIA_ROOT` itself is never touched. A few operational notes:
+`CONVERT_DIR` — `MEDIA_ROOT` itself is never touched. Minimum converter
+version: `bhemsen/converter` v3.2.0 (`--json`, `--to web`); v3.3.0 or newer is
+needed for converted subtitles (see below). A few operational notes:
 
 - **No spaces in `CONVERTER_CMD`.** Tokens are split on whitespace with no
   quoting. On Windows, point at a path without spaces, or use the 8.3 short
@@ -74,18 +76,57 @@ music track or audiobook file into a browser-safe copy, stored under
   is the only enforcement that also covers the converter child process — the
   converter is trusted code: it runs as the same OS user as videothek and can
   read everything that user can.
-- **No CPU/IO priority yet.** Conversions run without `nice`/`ionice`, so on
-  weak hardware a running conversion can make concurrent streams stutter.
-  This, plus protecting playback while converting, is planned for a later
-  phase.
+- **Priority: nice 19, optional idle I/O class.** The converter runs at the
+  lowest CPU priority (`nice` 19, set right after the start; on Windows the
+  lowest priority class), so concurrent streams are protected on weak
+  hardware. Whether this also lowers disk I/O depends on the kernel's I/O
+  scheduler (`mq-deadline`, common for Pi USB disks, ignores it). For an idle
+  I/O class prefix the command, e.g.
+  `CONVERTER_CMD=/usr/bin/ionice -c3 /usr/bin/node /opt/converter/cli.js`
+  (absolute path, no spaces in the tokens). If lowering the priority fails,
+  the job still runs and `conversion_priority_failed` is logged.
 - **`CONVERT_DIR` must not lie inside `public/`**, since static files there
   are served without a session; the config rejects this, and the conversion
   queue additionally rejects a symlink into `public/` by realpath.
 - **Graceful shutdown only stops the converter through videothek's own
-  shutdown handling.** Under Docker, run with `--init` (or tini) when
-  videothek is PID 1; under systemd, keep the default
-  `KillMode=control-group`. Either way, a converter that outlives videothek
-  (a second signal, or a crash) is still reaped instead of orphaned.
+  shutdown handling.** On POSIX the converter runs detached in its own process
+  group, and every signal videothek sends (stop, cancel, kill escalation)
+  reaches the whole group, so no `ffmpeg` survives. If videothek itself
+  crashes, a running converter keeps going until it finishes or the service
+  is stopped: systemd's default `KillMode=control-group` ends it with the
+  unit, and stopping a container ends every process in it. Under Docker, run
+  with `--init` (or tini) when videothek is PID 1 — that is for reaping
+  zombie processes only, not for the group.
+- **Cancel.** In the admin "Konvertierung" panel, "Abbrechen" ends a queued
+  conversion at once and stops a running one (the converter's process group
+  gets `SIGTERM`, then `SIGKILL`); either way the item shows
+  "Vom Admin abgebrochen" and can be converted again. There is no per-job
+  timeout — cancel a hung job by hand.
+- **Converted subtitles.** With converter v3.3.0 or newer, the WebVTT
+  subtitle sidecars it reports are checked and stored with the copy (at most
+  20, each up to 5 MiB) and listed after the subtitles found next to the
+  source. With v3.2.0 the copy works, but embedded subtitles are lost.
+- **Cleanup.** After every completed library scan (and never while a job
+  runs) videothek tidies `CONVERT_DIR`, touching only its own 64-character
+  hex directories there: copies whose source changed, leftovers of failed
+  jobs, copies whose file disappeared and unreferenced directories are
+  removed. When a source vanishes, its copy is kept for a fixed 30 days
+  (no setting) and removed afterwards; if the source returns, nothing is
+  lost. Without `CONVERTER_CMD` nothing is cleaned up.
+- **Unmounted-disk guard.** If rows record copies but `CONVERT_DIR` holds no
+  hex directory or not one referenced copy file (disk not mounted, or
+  `CONVERT_DIR` moved without its copies), the cleanup skips reconciling
+  missing copies and removing orphans and logs `conversion_cleanup_skipped`
+  — so a moved `CONVERT_DIR` is never reconciled automatically; restore the
+  copies or point `CONVERT_DIR` back.
+- **Log events.** Warnings: `conversion_priority_failed { key, code }` (lowering
+  the converter's priority failed; the job continues),
+  `conversion_signal_failed { key, code }` (a signal to the converter's group
+  failed, `code` = the first errno); `conversion_cleanup_skipped { reason }`
+  (`convert_dir_empty` or `no_copy_found`). Info: `conversion_cleanup
+  { purged, stripped, reconciled, orphans, missing, cleared }`, logged
+  when a pass changed anything. Error: `conversion_cleanup_failed { code }`
+  (an unexpected filesystem error aborted the rest of the pass).
 
 ## Medienordner
 

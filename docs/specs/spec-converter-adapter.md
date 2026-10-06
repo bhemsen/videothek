@@ -354,3 +354,4 @@ Human QA gate (Chromium + Firefox, plus the Pi):
 - 2026-10-06: Converter v3.3.0 contract re-read from source (record shapes,
   exit codes 0/1/2/130/143, summary-last rule, sidecar naming, Job Object,
   no own process group) instead of relying on the 2026-09-28 prior-art entry.
+- 2026-10-06: Log events documented in README (#267): warn `conversion_priority_failed { key, code }` and `conversion_signal_failed { key, code }` (job.js, from `RunResult.priorityError`/`signalError`), warn `conversion_cleanup_skipped { reason }`, info `conversion_cleanup { purged, stripped, reconciled, orphans, missing, cleared }`, error `conversion_cleanup_failed { code }`; `src/convert/stderr-ring.js`, `queue-kill.js`, `cleanup-schedule.js` listed in architecture.
