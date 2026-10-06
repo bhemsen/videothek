@@ -11,7 +11,8 @@ import { mkdir, writeFile } from 'node:fs/promises';
 import { statSync } from 'node:fs';
 import path from 'node:path';
 import { upsertItem } from '../../src/db/library-repo.js';
-import { getConversion } from '../../src/db/conversions.js';
+import { enqueueConversion, getConversion, publishConversion } from '../../src/db/conversions.js';
+import { storageKey } from '../../src/convert/targets.js';
 import { createConversionQueue } from '../../src/convert/queue.js';
 import { startTestApp } from '../helpers/app.js';
 import { request } from '../helpers/auth-http.js';
@@ -172,6 +173,42 @@ test('cancel: queued -> 200 failed/cancelled; running -> 202 cancelling (idempot
     const done = await call(app.baseUrl, 'GET', `/api/conversions?ids=${running}`, cookie);
     assert.equal(done.body.items[0].error, 'cancelled');
     assert.equal(done.body.items[0].cancelling, false, 'cancelling is only true while status is converting');
+  } finally {
+    await queue.stop();
+    await app.close();
+  }
+});
+
+test('cancel: a real playable conversion row -> 409 not_cancellable, row untouched', async () => {
+  const { app, cookie, queue } = await bootWithQueue(['--mode', 'ok']);
+  try {
+    const relPath = 'Filme/done.mkv';
+    const id = await seedSource(app, relPath);
+    const stat = statSync(path.join(app.config.mediaRoot, relPath));
+    enqueueConversion(app.db, { relPath, storageKey: storageKey(relPath), target: 'web', sourceSize: stat.size, sourceMtimeMs: Math.trunc(stat.mtimeMs), now: 1 });
+    publishConversion(app.db, { relPath, outputRel: `${storageKey(relPath)}/web.mp4`, outputSize: 10, notes: '[]', sidecars: '[]', now: 2 });
+    const res = await call(app.baseUrl, 'POST', `/api/conversions/${id}/cancel`, cookie);
+    assert.equal(res.status, 409);
+    assert.deepEqual(res.body, { error: 'not_cancellable' });
+    assert.equal(getConversion(app.db, relPath)?.status, 'playable');
+  } finally {
+    await queue.stop();
+    await app.close();
+  }
+});
+
+test('cancel: a foreign Origin -> 403 forbidden_origin and nothing is cancelled', async () => {
+  const { app, cookie, queue } = await bootWithQueue(['--mode', 'hang']);
+  try {
+    const id = await seedSource(app, 'Filme/origin.mkv');
+    assert.equal((await call(app.baseUrl, 'POST', `/api/conversions/${id}`, cookie)).status, 202);
+    const res = await request(app.baseUrl, 'POST', `/api/conversions/${id}/cancel`, {
+      headers: { Cookie: cookie, Origin: 'https://evil.example' },
+    });
+    assert.equal(res.status, 403);
+    assert.deepEqual(JSON.parse(res.body), { error: 'forbidden_origin' });
+    assert.equal(queue.cancellingRelPath(), null);
+    assert.equal(getConversion(app.db, 'Filme/origin.mkv')?.status, 'converting');
   } finally {
     await queue.stop();
     await app.close();
