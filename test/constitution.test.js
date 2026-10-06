@@ -257,3 +257,24 @@ test('stripComments removes // and /* */ comments but leaves string literals int
     'comment-like text inside a string literal must survive stripping',
   );
 });
+
+const PROCESS_CONTROL = /\b(?:process\.kill|setPriority|detached)\b/;
+
+test('process.kill, setPriority and detached appear only in src/convert/run-converter.js', () => {
+  const offenders = listFiles(srcDir)
+    .filter((f) => f.endsWith('.js') && path.relative(rootDir, f).split(path.sep).join('/') !== CHILD_PROCESS_EXEMPT_FILE)
+    .filter((f) => PROCESS_CONTROL.test(readSourceForScan(f)))
+    .map((f) => path.relative(rootDir, f));
+  assert.deepEqual(offenders, []);
+});
+
+const DELETE_CALL = /\b(?:rm|rmSync|unlink|unlinkSync|rmdir|rmdirSync)\s*\(/;
+const DELETE_ALLOWED = new Set(['queue.js', 'job.js', 'work-dir.js', 'publish.js', 'sidecars.js', 'cleanup.js']);
+
+test('rm/unlink/rmdir calls under src/convert/ appear only in the allowed modules', () => {
+  const offenders = listFiles(path.join(srcDir, 'convert'))
+    .filter((f) => f.endsWith('.js') && !DELETE_ALLOWED.has(path.basename(f)))
+    .filter((f) => DELETE_CALL.test(readSourceForScan(f)))
+    .map((f) => path.relative(rootDir, f));
+  assert.deepEqual(offenders, []);
+});
