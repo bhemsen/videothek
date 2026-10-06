@@ -105,3 +105,59 @@ test('the shared timer is cleared when the run settles before killGraceMs', asyn
   await new Promise((resolve) => setTimeout(resolve, 60));
   assert.deepEqual(entry.killCalls.filter((/** @type {string} */ s) => s === 'SIGKILL'), [], 'no SIGKILL after the run settled');
 });
+
+test('stop() after cancel and cancel after stop() send no second SIGTERM/SIGKILL once SIGKILL fired', async (t) => {
+  const { queue, deferred } = await setup(t, { killGraceMs: 10 });
+  queue.kick();
+  const entry = await deferred.next();
+  queue.cancel(A);
+  await new Promise((resolve) => setTimeout(resolve, 40));
+  assert.deepEqual(entry.killCalls, ['SIGTERM', 'SIGKILL']);
+  const stopPromise = queue.stop();
+  assert.equal(queue.cancel(A), 'cancelling');
+  assert.deepEqual(entry.killCalls, ['SIGTERM', 'SIGKILL'], 'nothing more sent in the close-grace window');
+  entry.resolve(killedResult(null));
+  await stopPromise;
+});
+
+test('cancel after stop() sends no extra signal and a queued row still ends cancelled', async (t) => {
+  const { db, queue, deferred } = await setup(t, { killGraceMs: 10 });
+  queue.kick();
+  const entry = await deferred.next();
+  const stopPromise = queue.stop();
+  assert.deepEqual(entry.killCalls, ['SIGTERM']);
+  assert.equal(queue.cancel(A), 'cancelling');
+  assert.equal(queue.cancel(B), 'cancelled');
+  assert.equal(getConversion(db, B)?.error, 'cancelled');
+  await new Promise((resolve) => setTimeout(resolve, 40));
+  assert.deepEqual(entry.killCalls, ['SIGTERM', 'SIGKILL'], 'one escalation only');
+  entry.resolve(killedResult(null));
+  await stopPromise;
+});
+
+test('cancel while the running row is already playable (job cleaning up) is not_cancellable', async (t) => {
+  const { db, queue, deferred } = await setup(t);
+  queue.kick();
+  const entry = await deferred.next();
+  db.prepare("UPDATE conversions SET status = 'playable' WHERE rel_path = ?").run(A);
+  assert.equal(queue.cancel(A), 'not_cancellable');
+  assert.equal(getConversion(db, A)?.status, 'playable');
+  assert.deepEqual(entry.killCalls, []);
+  assert.equal(queue.cancellingRelPath(), null);
+  const stopPromise = queue.stop();
+  entry.resolve(killedResult(null));
+  await stopPromise;
+});
+
+test('cancel after stop(), inside the close-grace window after SIGKILL, sends no second pair', async (t) => {
+  const { queue, deferred } = await setup(t, { killGraceMs: 10 });
+  queue.kick();
+  const entry = await deferred.next();
+  const stopPromise = queue.stop();
+  await new Promise((resolve) => setTimeout(resolve, 40));
+  assert.deepEqual(entry.killCalls, ['SIGTERM', 'SIGKILL']);
+  assert.equal(queue.cancel(A), 'cancelling');
+  assert.deepEqual(entry.killCalls, ['SIGTERM', 'SIGKILL'], 'no second pair');
+  entry.resolve(killedResult(null));
+  await stopPromise;
+});

@@ -7,7 +7,7 @@ import { fakeLogger } from '../helpers/conversion-queue-fixtures.js';
 /** @param {(signal: string) => void} kill @param {number} [killGraceMs] */
 function makeState(kill, killGraceMs = 20) {
   const { log, calls } = fakeLogger();
-  const state = { log, killGraceMs, currentHandle: /** @type {any} */ ({ result: new Promise(() => {}), kill }), killTimer: /** @type {NodeJS.Timeout | null} */ (null) };
+  const state = { log, killGraceMs, currentHandle: /** @type {any} */ ({ result: new Promise(() => {}), kill }), killTimer: /** @type {NodeJS.Timeout | null} */ (null), killSent: false };
   return { state, calls };
 }
 
@@ -36,4 +36,15 @@ test('safeKill logs a throwing kill() instead of throwing', () => {
   const { state, calls } = makeState(() => { throw Object.assign(new Error('gone'), { code: 'ESRCH' }); });
   assert.doesNotThrow(() => safeKill(state, state.currentHandle, 'SIGTERM'));
   assert.deepEqual(calls.find((c) => c.event === 'conversion_error')?.fields, { code: 'ESRCH' });
+});
+
+test('terminateRun after the SIGKILL fired (run not yet settled) sends nothing more', async () => {
+  const sent = /** @type {string[]} */ ([]);
+  const { state } = makeState((s) => sent.push(s), 10);
+  terminateRun(state);
+  await new Promise((resolve) => setTimeout(resolve, 40));
+  assert.deepEqual(sent, ['SIGTERM', 'SIGKILL']);
+  terminateRun(state);
+  assert.deepEqual(sent, ['SIGTERM', 'SIGKILL'], 'no second pair');
+  assert.equal(state.killTimer, null);
 });
