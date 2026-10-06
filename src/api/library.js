@@ -150,7 +150,7 @@ async function handleItemDetail(res, ctx, deps) {
     sendError(res, 404, 'not_found');
     return;
   }
-  sendJson(res, 200, await toItemDetailJson({ db: deps.db, mediaRoot: deps.config.mediaRoot }, row));
+  sendJson(res, 200, await toItemDetailJson({ db: deps.db, mediaRoot: deps.config.mediaRoot, convertDir: deps.config.convertDir }, row));
 }
 
 /**
