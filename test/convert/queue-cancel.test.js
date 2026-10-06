@@ -144,5 +144,20 @@ test('cancel while the running row is already playable (job cleaning up) is not_
   assert.equal(getConversion(db, A)?.status, 'playable');
   assert.deepEqual(entry.killCalls, []);
   assert.equal(queue.cancellingRelPath(), null);
+  const stopPromise = queue.stop();
   entry.resolve(killedResult(null));
+  await stopPromise;
+});
+
+test('cancel after stop(), inside the close-grace window after SIGKILL, sends no second pair', async (t) => {
+  const { queue, deferred } = await setup(t, { killGraceMs: 10 });
+  queue.kick();
+  const entry = await deferred.next();
+  const stopPromise = queue.stop();
+  await new Promise((resolve) => setTimeout(resolve, 40));
+  assert.deepEqual(entry.killCalls, ['SIGTERM', 'SIGKILL']);
+  assert.equal(queue.cancel(A), 'cancelling');
+  assert.deepEqual(entry.killCalls, ['SIGTERM', 'SIGKILL'], 'no second pair');
+  entry.resolve(killedResult(null));
+  await stopPromise;
 });
