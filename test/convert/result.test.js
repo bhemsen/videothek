@@ -2,6 +2,9 @@ import { test } from 'node:test';
 import assert from 'node:assert/strict';
 import { interpretRun, redactDetail } from '../../src/convert/result.js';
 
+/** @typedef {import('../../src/convert/jsonl.js').ConverterFileRecord} FileRecord */
+/** @typedef {import('../../src/convert/jsonl.js').ConverterSummaryRecord} SummaryRecord */
+
 /** @type {import('../../src/convert/run-converter.js').RunResult} */
 const DEFAULT_RUN = {
   spawnError: null,
@@ -14,10 +17,22 @@ const DEFAULT_RUN = {
   stderrTail: '',
 };
 
-/** @type {import('../../src/convert/jsonl.js').ConverterRecord} */
-const DEFAULT_RECORD = { outcome: 'converted', output: '/out/clip.mp4', error: null, notes: [] };
+/** @type {FileRecord} */
+const FILE = { type: 'file', outcome: 'converted', output: '/out/clip.mp4', error: null, notes: [], sidecars: [] };
+/** @type {SummaryRecord} */
+const SUMMARY = { type: 'summary', total: 1, exitCode: 0 };
+
+/** A complete, valid run: one `file` record followed by the `summary`. */
+const GOOD_RECORDS = [FILE, SUMMARY];
 
 const TARGET = { target: /** @type {const} */ ('web') };
+const INVALID = { ok: false, error: 'converter_output_invalid', detail: null };
+
+/**
+ * @param {Partial<FileRecord>} patch
+ * @returns {FileRecord}
+ */
+const file = (patch) => ({ ...FILE, ...patch });
 
 // --- interpretRun: rules 1-3 ---
 
@@ -36,9 +51,11 @@ test('interpretRun: rule 2 - a foreign signal (not the runner\'s own kill) is co
   assert.deepEqual(interpretRun(run, TARGET), { ok: false, error: 'converter_interrupted', detail: null });
 });
 
-test('interpretRun: rule 2 - exit 130 is converter_interrupted', () => {
-  const run = { ...DEFAULT_RUN, exitCode: 130 };
-  assert.deepEqual(interpretRun(run, TARGET), { ok: false, error: 'converter_interrupted', detail: null });
+test('interpretRun: rule 2 - exit 130 and exit 143 are converter_interrupted', () => {
+  for (const exitCode of [130, 143]) {
+    const run = { ...DEFAULT_RUN, exitCode, records: GOOD_RECORDS };
+    assert.deepEqual(interpretRun(run, TARGET), { ok: false, error: 'converter_interrupted', detail: null }, String(exitCode));
+  }
 });
 
 test('interpretRun: a cap kill is not rule 2 (killedBy is not null) - falls through to rule 4', () => {
@@ -49,17 +66,11 @@ test('interpretRun: a cap kill is not rule 2 (killedBy is not null) - falls thro
     killedBy: /** @type {const} */ ('cap'),
     stdoutInvalid: true,
   };
-  assert.deepEqual(interpretRun(run, TARGET), { ok: false, error: 'converter_output_invalid', detail: null });
+  assert.deepEqual(interpretRun(run, TARGET), INVALID);
 });
 
 test('interpretRun: rule 3 - exit 2 with otherwise-valid JSON is converter_unavailable with the stderr tail', () => {
-  // One valid converted record: rule 3 must win before rule 9 could accept it.
-  const run = {
-    ...DEFAULT_RUN,
-    exitCode: 2,
-    records: [{ ...DEFAULT_RECORD }],
-    stderrTail: 'usage: --to <target> --json <src> <outdir>',
-  };
+  const run = { ...DEFAULT_RUN, exitCode: 2, records: GOOD_RECORDS, stderrTail: 'usage: --to <target> --json <src> <outdir>' };
   assert.deepEqual(interpretRun(run, TARGET), {
     ok: false,
     error: 'converter_unavailable',
@@ -72,18 +83,18 @@ test('interpretRun: rule 3 wins over rule 4 (exit 2 with a bad stdout line)', ()
   assert.deepEqual(interpretRun(run, TARGET), { ok: false, error: 'converter_unavailable', detail: 'usage error' });
 });
 
-// --- interpretRun: rules 4-6 ---
+// --- interpretRun: rules 4-5 ---
 
-test('interpretRun: rule 4 - exit 1 with a garbage stdout line is converter_output_invalid, not converter_failed', () => {
+test('interpretRun: rule 4 - exit 1 with an invalid stdout (bad line, schema 2, missing type) is converter_output_invalid', () => {
   const run = { ...DEFAULT_RUN, exitCode: 1, stdoutInvalid: true };
-  assert.deepEqual(interpretRun(run, TARGET), { ok: false, error: 'converter_output_invalid', detail: null });
+  assert.deepEqual(interpretRun(run, TARGET), INVALID);
 });
 
-test('interpretRun: rule 5 - any other non-zero exit is converter_failed with the record error', () => {
+test('interpretRun: rule 5 - exit 1 with a failed file record uses the record error as detail', () => {
   const run = {
     ...DEFAULT_RUN,
     exitCode: 1,
-    records: [{ ...DEFAULT_RECORD, outcome: /** @type {const} */ ('failed'), error: 'ffmpeg exited with 1' }],
+    records: [file({ outcome: 'failed', output: null, error: 'ffmpeg exited with 1' }), { ...SUMMARY, exitCode: 1 }],
   };
   assert.deepEqual(interpretRun(run, TARGET), { ok: false, error: 'converter_failed', detail: 'ffmpeg exited with 1' });
 });
@@ -98,67 +109,83 @@ test('interpretRun: rule 5 falls back to the stderr tail when there is no record
 });
 
 test('interpretRun: rule 5 does not treat a signal-only termination (exitCode null) as a non-zero exit', () => {
-  // No signal and no exitCode - falls through rule 5 to rule 6 (zero records -> invalid),
-  // never misread as "any other non-zero exit" because null !== 0 alone is not a real exit code.
+  // Falls through rule 5 to rule 6 (zero records -> invalid).
   const run = { ...DEFAULT_RUN, exitCode: null };
-  assert.deepEqual(interpretRun(run, TARGET), { ok: false, error: 'converter_output_invalid', detail: null });
+  assert.deepEqual(interpretRun(run, TARGET), INVALID);
 });
+
+// --- interpretRun: rule 6 (file records) ---
 
 test('interpretRun: rule 6 - zero records is converter_output_invalid', () => {
-  const run = { ...DEFAULT_RUN, records: [] };
-  assert.deepEqual(interpretRun(run, TARGET), { ok: false, error: 'converter_output_invalid', detail: null });
+  assert.deepEqual(interpretRun({ ...DEFAULT_RUN, records: [] }, TARGET), INVALID);
 });
 
-test('interpretRun: rule 6 - more than one record is converter_output_invalid', () => {
-  const run = { ...DEFAULT_RUN, records: [DEFAULT_RECORD, DEFAULT_RECORD] };
-  assert.deepEqual(interpretRun(run, TARGET), { ok: false, error: 'converter_output_invalid', detail: null });
+test('interpretRun: rule 6 - a summary without a file record is converter_output_invalid', () => {
+  assert.deepEqual(interpretRun({ ...DEFAULT_RUN, records: [{ ...SUMMARY, total: 0 }] }, TARGET), INVALID);
 });
 
-// --- interpretRun: rule 7 (each outcome) ---
+test('interpretRun: rule 6 - more than one file record is converter_output_invalid', () => {
+  assert.deepEqual(interpretRun({ ...DEFAULT_RUN, records: [FILE, FILE, SUMMARY] }, TARGET), INVALID);
+});
 
-test('interpretRun: rule 7 - outcome failed is converter_failed with the record error', () => {
-  const run = { ...DEFAULT_RUN, records: [{ ...DEFAULT_RECORD, outcome: /** @type {const} */ ('failed'), error: 'no audio stream' }] };
+// --- interpretRun: rule 7 (summary) ---
+
+test('interpretRun: rule 7 - a missing summary is converter_output_invalid', () => {
+  assert.deepEqual(interpretRun({ ...DEFAULT_RUN, records: [FILE] }, TARGET), INVALID);
+});
+
+test('interpretRun: rule 7 - more than one summary is converter_output_invalid', () => {
+  assert.deepEqual(interpretRun({ ...DEFAULT_RUN, records: [FILE, SUMMARY, SUMMARY] }, TARGET), INVALID);
+});
+
+test('interpretRun: rule 7 - a summary that is not the last recognised record is converter_output_invalid', () => {
+  assert.deepEqual(interpretRun({ ...DEFAULT_RUN, records: [SUMMARY, FILE] }, TARGET), INVALID);
+});
+
+test('interpretRun: rule 7 - summary total 2 or exit_code other than 0 is converter_output_invalid', () => {
+  assert.deepEqual(interpretRun({ ...DEFAULT_RUN, records: [FILE, { ...SUMMARY, total: 2 }] }, TARGET), INVALID);
+  assert.deepEqual(interpretRun({ ...DEFAULT_RUN, records: [FILE, { ...SUMMARY, exitCode: 1 }] }, TARGET), INVALID);
+});
+
+// --- interpretRun: rule 8 (each outcome) ---
+
+test('interpretRun: rule 8 - outcome failed is converter_failed with the record error', () => {
+  const run = { ...DEFAULT_RUN, records: [file({ outcome: 'failed', error: 'no audio stream' }), SUMMARY] };
   assert.deepEqual(interpretRun(run, TARGET), { ok: false, error: 'converter_failed', detail: 'no audio stream' });
 });
 
-test('interpretRun: rule 7 - outcome failed with no record error falls back to the stderr tail', () => {
-  const run = {
-    ...DEFAULT_RUN,
-    stderrTail: 'stderr detail',
-    records: [{ ...DEFAULT_RECORD, outcome: /** @type {const} */ ('failed'), error: null }],
-  };
-  assert.deepEqual(interpretRun(run, TARGET), { ok: false, error: 'converter_failed', detail: 'stderr detail' });
+test('interpretRun: rule 8 - outcome failed with a null or empty record error falls back to the stderr tail', () => {
+  for (const error of [null, '']) {
+    const run = { ...DEFAULT_RUN, stderrTail: 'stderr detail', records: [file({ outcome: 'failed', error }), SUMMARY] };
+    assert.deepEqual(interpretRun(run, TARGET), { ok: false, error: 'converter_failed', detail: 'stderr detail' });
+  }
 });
 
-test('interpretRun: rule 7 - outcome failed with an empty record error falls back to the stderr tail', () => {
-  const run = {
-    ...DEFAULT_RUN,
-    stderrTail: 'stderr detail',
-    records: [{ ...DEFAULT_RECORD, outcome: /** @type {const} */ ('failed'), error: '' }],
-  };
-  assert.deepEqual(interpretRun(run, TARGET), { ok: false, error: 'converter_failed', detail: 'stderr detail' });
-});
-
-test('interpretRun: rule 7 - outcome unsupported is unsupported_source', () => {
-  const run = { ...DEFAULT_RUN, records: [{ ...DEFAULT_RECORD, outcome: /** @type {const} */ ('unsupported'), output: null }] };
+test('interpretRun: rule 8 - exit 0 with outcome unsupported is unsupported_source', () => {
+  const run = { ...DEFAULT_RUN, records: [file({ outcome: 'unsupported', output: null }), SUMMARY] };
   assert.deepEqual(interpretRun(run, TARGET), { ok: false, error: 'unsupported_source', detail: null });
 });
 
-test('interpretRun: rule 7 - outcome skipped is converter_output_invalid', () => {
-  const run = { ...DEFAULT_RUN, records: [{ ...DEFAULT_RECORD, outcome: /** @type {const} */ ('skipped'), output: null }] };
-  assert.deepEqual(interpretRun(run, TARGET), { ok: false, error: 'converter_output_invalid', detail: null });
+test('interpretRun: rule 8 - outcome skipped is converter_output_invalid', () => {
+  const run = { ...DEFAULT_RUN, records: [file({ outcome: 'skipped', output: null }), SUMMARY] };
+  assert.deepEqual(interpretRun(run, TARGET), INVALID);
 });
 
-// --- interpretRun: rules 8-9 ---
+// --- interpretRun: rules 9-10 ---
 
-test('interpretRun: rule 8 - stdioTimedOut with one valid converted record is still converter_output_invalid', () => {
-  const run = { ...DEFAULT_RUN, stdioTimedOut: true, records: [{ ...DEFAULT_RECORD }] };
-  assert.deepEqual(interpretRun(run, TARGET), { ok: false, error: 'converter_output_invalid', detail: null });
+test('interpretRun: rule 9 - stdioTimedOut with a complete converted run is still converter_output_invalid', () => {
+  assert.deepEqual(interpretRun({ ...DEFAULT_RUN, stdioTimedOut: true, records: GOOD_RECORDS }, TARGET), INVALID);
 });
 
-test('interpretRun: rule 9 - a complete converted record is ok with its output and notes', () => {
-  const run = { ...DEFAULT_RUN, records: [{ ...DEFAULT_RECORD, output: '/out/web.mp4', notes: ['re-encoded audio'] }] };
-  assert.deepEqual(interpretRun(run, TARGET), { ok: true, output: '/out/web.mp4', notes: ['re-encoded audio'] });
+test('interpretRun: rule 10 - a v3.3 run (file + summary) is ok with output, notes and sidecars', () => {
+  const sidecars = [{ path: '/out/web.de.vtt', stream: 2, language: 'de' }];
+  const run = { ...DEFAULT_RUN, records: [file({ output: '/out/web.mp4', notes: ['re-encoded audio'], sidecars }), SUMMARY] };
+  assert.deepEqual(interpretRun(run, TARGET), { ok: true, output: '/out/web.mp4', notes: ['re-encoded audio'], sidecars });
+});
+
+test('interpretRun: rule 10 - a v3.2 run without sidecars (normalised to []) is ok', () => {
+  const run = { ...DEFAULT_RUN, records: GOOD_RECORDS };
+  assert.deepEqual(interpretRun(run, TARGET), { ok: true, output: '/out/clip.mp4', notes: [], sidecars: [] });
 });
 
 // --- redactDetail ---

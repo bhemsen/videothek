@@ -31,6 +31,8 @@ import path from 'node:path';
  * @property {true} ok
  * @property {string} output - absolute path the converter reported.
  * @property {string[]} notes
+ * @property {import('./jsonl.js').ConverterSidecar[]} sidecars - `[]` when none
+ *   were reported (published by a later step, not by `interpretRun`).
  */
 
 /**
@@ -55,10 +57,10 @@ import path from 'node:path';
 
 /**
  * Classifies one finished converter run against the fixed rule table - the
- * first matching rule wins (spec-conversion-core.md "Interpretation", rules
- * 1-9). Never called for a run the queue's own `stop()` ended
- * (`run.killedBy === 'stop'`); such a run is always recorded
- * `converter_interrupted` without interpretation (see "Queue", `stop()`).
+ * first matching rule wins (spec-converter-adapter.md, "Converter contract",
+ * rules 1-10). Never called for a run the queue itself ended
+ * (`run.killedBy === 'stop'` or a cancel); the job records `interrupted` or
+ * `cancelled` without interpretation.
  *
  * @param {RunResult} run
  * @param {InterpretRunOptions} _options
@@ -70,8 +72,8 @@ export function interpretRun(run, _options) {
   if (run.spawnError !== null) return { ok: false, error: 'converter_unavailable', detail: run.spawnError };
 
   // Rule 2: a signal the queue did not send (`killedBy === null` rules out
-  // the runner's own cap kill), or the converter's own "interrupted" exit.
-  if ((run.signal !== null && run.killedBy === null) || run.exitCode === 130) {
+  // the runner's own cap kill), or the converter's own "interrupted" exits.
+  if ((run.signal !== null && run.killedBy === null) || run.exitCode === 130 || run.exitCode === 143) {
     return { ok: false, error: 'converter_interrupted', detail: null };
   }
 
@@ -79,8 +81,7 @@ export function interpretRun(run, _options) {
   if (run.exitCode === 2) return { ok: false, error: 'converter_unavailable', detail: run.stderrTail };
 
   // Rule 4: a bad stdout line, a record that failed validation, or a cap
-  // kill (which also sets `stdoutInvalid`) - checked before the exit code,
-  // so a nonzero exit with garbage output is still `converter_output_invalid`.
+  // kill (which also sets `stdoutInvalid`) - checked before the exit code.
   if (run.stdoutInvalid) return { ok: false, error: 'converter_output_invalid', detail: null };
 
   // Rule 5: any other non-zero exit (a real exit code, not a signal-only
@@ -89,45 +90,47 @@ export function interpretRun(run, _options) {
     return { ok: false, error: 'converter_failed', detail: failedDetail(run) };
   }
 
-  // Rule 6: Phase 7 always converts exactly one file, so anything but one
-  // record is malformed output.
-  if (run.records.length !== 1) return { ok: false, error: 'converter_output_invalid', detail: null };
+  const files = run.records.filter((record) => record.type === 'file');
+  const summaries = run.records.filter((record) => record.type === 'summary');
 
-  return interpretSingleRecord(run);
-}
+  // Rule 6: exactly one `file` record.
+  if (files.length !== 1) return { ok: false, error: 'converter_output_invalid', detail: null };
+  const record = files[0];
 
-/**
- * Rules 7-9, once rule 6 has confirmed there is exactly one record.
- * @param {RunResult} run
- * @returns {Interpretation}
- */
-function interpretSingleRecord(run) {
-  const record = run.records[0];
+  // Rule 7: exactly one `summary`, last, with `total` 1 and `exit_code` 0.
+  const summary = summaries[0];
+  if (
+    summaries.length !== 1 ||
+    run.records[run.records.length - 1] !== summary ||
+    summary.total !== 1 ||
+    summary.exitCode !== 0
+  ) {
+    return { ok: false, error: 'converter_output_invalid', detail: null };
+  }
 
-  // Rule 7: the record's own outcome.
+  // Rule 8: the record's own outcome.
   if (record.outcome === 'failed') return { ok: false, error: 'converter_failed', detail: failedDetail(run) };
   if (record.outcome === 'unsupported') return { ok: false, error: 'unsupported_source', detail: null };
   if (record.outcome === 'skipped') return { ok: false, error: 'converter_output_invalid', detail: null };
 
-  // Rule 8: stdio never settled within `closeGraceMs`, so even a `converted`
+  // Rule 9: stdio never settled within `closeGraceMs`, so even a `converted`
   // record here may be incomplete and must never be published.
   if (run.stdioTimedOut) return { ok: false, error: 'converter_output_invalid', detail: null };
 
-  // Rule 9: a genuine, complete `converted` record - handed to `verifyOutput`.
-  return { ok: true, output: /** @type {string} */ (record.output), notes: record.notes };
+  // Rule 10: a genuine, complete `converted` record - handed to verification.
+  return { ok: true, output: /** @type {string} */ (record.output), notes: record.notes, sidecars: record.sidecars };
 }
 
 /**
  * The `converter_failed` detail formula shared by rule 5 (any other
- * non-zero exit) and rule 7's `failed` outcome: the single record's own
- * `error` field when present and non-empty, else the stderr tail (an empty
- * `error` carries no diagnostic text).
+ * non-zero exit) and rule 8's `failed` outcome: the single `file` record's
+ * own `error` when present and non-empty, else the stderr tail.
  * @param {RunResult} run
  * @returns {string}
  */
 function failedDetail(run) {
-  const record = run.records[0];
-  return record?.error || run.stderrTail;
+  const record = run.records.find((candidate) => candidate.type === 'file');
+  return (record?.type === 'file' && record.error) || run.stderrTail;
 }
 
 const MAX_DETAIL_LENGTH = 500;
