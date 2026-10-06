@@ -51,10 +51,10 @@ function toNextEpisodeJson(row) {
 /**
  * Builds the single-item detail JSON: `toItemJson(row)` plus `next` (the
  * series successor from `getNextEpisode`, `null` for movies/other categories
- * or when there is none) and `subtitles` (WebVTT sidecars from
- * `listItemSubtitles`: source sidecars then the fresh conversion's, `[]` for non-video items or on any discovery failure —
- * `listSubtitles` itself never throws). Sidecar filesystem paths are never
- * included in the response.
+ * or when there is none) and `subtitles` (`listItemSubtitles`: the source
+ * sidecars, then a fresh conversion's; `[]` for non-video items without
+ * sidecars and on any discovery failure, since neither helper throws).
+ * Filesystem paths are never included in the response.
  * @param {{ db: import('node:sqlite').DatabaseSync, mediaRoot: string, convertDir: string }} deps
  * @param {LibraryItemRow} row
  * @returns {Promise<ItemDetailJson>}

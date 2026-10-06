@@ -7,7 +7,7 @@
 
 import { test } from 'node:test';
 import assert from 'node:assert/strict';
-import { mkdir, symlink } from 'node:fs/promises';
+import { rm, symlink } from 'node:fs/promises';
 import path from 'node:path';
 import {
   patternBytes,
@@ -129,7 +129,13 @@ test('subtitles: tampered sidecars JSON yields no converted track and 404', asyn
   }
 });
 
-test('subtitles: a symlinked sub-0.vtt pointing outside CONVERT_DIR is dropped', async (t) => {
+/**
+ * Seeds a conversion whose only sidecar is `sub-0.vtt`, plus a decoy outside
+ * CONVERT_DIR, then links to the decoy via `link`; skips when linking fails.
+ * @param {import('node:test').TestContext} t
+ * @param {'file' | 'junction'} mode
+ */
+async function escapeCase(t, mode) {
   const ctx = await setup();
   try {
     const { app } = ctx;
@@ -139,15 +145,37 @@ test('subtitles: a symlinked sub-0.vtt pointing outside CONVERT_DIR is dropped',
       outputBytes: patternBytes(10),
       sidecars: JSON.stringify([{ file: 'sub-0.vtt', lang: 'en' }]),
     });
-    const outside = path.join(app.config.mediaRoot, 'outside.vtt');
-    await writeFileDeep(outside, Buffer.from('WEBVTT\n\nsecret'));
-    await mkdir(path.join(app.config.convertDir, STORAGE_KEY), { recursive: true });
+    const outsideDir = path.join(app.config.mediaRoot, 'outside');
+    await writeFileDeep(path.join(outsideDir, 'sub-0.vtt'), Buffer.from('WEBVTT\n\nsecret'));
+    const keyDir = path.join(app.config.convertDir, STORAGE_KEY);
     try {
-      await symlink(outside, path.join(app.config.convertDir, STORAGE_KEY, 'sub-0.vtt'));
+      if (mode === 'file') {
+        await symlink(path.join(outsideDir, 'sub-0.vtt'), path.join(keyDir, 'sub-0.vtt'));
+      } else {
+        await rm(keyDir, { recursive: true });
+        await symlink(outsideDir, keyDir, 'junction');
+      }
     } catch {
-      t.skip('symlink creation not permitted');
+      t.skip(`${mode} link creation not permitted`);
       return;
     }
+    assert.deepEqual(await itemSubtitles(ctx, id), []);
+    assert.equal((await getSub(ctx, id, 0)).status, 404);
+  } finally {
+    await ctx.app.close();
+  }
+}
+
+test('subtitles: a symlinked sub-0.vtt pointing outside CONVERT_DIR is dropped', (t) => escapeCase(t, 'file'));
+
+test('subtitles: a storage_key directory junction pointing outside CONVERT_DIR is dropped', (t) =>
+  escapeCase(t, 'junction'));
+
+test('subtitles: non-video rows get no converted tracks even with a fresh conversion', async () => {
+  const ctx = await setup();
+  try {
+    const id = await seed(ctx, SIDECARS);
+    ctx.app.db.prepare("UPDATE library_items SET kind = 'audio' WHERE id = ?").run(id);
     assert.deepEqual(await itemSubtitles(ctx, id), []);
     assert.equal((await getSub(ctx, id, 0)).status, 404);
   } finally {

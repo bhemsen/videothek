@@ -9,7 +9,8 @@
  * holds no MIME literal of its own beyond the imported subtitle constant.
  * `/media/:id` transparently prefers a fresh converted copy under
  * `CONVERT_DIR` over the original (`src/db/conversions.js`'s
- * `getFreshConversion`); subtitle tracks are source sidecars first, then the conversion's (`subtitle-tracks.js`).
+ * `getFreshConversion`); subtitle tracks are source sidecars first, then the
+ * conversion's (`subtitle-tracks.js`).
  *
  * @see docs/specs/spec-video-streaming.md — "Error bodies", "Subtitle route".
  * @see docs/specs/archive/spec-conversion-core.md — "Serving".
@@ -137,10 +138,10 @@ async function handleMedia(req, res, ctx, deps) {
 
 /**
  * Handles `GET`/`HEAD /media/:id/subtitles/:n`: streams the `n`-th `.vtt`
- * track of a video item (source sidecars, then a fresh conversion's), discovered
- * fresh on every request by `listItemSubtitles`. The item need not be playable. An out-of-range `n` (which
- * is always the case for a non-video item, since `listSubtitles` returns
- * `[]` for those) answers `404 not_found`, same as an unknown id.
+ * track of a video item (source sidecars, then a fresh conversion's),
+ * discovered fresh on every request by `listItemSubtitles`. The item need not
+ * be playable. An out-of-range `n` (always the case for a non-video item)
+ * answers `404 not_found`, same as an unknown id.
  * @param {import('node:http').IncomingMessage} req
  * @param {import('node:http').ServerResponse} res
  * @param {import('../http/router.js').RequestContext} ctx

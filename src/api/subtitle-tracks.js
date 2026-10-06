@@ -45,7 +45,7 @@ function parseSidecars(raw) {
  * Lists an item's subtitle tracks: source-folder sidecars (`listSubtitles`),
  * then — only when `getFreshConversion` finds a row — its stored sidecars in
  * stored order, each resolved through `resolveMediaPath(convertDir, ...)`.
- * Invalid entries are dropped and indices compacted over the combined list.
+ * Non-video rows get no converted tracks. Invalid entries are dropped and indices compacted over the combined list.
  * The `path` field is for streaming only and must never be put into JSON.
  * @param {{ db: import('node:sqlite').DatabaseSync, mediaRoot: string, convertDir: string }} deps
  * @param {import('../db/library-repo.js').LibraryItemRow} row
@@ -55,6 +55,7 @@ export async function listItemSubtitles({ db, mediaRoot, convertDir }, row) {
   const source = await listSubtitles(mediaRoot, row);
   /** @type {ItemSubtitleTrack[]} */
   const tracks = source.map(({ lang, label, path }, index) => ({ index, lang, label, path }));
+  if (row.kind !== 'video') return tracks;
   const conversion = getFreshConversion(db, row);
   if (!conversion) return tracks;
   for (const { file, lang } of parseSidecars(conversion.sidecars)) {
