@@ -89,11 +89,12 @@ export async function setup() {
  *   storageKey?: string,
  *   target?: 'web' | 'flac' | 'opus',
  *   now?: number,
+ *   sidecars?: string,
  * }} opts
  * @returns {Promise<number>} the item's id
  */
 export async function seedConvertedItem(app, opts) {
-  const { sourceBytes, outputRel, outputBytes, item = {}, storageKey = STORAGE_KEY, target = 'web', now = 1000 } = opts;
+  const { sourceBytes, outputRel, outputBytes, item = {}, storageKey = STORAGE_KEY, target = 'web', now = 1000, sidecars = '[]' } = opts;
   const row = makeItem(item);
   await writeFileDeep(path.join(app.config.mediaRoot, row.rel_path), sourceBytes);
   const id = upsertItem(app.db, row, now);
@@ -110,7 +111,7 @@ export async function seedConvertedItem(app, opts) {
     outputRel,
     outputSize: outputBytes ? outputBytes.length : 0,
     notes: '[]',
-    sidecars: '[]',
+    sidecars,
     now,
   });
   await mkdir(app.config.convertDir, { recursive: true });

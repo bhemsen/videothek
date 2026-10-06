@@ -11,6 +11,8 @@ const DEFAULT_RUN = {
   exitCode: 0,
   signal: null,
   killedBy: null,
+  priorityError: null,
+  signalError: null,
   records: [],
   stdoutInvalid: false,
   stdioTimedOut: false,

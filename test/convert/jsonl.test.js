@@ -2,6 +2,7 @@ import { test } from 'node:test';
 import assert from 'node:assert/strict';
 import path from 'node:path';
 import { createJsonLinesReader, validateRecord } from '../../src/convert/jsonl.js';
+import { interpretRun } from '../../src/convert/result.js';
 
 // --- validateRecord ---
 
@@ -207,4 +208,50 @@ test('createJsonLinesReader: after cap, nothing more is accumulated', () => {
   assert.equal(reader.push(Buffer.from('{"outcome":"skipped"}\n', 'utf8')), 'cap');
   assert.equal(reader.records.length, recordsBefore);
   assert.equal(reader.invalid, invalidBefore);
+});
+
+// --- reader -> interpretRun ---
+
+/**
+ * A complete run as `runConverter` would report it from a reader's state.
+ * @param {ReturnType<typeof createJsonLinesReader>} reader
+ * @returns {import('../../src/convert/run-converter.js').RunResult}
+ */
+const runOf = (reader) => ({
+  spawnError: null,
+  exitCode: 0,
+  signal: null,
+  killedBy: null,
+  priorityError: null,
+  signalError: null,
+  records: reader.records,
+  stdoutInvalid: reader.invalid,
+  stdioTimedOut: false,
+  stderrTail: '',
+});
+
+const REAL_FILE = `{"type":"file","schema":1,"source":"${JSON.stringify(abs).slice(1, -1)}","output":${JSON.stringify(abs)},"outcome":"converted","attempt":1,"notes":[],"error":null,"sidecars":[]}`;
+const REAL_SUMMARY = '{"type":"summary","schema":1,"converted":1,"skipped":0,"failed":0,"unsupported":0,"total":1,"planned":0,"exit_code":0,"dry_run":false}';
+
+test('createJsonLinesReader -> interpretRun: file + summary + an unknown-type record is ok', () => {
+  const reader = createJsonLinesReader();
+  reader.push(Buffer.from(`${REAL_FILE}
+{"type":"progress","schema":1}
+${REAL_SUMMARY}
+`, 'utf8'));
+  reader.end();
+  assert.equal(reader.invalid, false);
+  const result = interpretRun(runOf(reader), { target: 'web' });
+  assert.equal(result.ok, true);
+});
+
+test('createJsonLinesReader -> interpretRun: a real-shape line with "sidecars":"x" is converter_output_invalid', () => {
+  const reader = createJsonLinesReader();
+  const bad = REAL_FILE.replace('"sidecars":[]', '"sidecars":"x"');
+  reader.push(Buffer.from(`${bad}
+${REAL_SUMMARY}
+`, 'utf8'));
+  reader.end();
+  assert.equal(reader.invalid, true);
+  assert.deepEqual(interpretRun(runOf(reader), { target: 'web' }), { ok: false, error: 'converter_output_invalid', detail: null });
 });

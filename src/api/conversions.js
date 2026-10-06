@@ -74,16 +74,17 @@ async function getFreeBytes(convertDir) {
  */
 async function handleList(deps, res, ctx) {
   const rawIds = ctx.url.searchParams.get('ids');
+  const cancelling = deps.conversions?.cancellingRelPath() ?? null;
   let items;
   if (rawIds === null) {
-    items = buildConversionList(listConversionRows(deps.db));
+    items = buildConversionList(listConversionRows(deps.db), cancelling);
   } else {
     const ids = parseConversionIds(rawIds);
     if (ids === null) {
       sendError(res, 400, 'invalid_query');
       return;
     }
-    items = buildConversionEntriesForIds(listConversionRowsForIds(deps.db, ids), ids);
+    items = buildConversionEntriesForIds(listConversionRowsForIds(deps.db, ids), ids, cancelling);
   }
   const usage = getConversionUsage(deps.db);
   const freeBytes = await getFreeBytes(deps.config.convertDir);
@@ -99,7 +100,7 @@ async function handleList(deps, res, ctx) {
  */
 function loadEntry(deps, id) {
   const [row] = listConversionRowsForIds(deps.db, [id]);
-  return buildConversionEntry(row);
+  return buildConversionEntry(row, deps.conversions?.cancellingRelPath() ?? null);
 }
 
 /**
@@ -157,7 +158,38 @@ function handleEnqueue(deps, res, ctx) {
 }
 
 /**
- * Registers `GET /api/conversions` and `POST /api/conversions/:id`, both
+ * `POST /api/conversions/:id/cancel`: cancels a queued conversion (`200` +
+ * entry, now `failed`/`cancelled`) or the running one (`202` + entry with
+ * `cancelling: true`; idempotent while pending). Any other state, including
+ * no row, is `409 not_cancellable`. Precondition order: malformed/unknown id
+ * `404`, feature off `503`, then the queue decides.
+ * @param {ConversionDeps} deps
+ * @param {import('node:http').ServerResponse} res
+ * @param {import('../http/router.js').RequestContext} ctx
+ * @returns {void}
+ */
+function handleCancel(deps, res, ctx) {
+  const id = parseItemId(ctx.params.id);
+  const row = id === null ? undefined : getItemById(deps.db, id);
+  if (id === null || !row) {
+    sendError(res, 404, 'not_found');
+    return;
+  }
+  if (!deps.conversions) {
+    sendError(res, 503, 'conversion_disabled');
+    return;
+  }
+  const outcome = deps.conversions.cancel(row.rel_path);
+  if (outcome === 'not_cancellable') {
+    sendError(res, 409, 'not_cancellable');
+    return;
+  }
+  sendJson(res, outcome === 'cancelled' ? 200 : 202, loadEntry(deps, id));
+}
+
+/**
+ * Registers `GET /api/conversions`, `POST /api/conversions/:id` and
+ * `POST /api/conversions/:id/cancel`, all
  * wrapped in `requireAdmin` (`401 unauthorized` without a session, `403
  * forbidden` for role `user`).
  * @param {ReturnType<typeof import('../http/router.js').createRouter>} router
@@ -167,4 +199,5 @@ function handleEnqueue(deps, res, ctx) {
 export function registerConversionRoutes(router, deps) {
   router.add('GET', '/api/conversions', requireAdmin((_req, res, ctx) => handleList(deps, res, ctx)));
   router.add('POST', '/api/conversions/:id', requireAdmin((_req, res, ctx) => handleEnqueue(deps, res, ctx)));
+  router.add('POST', '/api/conversions/:id/cancel', requireAdmin((_req, res, ctx) => handleCancel(deps, res, ctx)));
 }
