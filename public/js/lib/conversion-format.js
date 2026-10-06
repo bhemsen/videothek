@@ -21,6 +21,7 @@ export const FAILURE_REASONS = Object.freeze({
   converter_failed: 'Der Konverter meldet einen Fehler',
   converter_interrupted: 'Abgebrochen',
   interrupted: 'Abgebrochen',
+  cancelled: 'Vom Admin abgebrochen',
   converter_output_invalid: 'Unerwartete Antwort des Konverters',
   unsupported_source: 'Format wird vom Konverter nicht unterstützt',
   not_browser_safe: 'Ergebnis ist im Browser nicht abspielbar',
@@ -46,17 +47,18 @@ export function failureReason(error) {
 /**
  * The status text for one conversion entry (spec-conversion-core.md "UI
  * behaviour"): the queue position for `queued`, the failure reason for
- * `failed`, fixed German text for `converting`/`playable`, and a plain label
+ * `failed` (for `cancelled` the reason alone, no prefix), fixed German text for `converting`/`playable`, and a plain label
  * for `none`/`stale` (shown next to their "Konvertieren" button — the spec
  * fixes no separate status wording for them).
- * @param {Pick<ConversionEntry, 'status' | 'position' | 'error'>} entry
+ * @param {Pick<ConversionEntry, 'status' | 'position' | 'error'> & { cancelling?: boolean }} entry
  * @returns {string}
  */
 export function statusLabel(entry) {
   if (entry.status === 'none') return 'Nicht konvertiert';
   if (entry.status === 'stale') return 'Veraltet';
-  if (entry.status === 'converting') return 'Wird konvertiert …';
+  if (entry.status === 'converting') return entry.cancelling === true ? 'Wird abgebrochen …' : 'Wird konvertiert …';
   if (entry.status === 'playable') return 'Konvertiert';
+  if (entry.status === 'failed' && entry.error === 'cancelled') return failureReason(entry.error);
   if (entry.status === 'failed') return `Konvertierung fehlgeschlagen: ${failureReason(entry.error)}`;
   return entry.position === null ? 'In Warteschlange' : `In Warteschlange · Platz ${entry.position}`;
 }

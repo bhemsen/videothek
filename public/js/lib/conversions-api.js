@@ -81,3 +81,17 @@ export async function requestConversion(itemId) {
   const { data } = await request('POST', `/api/conversions/${encodeURIComponent(String(itemId))}`);
   return /** @type {ConversionEntry} */ (data);
 }
+
+/**
+ * `POST /api/conversions/:id/cancel`: cancels a conversion and resolves with
+ * the resulting entry — `200` for a `queued` item (now `failed` `cancelled`),
+ * `202` for the running one (`cancelling: true`, idempotent while pending).
+ * Throws `ApiError` for `409 not_cancellable`, `404 not_found`,
+ * `503 conversion_disabled`, `401`, `403`.
+ * @param {number | string} itemId
+ * @returns {Promise<ConversionEntry>}
+ */
+export async function cancelConversion(itemId) {
+  const { data } = await request('POST', `/api/conversions/${encodeURIComponent(String(itemId))}/cancel`);
+  return /** @type {ConversionEntry} */ (data);
+}

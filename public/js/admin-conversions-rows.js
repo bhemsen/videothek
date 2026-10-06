@@ -21,13 +21,17 @@ import { failureReason, statusLabel } from './lib/conversion-format.js';
  * @property {Set<string>} errorIds - itemIds whose last POST failed with an
  *   error the decorator's rules treat as "generic" (see conversion-format.js
  *   consumers); shows the fallback text instead of the row's own reason.
+ * @property {Set<string>} cancelErrorIds - itemIds whose last cancel POST failed unexpectedly.
  * @property {(id: string) => void} onAction - invoked with the itemId when a
  *   retry/re-convert button is pressed.
+ * @property {(id: string) => void} onCancel - invoked with the itemId when the
+ *   "Abbrechen" button of a queued/running row is pressed.
  */
 
 const MIDDLE_DOT = '·';
 const SVG_NS = 'http://www.w3.org/2000/svg';
 const MAX_FINISHED = 20;
+const CANCEL_ERROR = 'Abbrechen nicht möglich. Bitte erneut versuchen.';
 const GENERIC_ERROR = 'Konvertieren nicht möglich. Bitte erneut versuchen.';
 
 /** @type {readonly { status: ConversionStatus, heading: string }[]} */
@@ -118,16 +122,36 @@ function notesFor(status, entry) {
 
 /** @param {ConversionStatus} status @param {ConversionEntry} entry @param {RowsCtx} ctx @returns {HTMLElement} */
 function buildStatus(status, entry, ctx) {
-  if (status === 'converting') return el('span', { class: 'conversion-status-text conversion-status-text--running' }, dot(), runningText(entry));
-  if (status === 'queued') return el('span', { class: 'conversion-status-text' }, entry.position !== null ? `Platz ${entry.position}` : '');
+  if (status === 'converting' || status === 'queued') return buildActive(status, entry, ctx);
   if (status === 'playable') return el('span', { class: 'conversion-status-text conversion-status-text--done' }, checkIcon(), 'Konvertiert');
   const id = String(entry.itemId);
   const label = status === 'failed' ? 'Erneut versuchen' : 'Erneut konvertieren';
   return buildActionable(status, entry, ctx.errorIds.has(id), label, () => ctx.onAction(id));
 }
 
+/**
+ * Status text plus the "Abbrechen" button of a queued/running row; while the
+ * cancel is pending the text reads "Wird abgebrochen …" and the button stays disabled.
+ * @param {ConversionStatus} status @param {ConversionEntry} entry @param {RowsCtx} ctx
+ * @returns {HTMLElement}
+ */
+function buildActive(status, entry, ctx) {
+  const text = status === 'converting'
+    ? el('span', { class: 'conversion-status-text conversion-status-text--running' }, dot(), runningText(entry))
+    : el('span', { class: 'conversion-status-text' }, entry.position !== null ? `Platz ${entry.position}` : '');
+  const button = /** @type {HTMLButtonElement} */ (el('button', { type: 'button', class: 'btn btn-inline btn-danger' }, 'Abbrechen'));
+  button.disabled = entry.cancelling;
+  button.addEventListener('click', () => {
+    button.disabled = true;
+    ctx.onCancel(String(entry.itemId));
+  });
+  const failed = ctx.cancelErrorIds.has(String(entry.itemId));
+  return el('div', { class: 'conversion-active' }, failed && el('span', { class: 'conversion-fail__reason' }, CANCEL_ERROR), text, button);
+}
+
 /** @param {ConversionEntry} entry @returns {string} */
 function runningText(entry) {
+  if (entry.cancelling) return statusLabel(entry);
   const elapsed = elapsedLabel(entry.startedAt);
   const base = statusLabel(entry);
   return elapsed === null ? base : `${base} ${MIDDLE_DOT} ${elapsed}`;
