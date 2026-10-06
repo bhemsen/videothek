@@ -11,17 +11,36 @@ const MAX_NOTE_LENGTH = 2000;
  */
 
 /**
- * One normalised per-file record from the converter's stdout
- * (spec-conversion-core.md, "Converter contract and stub"). Phase 7 parses
- * only these four fields; `source` is ignored.
- * @typedef {object} ConverterRecord
+ * @typedef {object} ConverterSidecar
+ * @property {string} path - absolute path of the sidecar file.
+ * @property {number} stream - integer stream index.
+ * @property {string} language
+ */
+
+/**
+ * One normalised `file` record from the converter's stdout
+ * (spec-converter-adapter.md, "Converter contract"). `source`, `attempt` and
+ * unknown keys are ignored.
+ * @typedef {object} ConverterFileRecord
+ * @property {'file'} type
  * @property {ConverterOutcome} outcome
  * @property {string | null} output - absolute path; required when `outcome`
  *   is `'converted'`, `null` when absent otherwise.
  * @property {string | null} error
  * @property {string[]} notes - at most 10 entries, each at most 2000
  *   characters.
+ * @property {ConverterSidecar[]} sidecars - `[]` when null or absent.
  */
+
+/**
+ * One normalised `summary` record (the last line of a complete run).
+ * @typedef {object} ConverterSummaryRecord
+ * @property {'summary'} type
+ * @property {number} total
+ * @property {number} exitCode - the record's `exit_code`.
+ */
+
+/** @typedef {ConverterFileRecord | ConverterSummaryRecord} ConverterRecord */
 
 /**
  * @typedef {object} JsonLinesReader
@@ -30,8 +49,8 @@ const MAX_NOTE_LENGTH = 2000;
  *   one); returns `'ok'` otherwise.
  * @property {() => void} end - finalises a trailing line with no terminating
  *   `\n`. A no-op once capped.
- * @property {ConverterRecord[]} records - every valid per-file record seen
- *   so far, in order.
+ * @property {ConverterRecord[]} records - every valid recognised (`file` or
+ *   `summary`) record seen so far, in order; unknown types are dropped.
  * @property {boolean} invalid - `true` once any line failed to parse as JSON
  *   or {@link validateRecord} rejected it; sticky, never reset to `false`.
  */
@@ -140,23 +159,31 @@ function isStringArray(notes) {
 }
 
 /**
- * Normalises and validates one JSON-parsed stdout line against the
- * converter contract (spec-conversion-core.md, "Converter contract and
- * stub" / "Record validation"). `source` is accepted but ignored, per the
- * Phase-7 field set.
- *
- * @param {unknown} value - the result of `JSON.parse` on one line.
- * @returns {ConverterRecord | 'invalid' | null} the normalised record;
- *   `'invalid'` for a non-object line, an `outcome` outside the set, a
- *   non-absolute or non-string `output`, a `converted` record with no
- *   `output`, a non-string/non-null `error`, or `notes` that is not an array
- *   of strings; `null` for an object with no `outcome` field at all (e.g.
- *   the stub's summary line), which is ignored.
+ * @param {unknown} sidecars
+ * @returns {ConverterSidecar[] | null} the normalised list, or `null` when
+ *   the value is wrongly typed.
  */
-export function validateRecord(value) {
-  if (typeof value !== 'object' || value === null || Array.isArray(value)) return 'invalid';
-  const record = /** @type {Record<string, unknown>} */ (value);
-  if (record.outcome === undefined) return null;
+function normaliseSidecars(sidecars) {
+  if (sidecars === undefined || sidecars === null) return [];
+  if (!Array.isArray(sidecars)) return null;
+  /** @type {ConverterSidecar[]} */
+  const result = [];
+  for (const entry of sidecars) {
+    if (typeof entry !== 'object' || entry === null || Array.isArray(entry)) return null;
+    const { path: sidecarPath, stream, language } = /** @type {Record<string, unknown>} */ (entry);
+    if (typeof sidecarPath !== 'string' || !isAbsolute(sidecarPath)) return null;
+    if (typeof stream !== 'number' || !Number.isInteger(stream)) return null;
+    if (typeof language !== 'string') return null;
+    result.push({ path: sidecarPath, stream, language });
+  }
+  return result;
+}
+
+/**
+ * @param {Record<string, unknown>} record
+ * @returns {ConverterFileRecord | 'invalid'}
+ */
+function validateFileRecord(record) {
   if (typeof record.outcome !== 'string' || !OUTCOMES.has(record.outcome)) return 'invalid';
 
   const { output } = record;
@@ -169,10 +196,40 @@ export function validateRecord(value) {
   const { notes } = record;
   if (notes !== undefined && !isStringArray(notes)) return 'invalid';
 
+  const sidecars = normaliseSidecars(record.sidecars);
+  if (sidecars === null) return 'invalid';
+
   return {
+    type: 'file',
     outcome: /** @type {ConverterOutcome} */ (record.outcome),
     output: typeof output === 'string' ? output : null,
     error: typeof error === 'string' ? error : null,
     notes: (notes ?? []).slice(0, MAX_NOTES).map((note) => note.slice(0, MAX_NOTE_LENGTH)),
+    sidecars,
   };
+}
+
+/**
+ * Normalises and validates one JSON-parsed stdout line against the
+ * converter contract (spec-converter-adapter.md, "Converter contract").
+ *
+ * @param {unknown} value - the result of `JSON.parse` on one line.
+ * @returns {ConverterRecord | 'invalid' | null} the normalised record;
+ *   `'invalid'` for a non-object line, a missing/non-string `type`, a
+ *   `schema` other than `1`, or a `file`/`summary` record with a wrongly
+ *   typed field; `null` for a record of any other (unknown) type, which is
+ *   ignored.
+ */
+export function validateRecord(value) {
+  if (typeof value !== 'object' || value === null || Array.isArray(value)) return 'invalid';
+  const record = /** @type {Record<string, unknown>} */ (value);
+  if (typeof record.type !== 'string' || record.schema !== 1) return 'invalid';
+  if (record.type === 'file') return validateFileRecord(record);
+  if (record.type === 'summary') {
+    const { total, exit_code: exitCode } = record;
+    if (typeof total !== 'number' || !Number.isInteger(total)) return 'invalid';
+    if (typeof exitCode !== 'number' || !Number.isInteger(exitCode)) return 'invalid';
+    return { type: 'summary', total, exitCode };
+  }
+  return null;
 }

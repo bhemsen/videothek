@@ -1,6 +1,6 @@
 // @ts-check
 import { writeFile, copyFile } from 'node:fs/promises';
-import { existsSync } from 'node:fs';
+import { existsSync, rmSync } from 'node:fs';
 import path from 'node:path';
 import { spawn } from 'node:child_process';
 import { moovBox } from './mp4-boxes.js';
@@ -16,6 +16,10 @@ import { moovBox } from './mp4-boxes.js';
  * `echo` mode, the sole exception in constitution.md's `process.env` rule -
  * this file stands in for the external converter process and only reports
  * the environment it received.
+ *
+ * Every JSON-printing mode emits the converter v3.3 shape (`file` record, then
+ * `summary` record, `schema` 1); on SIGTERM the stub removes its `.partial`
+ * (`hang` mode) and exits 143, like the real converter.
  *
  * `--hold <dir>` (after the output is written: create `<dir>/started`, wait
  * for `<dir>/go`) and `--delay-ms <n>` (sleep before the first stdout line)
@@ -94,7 +98,26 @@ async function finish(ctx, records) {
  * @returns {Record<string, unknown>}
  */
 function converted(output) {
-  return { outcome: 'converted', output, error: null };
+  return fileRecord('converted', { output });
+}
+
+/**
+ * One `file` record in the converter v3.3 shape (`schema` 1).
+ * @param {string} outcome
+ * @param {Record<string, unknown>} [extra] fields overriding the defaults
+ * @returns {Record<string, unknown>}
+ */
+function fileRecord(outcome, extra = {}) {
+  return { type: 'file', schema: 1, source: '/media/Film.mkv', outcome, attempt: 1, notes: [], error: null, sidecars: [], ...extra };
+}
+
+/**
+ * The closing `summary` record of a completed run, v3.3 shape.
+ * @param {Partial<Record<'converted' | 'skipped' | 'failed' | 'unsupported' | 'total' | 'exit_code', number>>} [counts]
+ * @returns {Record<string, unknown>}
+ */
+function summary(counts = {}) {
+  return { type: 'summary', schema: 1, converted: 0, skipped: 0, failed: 0, unsupported: 0, total: 1, planned: 0, exit_code: 0, dry_run: false, ...counts };
 }
 
 /**
@@ -127,26 +150,27 @@ function syntheticBytes(target, videoFourcc = 'avc1') {
  */
 async function reportConverted(ctx, outPath, bytes) {
   await writeFile(outPath, bytes);
-  await finish(ctx, [converted(outPath)]);
+  await finish(ctx, [converted(outPath), summary({ converted: 1 })]);
 }
 
 /** @param {ModeContext} ctx the default mode: sample copy or synthetic bytes, record + summary */
 async function modeOk(ctx) {
   if (ctx.sampleDir) await copyFile(path.join(ctx.sampleDir, `sample.${ctx.ext}`), ctx.outPath);
   else await writeFile(ctx.outPath, syntheticBytes(ctx.target));
-  await finish(ctx, [converted(ctx.outPath), { done: true }]);
+  await finish(ctx, [converted(ctx.outPath), summary({ converted: 1 })]);
 }
 
-/** @param {ModeContext} ctx partial file, pid to `<hold>/pid`, then stays alive until killed */
+/** @param {ModeContext} ctx `.partial` file, pid to `<hold>/pid`, then stays alive until killed */
 async function modeHang(ctx) {
-  await writeFile(ctx.outPath, syntheticBytes(ctx.target).subarray(0, 4));
+  partialPath = `${ctx.outPath}.partial`;
+  await writeFile(partialPath, syntheticBytes(ctx.target).subarray(0, 4));
   if (ctx.hold) await writeFile(path.join(ctx.hold, 'pid'), String(process.pid));
   setInterval(() => {}, 60_000);
 }
 
 /** Writes more than 1 MiB of small JSON Lines to stdout (the `flood` mode). */
 function modeFlood() {
-  const line = `${JSON.stringify({ outcome: 'skipped' })}\n`;
+  const line = `${JSON.stringify({ type: 'file', schema: 1, outcome: 'skipped' })}\n`;
   let written = 0;
   while (written < 1024 * 1024 + 4096) {
     process.stdout.write(line);
@@ -167,6 +191,20 @@ async function modeOrphanPipe(ctx) {
   await writeFile(path.join(ctx.outDir, 'grandchild.pid'), String(child.pid));
 }
 
+/** Path of the in-flight `.partial` file (`hang` mode), removed on SIGTERM. */
+let partialPath = '';
+
+/**
+ * POSIX: like the real converter, a SIGTERM removes the in-flight
+ * `.partial` and exits 143. Windows has no catchable SIGTERM.
+ */
+function exitOnSigterm() {
+  process.on('SIGTERM', () => {
+    if (partialPath) rmSync(partialPath, { force: true });
+    process.exit(143);
+  });
+}
+
 /** @type {Record<string, (ctx: ModeContext) => void | Promise<void>>} */
 const MODES = {
   ok: modeOk,
@@ -174,18 +212,18 @@ const MODES = {
   'not-browser-safe': (ctx) => reportConverted(ctx, ctx.outPath, syntheticBytes(ctx.target, 'hvc1')),
   fail: (ctx) => {
     process.exitCode = 1;
-    return finish(ctx, [{ outcome: 'failed', error: 'ffmpeg exited with 1' }]);
+    return finish(ctx, [fileRecord('failed', { error: 'ffmpeg exited with 1' }), summary({ failed: 1, exit_code: 1 })]);
   },
-  unsupported: (ctx) => finish(ctx, [{ outcome: 'unsupported' }]),
-  skipped: (ctx) => finish(ctx, [{ outcome: 'skipped' }]),
+  unsupported: (ctx) => finish(ctx, [fileRecord('unsupported'), summary({ unsupported: 1 })]),
+  skipped: (ctx) => finish(ctx, [fileRecord('skipped'), summary({ skipped: 1 })]),
   garbage: () => {
     process.stdout.write('not a json line\n');
   },
   'no-record': async (ctx) => {
     await writeFile(ctx.outPath, syntheticBytes(ctx.target));
-    await finish(ctx, [{ done: true }]);
+    await finish(ctx, [summary({ total: 0 })]);
   },
-  'missing-output': (ctx) => finish(ctx, [converted(ctx.outPath)]),
+  'missing-output': (ctx) => finish(ctx, [converted(ctx.outPath), summary({ converted: 1 })]),
   escape: (ctx) => reportConverted(ctx, path.join(ctx.outDir, '..', `x.${ctx.ext}`), syntheticBytes(ctx.target)),
   'wrong-ext': (ctx) => reportConverted(ctx, path.join(ctx.outDir, `${ctx.stem}.mkv`), syntheticBytes(ctx.target)),
   crash: async (ctx) => {
@@ -206,6 +244,7 @@ const MODES = {
 
 async function main() {
   const args = parseArgs(process.argv.slice(2));
+  exitOnSigterm();
   const ext = TARGET_EXT[args.target];
   const stem = path.parse(args.source).name;
   await MODES[args.mode]({ ...args, ext, stem, outPath: path.join(args.outDir, `${stem}.${ext}`) });
