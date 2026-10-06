@@ -9,7 +9,7 @@
  * holds no MIME literal of its own beyond the imported subtitle constant.
  * `/media/:id` transparently prefers a fresh converted copy under
  * `CONVERT_DIR` over the original (`src/db/conversions.js`'s
- * `getFreshConversion`); subtitle sidecars always come from the source.
+ * `getFreshConversion`); subtitle tracks are source sidecars first, then the conversion's (`subtitle-tracks.js`).
  *
  * @see docs/specs/spec-video-streaming.md — "Error bodies", "Subtitle route".
  * @see docs/specs/archive/spec-conversion-core.md — "Serving".
@@ -21,7 +21,8 @@ import { requireUser } from '../http/guards.js';
 import { sendError } from '../http/respond.js';
 import { sendMedia } from '../http/stream.js';
 import { resolveMediaPath } from '../media/paths.js';
-import { listSubtitles, SUBTITLE_CONTENT_TYPE } from '../media/subtitles.js';
+import { listItemSubtitles } from './subtitle-tracks.js';
+import { SUBTITLE_CONTENT_TYPE } from '../media/subtitles.js';
 
 /** `id` path param: 1-16 digits, no leading zero (also enforced to be a safe integer below). */
 const ID_RE = /^[1-9][0-9]{0,15}$/;
@@ -136,8 +137,8 @@ async function handleMedia(req, res, ctx, deps) {
 
 /**
  * Handles `GET`/`HEAD /media/:id/subtitles/:n`: streams the `n`-th `.vtt`
- * sidecar of a video item, discovered fresh on every request by
- * `listSubtitles`. The item need not be playable. An out-of-range `n` (which
+ * track of a video item (source sidecars, then a fresh conversion's), discovered
+ * fresh on every request by `listItemSubtitles`. The item need not be playable. An out-of-range `n` (which
  * is always the case for a non-video item, since `listSubtitles` returns
  * `[]` for those) answers `404 not_found`, same as an unknown id.
  * @param {import('node:http').IncomingMessage} req
@@ -154,7 +155,7 @@ async function handleSubtitle(req, res, ctx, deps) {
   const row = getItemById(deps.db, id);
   if (!row) return notFound(res);
 
-  const tracks = await listSubtitles(deps.config.mediaRoot, row);
+  const tracks = await listItemSubtitles({ db: deps.db, mediaRoot: deps.config.mediaRoot, convertDir: deps.config.convertDir }, row);
   if (n >= tracks.length) return notFound(res);
 
   const result = await sendMedia(req, res, { path: tracks[n].path, contentType: SUBTITLE_CONTENT_TYPE });
