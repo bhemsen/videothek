@@ -221,6 +221,23 @@ test('redactDetail: on win32 matches case-insensitively and with either separato
   assert.equal(result, 'from <MEDIA_ROOT>/Movie.mkv and <MEDIA_ROOT>\\other.mkv');
 });
 
+test('redactDetail: on win32 matches doubled backslashes and mixed separators', () => {
+  /** @type {import('../../src/convert/result.js').RedactRoots} */
+  const roots = { mediaRoot: ['C:\\media'], convertDir: [], converterDir: null };
+  const text = 'a C:\\\\media\\\\film.mkv b C:\\\\media/x.mkv c C:/media\\\\y.mkv';
+  assert.equal(
+    redactDetail(text, roots, { platform: 'win32' }),
+    'a <MEDIA_ROOT>\\\\film.mkv b <MEDIA_ROOT>/x.mkv c <MEDIA_ROOT>\\\\y.mkv',
+  );
+});
+
+test('redactDetail: on linux a doubled backslash is not a separator', () => {
+  /** @type {import('../../src/convert/result.js').RedactRoots} */
+  const roots = { mediaRoot: ['/media'], convertDir: [], converterDir: null };
+  const text = '/media/a.mkv and \\\\media\\\\a.mkv';
+  assert.equal(redactDetail(text, roots, { platform: 'linux' }), '<MEDIA_ROOT>/a.mkv and \\\\media\\\\a.mkv');
+});
+
 test('redactDetail: on win32 also skips <CONVERTER> for a drive-letter filesystem root', () => {
   /** @type {import('../../src/convert/result.js').RedactRoots} */
   const roots = { mediaRoot: [], convertDir: [], converterDir: 'C:\\' };
