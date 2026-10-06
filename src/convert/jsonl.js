@@ -56,6 +56,23 @@ const MAX_NOTE_LENGTH = 2000;
  */
 
 /**
+ * Parses and validates one decoded line.
+ * @param {string} line - one decoded line, `\n` already removed; a trailing
+ *   `\r` is stripped here.
+ * @returns {ConverterRecord | 'invalid' | null} `null` for an empty line or
+ *   an unknown record type; `'invalid'` for bad JSON or a rejected record.
+ */
+function parseLine(line) {
+  if (line.endsWith('\r')) line = line.slice(0, -1);
+  if (line.length === 0) return null;
+  try {
+    return validateRecord(JSON.parse(line));
+  } catch {
+    return 'invalid';
+  }
+}
+
+/**
  * Creates a stateful reader for the converter's stdout: JSON Lines, UTF-8,
  * `\n`-separated, `\r` stripped, empty lines skipped
  * (spec-conversion-core.md, "Converter contract and stub" / "JSON Lines
@@ -85,27 +102,11 @@ export function createJsonLinesReader({ maxLineBytes = 65536, maxTotalBytes = 10
   /** @type {JsonLinesReader} */
   const reader = { push, end, records: [], invalid: false };
 
-  /**
-   * @param {string} line - one decoded line, `\r`/`\n` already removed.
-   */
+  /** @param {string} line - one decoded line, `\n` already removed. */
   function finishLine(line) {
-    if (line.endsWith('\r')) line = line.slice(0, -1);
-    if (line.length === 0) return;
-    /** @type {unknown} */
-    let value;
-    try {
-      value = JSON.parse(line);
-    } catch {
-      reader.invalid = true;
-      return;
-    }
-    const result = validateRecord(value);
-    if (result === null) return;
-    if (result === 'invalid') {
-      reader.invalid = true;
-      return;
-    }
-    reader.records.push(result);
+    const result = parseLine(line);
+    if (result === 'invalid') reader.invalid = true;
+    else if (result !== null) reader.records.push(result);
   }
 
   /** @param {Buffer} chunk */

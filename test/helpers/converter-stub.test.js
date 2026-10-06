@@ -55,11 +55,16 @@ function runStub(args, opts = {}) {
 
 /**
  * A `file` record in the converter v3.3 shape.
+ * @param {string} out job output dir
  * @param {string} outcome
  * @param {Record<string, unknown>} [extra]
  */
-function fileRec(outcome, extra = {}) {
-  return { type: 'file', schema: 1, source: '/media/Film.mkv', outcome, attempt: 1, notes: [], error: null, sidecars: [], ...extra };
+function fileRec(out, outcome, extra = {}) {
+  const isConverted = outcome === 'converted';
+  return {
+    type: 'file', schema: 1, source: path.resolve('/media/Film.mkv'), output: path.join(out, 'Film.mp4'), outcome,
+    attempt: isConverted ? 1 : null, notes: [], error: null, sidecars: isConverted ? [] : null, ...extra,
+  };
 }
 
 /**
@@ -111,7 +116,7 @@ test('ok writes synthetic output per target and prints the record plus a summary
     const ext = target === 'web' ? 'mp4' : target;
     const file = path.join(out, `Film.${ext}`);
     assert.equal(res.code, 0);
-    assert.deepEqual(lines(res.stdout), [fileRec('converted', { output: file }), summaryRec({ converted: 1 })]);
+    assert.deepEqual(lines(res.stdout), [fileRec(out, 'converted', { output: file }), summaryRec({ converted: 1 })]);
     const bytes = fs.readFileSync(file);
     if (target === 'web') assert.deepEqual(await sniffMp4Codecs(file), { video: ['avc1'], audio: ['mp4a'] });
     else assert.equal(bytes.subarray(0, 4).toString('latin1'), magic[/** @type {'flac' | 'opus'} */ (target)]);
@@ -126,7 +131,7 @@ test('ok with --sample-dir copies sample.<ext>; a relative OUTDIR is reported ab
   const res = await runStub(['--sample-dir', dir, ...contract(rel, 'flac')]);
   assert.equal(res.code, 0);
   assert.equal(fs.readFileSync(path.join(out, 'Film.flac'), 'utf8'), 'SAMPLE');
-  assert.deepEqual(lines(res.stdout)[0], fileRec('converted', { output: path.join(out, 'Film.flac') }));
+  assert.deepEqual(lines(res.stdout)[0], fileRec(out, 'converted', { output: path.join(out, 'Film.flac') }));
 });
 
 test('echo reports the argv, environment and cwd it received', async (t) => {
@@ -144,12 +149,12 @@ test('record, error and exit-code modes behave as the spec table says', async (t
   const mp4 = path.join(out, 'Film.mp4');
   /** @type {[string, number, unknown[]][]} */
   const table = [
-    ['fail', 1, [fileRec('failed', { error: 'ffmpeg exited with 1' }), summaryRec({ failed: 1, exit_code: 1 })]],
-    ['unsupported', 0, [fileRec('unsupported'), summaryRec({ unsupported: 1 })]],
-    ['skipped', 0, [fileRec('skipped'), summaryRec({ skipped: 1 })]],
-    ['missing-output', 0, [fileRec('converted', { output: mp4 }), summaryRec({ converted: 1 })]],
-    ['escape', 0, [fileRec('converted', { output: path.join(dir, 'x.mp4') }), summaryRec({ converted: 1 })]],
-    ['wrong-ext', 0, [fileRec('converted', { output: path.join(out, 'Film.mkv') }), summaryRec({ converted: 1 })]],
+    ['fail', 1, [fileRec(out, 'failed', { error: 'ffmpeg exited with 1' }), summaryRec({ failed: 1, exit_code: 1 })]],
+    ['unsupported', 0, [fileRec(out, 'unsupported'), summaryRec({ unsupported: 1 })]],
+    ['skipped', 0, [fileRec(out, 'skipped'), summaryRec({ skipped: 1 })]],
+    ['missing-output', 0, [fileRec(out, 'converted', { output: mp4 }), summaryRec({ converted: 1 })]],
+    ['escape', 0, [fileRec(out, 'converted', { output: path.join(dir, 'x.mp4') }), summaryRec({ converted: 1 })]],
+    ['wrong-ext', 0, [fileRec(out, 'converted', { output: path.join(out, 'Film.mkv') }), summaryRec({ converted: 1 })]],
     ['no-record', 0, [summaryRec({ total: 0 })]],
     ['interrupted', 130, []],
   ];
@@ -173,7 +178,7 @@ test('crash leaves a truncated file; not-browser-safe writes an hvc1 track', asy
   assert.equal(fs.statSync(path.join(out, 'Film.mp4')).size, 4);
   const nbs = await runStub(['--mode', 'not-browser-safe', ...contract(out)]);
   assert.equal(nbs.code, 0);
-  assert.deepEqual(lines(nbs.stdout), [fileRec('converted', { output: path.join(out, 'Film.mp4') }), summaryRec({ converted: 1 })]);
+  assert.deepEqual(lines(nbs.stdout), [fileRec(out, 'converted', { output: path.join(out, 'Film.mp4') }), summaryRec({ converted: 1 })]);
   assert.deepEqual(await sniffMp4Codecs(path.join(out, 'Film.mp4')), { video: ['hvc1'], audio: [] });
 });
 
