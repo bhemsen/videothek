@@ -12,7 +12,7 @@ export const APP_PUBLIC_DIR = join(dirname(fileURLToPath(import.meta.url)), '..'
 
 const CONVERTER_CMD_MAX_TOKENS = 32;
 const WIN32_DRIVE_OR_UNC_RE = /^(?:[a-zA-Z]:[\\/]|\\\\)/;
-const CONVERTER_ENV_KEYS = ['PATH', 'HOME', 'LANG', 'LC_ALL', 'SystemRoot'];
+const CONVERTER_ENV_KEYS = ['PATH', 'HOME', 'LANG', 'LC_ALL', 'SystemRoot', 'PATHEXT'];
 
 /**
  * Containment via `path.relative` rather than a string-prefix test, so it
@@ -75,7 +75,7 @@ export function parseConverterCmd(value, { platform = process.platform } = {}) {
 
 /**
  * Builds the allowlisted environment for the converter child process: only
- * `PATH`, `HOME`, `LANG`, `LC_ALL` and `SystemRoot` are copied from `env`
+ * `PATH`, `HOME`, `LANG`, `LC_ALL`, `SystemRoot` and `PATHEXT` are copied from `env`
  * (those actually set), so no other variable of the videothek process —
  * notably `ADMIN_PASSWORD` — ever reaches it. `TMPDIR`/`TEMP`/`TMP` are
  * deliberately not copied: the queue points them at the per-job temp dir

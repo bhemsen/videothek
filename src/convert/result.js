@@ -133,8 +133,8 @@ function failedDetail(run) {
 const MAX_DETAIL_LENGTH = 500;
 /** Regex-special characters that need escaping when building a literal-text pattern. */
 const REGEX_SPECIAL = /[.*+?^${}()|[\]\\]/;
-/** Regex source matching either path separator (built via string escaping, see `toPatternSource`). */
-const SEPARATOR_CLASS = '[\\\\/]';
+/** Regex source matching one win32 path separator: `/`, one backslash or two (JSON-escaped spelling in logs). */
+const SEPARATOR_CLASS = '(?:\\\\{1,2}|/)';
 
 /**
  * The filesystem roots `redactDetail` replaces, each as every spelling that
