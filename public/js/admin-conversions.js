@@ -103,18 +103,23 @@ export function mountConversionPanel(container) {
     refreshPolling();
   }
 
-  /** Cancels a queued/running row, then reloads the list (a 409 etc. simply shows the real state). @param {string} id @returns {Promise<void>} */
+  /** Cancels a queued/running row, then reloads the list (409/404/503 simply show the real state; other failures mark the row with the generic error). @param {string} id @returns {Promise<void>} */
   async function cancel(id) {
+    /** @type {unknown} */
+    let failure = null;
     try {
       await cancelConversion(id);
     } catch (err) {
-      if (err instanceof ApiError && (err.status === 401 || err.status === 403)) return;
+      failure = err;
     }
     try {
       await refresh();
     } catch {
       // keep the previous render; the poller (if running) retries
     }
+    // 409/404/503 are settled by the reload; anything else shows the generic row error.
+    const status = failure instanceof ApiError ? failure.status : 0;
+    if (failure !== null && ![409, 404, 503].includes(status)) errorIds.add(id);
     render();
     refreshPolling();
   }

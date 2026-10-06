@@ -143,7 +143,8 @@ function buildActive(status, entry, ctx) {
     button.disabled = true;
     ctx.onCancel(String(entry.itemId));
   });
-  return el('div', { class: 'conversion-active' }, text, button);
+  const failed = ctx.errorIds.has(String(entry.itemId));
+  return el('div', { class: 'conversion-active' }, failed && el('span', { class: 'conversion-fail__reason' }, GENERIC_ERROR), text, button);
 }
 
 /** @param {ConversionEntry} entry @returns {string} */

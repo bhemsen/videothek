@@ -17,12 +17,13 @@ function find(node, test) {
   return out;
 }
 
-/** @param {object} overrides @returns {{ sections: Node[], cancelled: string[] }} */
-function render(overrides) {
+/** @param {object} overrides @param {Set<string>} [errorIds] @returns {{ sections: Node[], cancelled: string[] }} */
+function render(overrides, errorIds = new Set()) {
   setup();
+  /** @type {any} */ (globalThis).document.createElementNS = (/** @type {string} */ _ns, /** @type {string} */ tag) => new Node(tag);
   const cancelled = /** @type {string[]} */ ([]);
   const e = { ...entry(7, {}), item: ITEM, cancelling: false, ...overrides };
-  const sections = buildGroups([/** @type {any} */ (e)], { errorIds: new Set(), onAction: () => {}, onCancel: (id) => cancelled.push(id) });
+  const sections = buildGroups([/** @type {any} */ (e)], { errorIds, onAction: () => {}, onCancel: (id) => cancelled.push(id) });
   return { sections: /** @type {Node[]} */ (/** @type {unknown} */ (sections)), cancelled };
 }
 
@@ -53,10 +54,16 @@ test('running row: button enabled; while cancelling it is disabled and the text 
 });
 
 test('failed/stale rows have no "Abbrechen"; a cancelled row shows the reason alone and "Erneut versuchen"', () => {
-  for (const status of ['stale']) assert.equal(dangerButtons(render({ status }).sections).length, 0);
+  for (const status of ['stale', 'playable']) assert.equal(dangerButtons(render({ status }).sections).length, 0);
   const failed = render({ status: 'failed', error: 'cancelled' });
   assert.equal(dangerButtons(failed.sections).length, 0);
   assert.match(failed.sections[0].textContent, /Vom Admin abgebrochen/);
   assert.match(failed.sections[0].textContent, /Erneut versuchen/);
   assert.doesNotMatch(failed.sections[0].textContent, /fehlgeschlagen:/);
+});
+
+test('a failed cancel (errorIds) shows the generic German error on the queued row, button still available', () => {
+  const { sections } = render({ status: 'queued', position: 1 }, new Set(['7']));
+  assert.match(sections[0].textContent, /Konvertieren nicht möglich\. Bitte erneut versuchen\./);
+  assert.equal(dangerButtons(sections)[0].disabled, false);
 });
