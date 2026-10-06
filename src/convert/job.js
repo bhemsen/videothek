@@ -122,7 +122,7 @@ async function removeJobDir({ log, row, removeDir }, jobDir) {
  * @returns {Promise<JobOutcome>}
  */
 async function runPipeline(opts, ctx) {
-  const { db, config, now, row, isStopping, run, onHandle } = opts;
+  const { db, config, now, row, isStopping, run, onHandle, log } = opts;
   const source = await resolveSource(opts);
   if (!source.ok) return recordFailure(db, row, now, source.error, source.detail);
 
@@ -142,6 +142,7 @@ async function runPipeline(opts, ctx) {
   });
   onHandle?.(handle);
   const result = await handle.result;
+  if (result.priorityError) log.warn('conversion_priority_failed', { key: row.storage_key, code: result.priorityError });
   if (isStopping()) return recordFailure(db, row, now, 'interrupted', null);
 
   return interpretAndPublish(opts, { outDir: jobDir.outDir, result, source });

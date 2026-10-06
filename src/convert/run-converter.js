@@ -1,4 +1,5 @@
 import { spawn } from 'node:child_process';
+import os from 'node:os';
 import { createJsonLinesReader } from './jsonl.js';
 import { errorCode } from './error-code.js';
 
@@ -13,6 +14,7 @@ import { errorCode } from './error-code.js';
 const STDERR_TAIL_BYTES = 4096;
 const CONTINUATION_BYTE_MIN = 0x80;
 const CONTINUATION_BYTE_MAX = 0xbf;
+const CONVERTER_PRIORITY = 19;
 
 /**
  * @typedef {import('./jsonl.js').ConverterRecord} ConverterRecord
@@ -41,6 +43,9 @@ const CONTINUATION_BYTE_MAX = 0xbf;
  *   `closeGraceMs` after `'exit'`, so `records` may be incomplete.
  * @property {string} stderrTail - the last 4 KiB of stderr, decoded (see
  *   {@link createStderrRing}).
+ * @property {string | null} priorityError - the error code when lowering the
+ *   child's priority (`setPriority(pid, 19)`) failed, `null` otherwise
+ *   (best effort; the run continues either way).
  */
 
 /**
@@ -55,6 +60,12 @@ const CONTINUATION_BYTE_MAX = 0xbf;
  * @property {string} cwd - the per-job directory (`outDir`'s parent).
  * @property {number} [closeGraceMs] - bound on the wait for `'close'` after
  *   `'exit'`. Default `2000`.
+ * @property {NodeJS.Platform} [platform] - injectable seam, default
+ *   `process.platform`. POSIX spawns a process group and signals it.
+ * @property {(pid: number, signal: NodeJS.Signals) => unknown} [killProcess] -
+ *   injectable seam, default `process.kill`; receives `-pid` on POSIX.
+ * @property {(pid: number, priority: number) => void} [setPriority] -
+ *   injectable seam, default `os.setPriority`.
  */
 
 /**
@@ -116,9 +127,9 @@ function createStderrRing(maxBytes) {
  * Wires the child's stdio and lifecycle events to the shared `settle`/state
  * closure, so {@link runConverter} itself stays a straight-line setup.
  * @param {import('node:child_process').ChildProcess} child
- * @param {{ reader: ReturnType<typeof createJsonLinesReader>, stderrRing: ReturnType<typeof createStderrRing>, closeGraceMs: number, settle: (extra: Partial<RunResult>) => void, onCap: () => void }} ctx
+ * @param {{ reader: ReturnType<typeof createJsonLinesReader>, stderrRing: ReturnType<typeof createStderrRing>, closeGraceMs: number, settle: (extra: Partial<RunResult>) => void, onCap: () => void, onExit: (code: number | null, signal: NodeJS.Signals | null) => void }} ctx
  */
-function wireChild(child, { reader, stderrRing, closeGraceMs, settle, onCap }) {
+function wireChild(child, { reader, stderrRing, closeGraceMs, settle, onCap, onExit }) {
   let spawnSucceeded = false;
   let capped = false;
   child.once('spawn', () => {
@@ -133,12 +144,12 @@ function wireChild(child, { reader, stderrRing, closeGraceMs, settle, onCap }) {
     if (reader.push(chunk) === 'cap') {
       capped = true;
       onCap();
-      child.kill('SIGKILL');
       child.stdout?.destroy();
     }
   });
   child.stderr?.on('data', (chunk) => stderrRing.push(chunk));
   child.once('exit', (code, signal) => {
+    onExit(code, signal);
     const graceTimer = setTimeout(() => {
       child.stdout?.destroy();
       child.stderr?.destroy();
@@ -158,12 +169,16 @@ function wireChild(child, { reader, stderrRing, closeGraceMs, settle, onCap }) {
  * @param {RunConverterOptions} options
  * @returns {RunConverter}
  */
-export function runConverter({ cmd, env, target, source, outDir, cwd, closeGraceMs = 2000 }) {
+export function runConverter({ cmd, env, target, source, outDir, cwd, closeGraceMs = 2000, platform = process.platform, killProcess = process.kill, setPriority = os.setPriority }) {
+  const posix = platform !== 'win32';
   const reader = createJsonLinesReader();
   const stderrRing = createStderrRing(STDERR_TAIL_BYTES);
   let settled = false;
   /** @type {'cap' | 'stop' | null} */
   let killedBy = null;
+  let exited = false;
+  /** @type {string | null} */
+  let priorityError = null;
 
   /** @type {(value: RunResult) => void} */
   let resolveResult = () => {};
@@ -183,21 +198,50 @@ export function runConverter({ cmd, env, target, source, outDir, cwd, closeGrace
       stdoutInvalid: killedBy === 'cap' || reader.invalid,
       stdioTimedOut: false,
       stderrTail: stderrRing.finish(),
+      priorityError,
       ...extra,
     });
   }
 
+  /** @type {import('node:child_process').ChildProcess} */
   let child;
   try {
     child = spawn(cmd[0], [...cmd.slice(1), '--to', target, '--json', source, outDir], {
       stdio: ['ignore', 'pipe', 'pipe'],
       windowsHide: true,
+      detached: posix,
       env,
       cwd,
     });
   } catch (err) {
     settle({ spawnError: errorCode(err, 'ERR_SPAWN') });
     return { result, kill: () => {} };
+  }
+
+  const pid = child.pid;
+  if (pid !== undefined) {
+    try {
+      setPriority(pid, CONVERTER_PRIORITY);
+    } catch (err) {
+      priorityError = errorCode(err, 'ERR_PRIORITY');
+    }
+  }
+
+  /**
+   * Signals the run: POSIX goes to the whole process group (`-pid`), so the
+   * converter's own ffmpeg children are reached; Windows uses `child.kill`.
+   * Nothing without a pid; ESRCH (group already gone) and any other signal
+   * error are swallowed - this never throws.
+   * @param {NodeJS.Signals} signal
+   */
+  function send(signal) {
+    if (pid === undefined) return;
+    try {
+      if (posix) killProcess(-pid, signal);
+      else child.kill(signal);
+    } catch {
+      // ESRCH: the group is already gone.
+    }
   }
 
   wireChild(child, {
@@ -207,14 +251,22 @@ export function runConverter({ cmd, env, target, source, outDir, cwd, closeGrace
     settle,
     onCap: () => {
       killedBy = killedBy ?? 'cap';
+      send('SIGKILL');
+    },
+    // One synchronous group sweep: after a queue/cap kill, or a non-zero or
+    // signalled exit (an OOM-killed converter must not leave ffmpeg behind).
+    onExit(code, signal) {
+      exited = true;
+      if (posix && (killedBy !== null || code !== 0 || signal !== null)) send('SIGKILL');
     },
   });
 
   return {
     result,
     kill(signal) {
+      if (exited) return;
       killedBy = killedBy ?? 'stop';
-      child.kill(signal);
+      send(signal);
     },
   };
 }

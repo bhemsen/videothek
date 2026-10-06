@@ -8,6 +8,7 @@ const DEFAULT_RUN = {
   exitCode: 0,
   signal: null,
   killedBy: null,
+  priorityError: null,
   records: [],
   stdoutInvalid: false,
   stdioTimedOut: false,
