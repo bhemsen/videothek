@@ -284,3 +284,12 @@ for (const { description, raw } of INVALID_IDS_QUERIES) {
     assert.equal(parseConversionIds(raw), null);
   });
 }
+
+test('buildConversionEntry: cancelling only for a converting row whose rel_path matches', () => {
+  const converting = baseRow({ c_status: 'converting' });
+  assert.equal(buildConversionEntry(converting, 'Filme/Item.mkv').cancelling, true);
+  assert.equal(buildConversionEntry(converting, 'Filme/Other.mkv').cancelling, false);
+  assert.equal(buildConversionEntry(converting, null).cancelling, false);
+  const failed = baseRow({ c_status: 'failed' });
+  assert.equal(buildConversionEntry(failed, 'Filme/Item.mkv').cancelling, false);
+});

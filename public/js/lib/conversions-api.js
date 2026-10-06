@@ -21,6 +21,7 @@ import { request } from './api.js';
  * @property {boolean} convertible
  * @property {ConversionTarget | null} target
  * @property {ConversionStatus} status
+ * @property {boolean} cancelling - `true` only while the running conversion's cancel is pending.
  * @property {number | null} position - 1-based FIFO position among waiting `queued` items, else `null`.
  * @property {string | null} error - failure code (see conversion-format.js), `null` unless `status` is `failed`.
  * @property {string | null} errorDetail
